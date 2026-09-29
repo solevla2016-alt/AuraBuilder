@@ -1,0 +1,32 @@
+B|Структура архива:
+C|
+C|mysite-static.zip
+C|├── index.html                 # главная (или index-*.html по секциям)
+C|├── catalog/
+C|│   ├── index.html             # листинг (ЧПУ site.ru/catalog/)
+C|│   └── tovar-name.html        # карточка товара
+C|├── about.html
+C|├── assets/
+C|│   ├── css/site.min.css       # собранные стили, без внешних @import
+C|│   ├── js/app.min.js          # скомпилированная логика (чистый JS)
+C|│   ├── js/logic.min.js        # граф нод → исполняемый код
+C|│   ├── img/                   # WebP + srcset
+C|│   ├── fonts/                 # субсеттированные .woff2 (SIL OFL)
+C|│   └── icons/                 # собственная библиотека иконок (SVG)
+C|├── robots.txt
+C|├── sitemap.xml
+C|├── manifest.json              # для PWA (если включён сценарий 4)
+C|├── build-manifest.json        # версия проекта, дата сборки, контрольные суммы
+C|└── README.md                  # инструкция по развёртыванию
+NEW
+B|Что в пакет не входит (ограничение IP Safety, п.16.4):
+BL|0|Исходный код AuraBuilder и её форков
+BL|0|Визуальный редактор: модуль перетаскивания, логика слоёв, история действий
+BL|0|Backend платформы: PostgreSQL, Valkey, Celery, рантайм логики
+BL|0|Учётные данные интеграций (1С, платёжные системы) — только схема подключения без секретов
+NEW
+B|Проверки перед выдачей архива:
+BL|0|Отсутствие внешних ссылок: fonts.googleapis.com, fonts.gstatic.com, иностранные CDN и аналитика (п.15.3)
+BL|0|Валидность HTML (линтер) и корректность микроразметки Schema.org
+BL|0|Наличие SEO-файлов: robots.txt, sitemap.xml, Open Graph-теги
+BL|0|Суммарный вес изображений и шрифтов в пределах тарифного лимита
