@@ -87,6 +87,17 @@ def main(path):
     for i, n in long_p:
         print(f'  idx {i}: {n}')
 
+    # 8. протечки директив спецификации в текст документа
+    leaked = [(i, ptext(p).strip()) for i, p in enumerate(body.iter(W + 'p'))
+              if ptext(p).strip() in ('TABLE', 'ENDTABLE', 'NEW', 'PARA',
+                                      'ROW') or ptext(p).strip().startswith('B|')]
+    print(f'leaked spec directives: {len(leaked)}')
+    for i, t in leaked:
+        print(f'  !! idx {i}: {t!r}')
+
+    # 9. заголовки-разделители подряд
+    print('--- готово ---')
+
 
 if __name__ == '__main__':
     main(sys.argv[1])
