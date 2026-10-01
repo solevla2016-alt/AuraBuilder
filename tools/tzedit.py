@@ -5,6 +5,7 @@
   map     - показать карту абзацев (индекс, текст)
   find    - найти абзацы по подстроке
   replace - заменить текст в абзаце
+  cell    - заменить текст ячейки таблицы (номер строки, номер столбца)
   set     - заменить целый диапазон абзацев новым содержимым
 """
 
@@ -294,6 +295,49 @@ def parse_spec(spec_path, first_id=200):
     return nodes, needed
 
 
+def cell_paras(tr):
+    """Абзацы ячеек строки в порядке следования ячеек."""
+    out = []
+    for tc in tr.findall(W + 'tc'):
+        out.append(tc.findall(W + 'p'))
+    return out
+
+
+def cmd_cell(root, args):
+    """cell <table_index> <row_index> <col_index> <new_text>
+
+    Заменяет текст ячейки таблицы. Все индексы с нуля.
+    Нужна потому, что `replace` обходит только прямых потомков body
+    и не заходит внутрь таблиц.
+    """
+    t_i = int(args[0])
+    r_i = int(args[1])
+    c_i = int(args[2])
+    new = args[3]
+    tables = body(root).findall(W + 'tbl')
+    if t_i >= len(tables):
+        print(f'table {t_i} not found (total: {len(tables)})')
+        return 0
+    trs = tables[t_i].findall(W + 'tr')
+    if r_i >= len(trs):
+        print(f'table {t_i} has {len(trs)} rows, no row {r_i}')
+        return 0
+    cells = cell_paras(trs[r_i])
+    if c_i >= len(cells):
+        print(f'row {r_i} has {len(cells)} cells, no cell {c_i}')
+        return 0
+    paras = cells[c_i]
+    if not paras:
+        print(f'cell {t_i},{r_i},{c_i} is empty')
+        return 0
+    set_text(paras[0], new)
+    for extra in paras[1:]:
+        for r in extra.findall(W + 'r'):
+            extra.remove(r)
+    print(f'cell [{t_i},{r_i},{c_i}] set: {new[:60]}')
+    return 0
+
+
 def cmd_set(root, args):
     """set <start> <end> <spec> [docx]
 
@@ -412,6 +456,8 @@ def main():
         return 0
     if cmd == 'replace':
         cmd_replace(root, args)
+    elif cmd == 'cell':
+        extra = cmd_cell(root, args)
     elif cmd == 'set':
         extra = cmd_set(root, args)
     elif cmd == 'settable':

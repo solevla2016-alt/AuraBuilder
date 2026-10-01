@@ -1,71 +1,79 @@
 /**
  * Design tokens редактора AuraBuilder.
  *
- * Палитра «Golden Sand» с эффектами Aura и Backlight (ТЗ п.5.1, п.5.1.1).
+ * АРХИТЕКТУРА ЦВЕТА — почему так (решение от 1 октября 2026).
  *
- * ВАЖНО: токены разделены по ролям, а не по названиям цветов.
- * accent-surface — только заливка и свечение, никогда не текст.
- * accent-text — текст и ссылки на светлом фоне.
- * Это следствие замера контраста: #D4B896 на #F5EFE0 даёт 1.65:1 и
- * не проходит WCAG (требуется 4.5:1 для текста).
+ * Главный принцип: хром редактора нейтрален, чтобы пользователь видел
+ * чужой дизайн без искажений. Тёплая заливка всего экрана (#F5EFE0 и т.п.)
+ * тинтит превью чужого сайта и ломает главное обещание редактора —
+ * «здесь ровно то, что увидят посетители».
  *
- * Источник значений: tools/contrast.py — пересчёт при каждом изменении.
+ * Поэтому:
+ *   1. Хром (панели, холст редактора) — нейтральный серый.
+ *   2. Золото — ТОЛЬКО бренд-акцент. Его мало: активные состояния,
+ *      акцентные кнопки, фокус, прогресс AI. Никакого фона под текстом
+ *      на всём экране.
+ *   3. «Golden Sand» остаётся в brand-гайде и на публичном сайте AuraBuilder,
+ *      но не в редакторе.
+ *   4. Свечение и backlight сохранены, но только там, где означают
+ *      «идёт действие» (drag, AI-ассистент), а не как постоянный декор.
+ *
+ * Токены разделены по ролям, а не по названиям цветов:
+ *   accentSurface — только заливка, никогда не текст.
+ *   accentText — текст и ссылки, проходят WCAG.
+ * Причина: золото на светлом даёт ~1.7:1 и нечитаемо.
+ *
+ * Темы: light и dark. Обе проверены docs/check-contrast.mjs.
+ * Значения получены расчётом относительной яркости, не подбором на глаз.
  */
 
-export const palette = {
-  // Базовые поверхности
-  canvas: '#F5EFE0',
-  panel: '#FBF6E8',
-  panelRaised: '#FFFDF5',
-  panelSunken: '#EFE7D4',
+import paletteJson from './palette.json';
 
-  // Акценты — поверхности (НЕ для текста)
-  accentSurface: '#D4B896',
-  accentSurfaceHover: '#C2A47E',
-  accentSurfaceActive: '#AE9066',
-  secondarySurface: '#C9B896',
-
-  // Акценты — текст (проходят WCAG)
-  accentText: '#7A5C30',        // 5.38:1 на canvas — AA
-  accentTextStrong: '#6B4F28',  // 6.60:1 на canvas — AAA
-  accentTextMuted: '#866738',   // 4.56:1 на canvas — AA
-
-  // Текст
-  textPrimary: '#3A3428',   // 10.76:1 — AAA
-  textSecondary: '#6B6250', // 5.25:1 — AA
-  textDisabled: '#A79C86',  // только для неинтерактивных элементов
-
-  // Границы и разделители
-  border: 'rgba(58, 52, 40, 0.08)',
-  borderStrong: 'rgba(58, 52, 40, 0.16)',
-  borderFocus: '#7A5C30',
-
-  // Служебные — значения подобраны под порог 4.5:1 на canvas
-  success: '#58754B', // 4.51:1 — AA
-  warning: '#8A652D', // 4.60:1 — AA
-  danger: '#A4503C',  // 4.83:1 — AA
-  info: '#596F83',    // 4.55:1 — AA
-
-  /**
-   * Текст на залитых кнопках.
-   * Кнопки светлые (песочные), поэтому текст на них тёмный, а не белый.
-   * Белый на #D4B896 даёт 1.7:1 — нечитаемо.
-   */
-  onAccentSurface: '#3A3428',        // 6.52:1 на #D4B896 — AA
-  onAccentSurfaceHover: '#3A3428',   // 5.23:1 на #C2A47E — AA
-  onAccentSurfaceActive: '#241F16',  // 5.44:1 на #AE9066 — AA
-  onAccentText: '#F5EFE0',           // 5.38:1 на #7A5C30 — AA
-} as const;
+export const neutral = paletteJson.neutral;
+export const gold = paletteJson.gold;
 
 /**
- * Типографическая шкала. Интервал 1.25 (major third third).
- * Семейство — только самохостинговый Inter (SIL OFL), ТЗ п.5.2.
- * Подключение fonts.googleapis.com запрещено (ТЗ п.10.1).
+ * Светлая тема. Нейтральный хром — холодный серый с минимальным тепловым
+ * сдвигом, чтобы чужой дизайн читался нейтрально. Золото присутствует
+ * только как бренд-акцент и не заливает большие площади.
+ */
+export const lightTheme = { ...paletteJson.light, name: 'light' } as const;
+
+/**
+ * Тёмная тема. Полноценная, а не инверсия: поверхности — глубокие
+ * нейтральные, акценты подобраны отдельно под контраст на них.
+ *
+ * Обратите внимание на onAccentText: он тёмный, а не светлый. В этой теме
+ * accentText — светлое золото, употребляемое как цвет ТЕКСТА, поэтому
+ * заливка под ним обязана быть тёмной. Светлый вариант давал 1.56:1.
+ */
+export const darkTheme = { ...paletteJson.dark, name: 'dark' } as const;
+
+export type ThemeName = 'light' | 'dark';
+export type Theme = (typeof lightTheme | typeof darkTheme) & { name: ThemeName };
+
+export const themes: Record<ThemeName, Theme> = {
+  light: lightTheme,
+  dark: darkTheme,
+};
+
+export type Theme = typeof lightTheme | typeof darkTheme;
+export type ThemeName = 'light' | 'dark';
+
+export const themes: Record<ThemeName, Theme> = {
+  light: lightTheme,
+  dark: darkTheme,
+};
+
+/**
+ * Типографика. Интервал 1.25 (major third third).
+ * Inter — самохостинговый, SIL OFL. Подключение fonts.googleapis.com
+ * запрещено (ТЗ п.10.1): файлы лежат в apps/web/public/fonts.
  */
 export const typography = {
   fontFamily:
-    "'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif",
-  fontFamilyMono: "'JetBrains Mono', 'Consolas', monospace",
+    "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  fontFamilyMono: "'JetBrains Mono', 'SF Mono', Consolas, monospace",
 
   scale: {
     xs: { size: '0.75rem', lineHeight: 1.333, weight: 500 },
@@ -103,51 +111,67 @@ export const radii = {
 } as const;
 
 /**
- * Тени. Два слоя: ближний контакт + дальний ореол.
+ * Тени. В нейтральном хроме ореол не нужен — достаточно
+ * ближней тени контакта и мягкой дальней для отрыва от фона.
  * Порядок в box-shadow: от ближнего к дальнему.
  */
 export const shadows = {
   none: 'none',
-  sm: '0 1px 2px rgba(212, 184, 150, 0.12)',
-  md: '0 2px 8px rgba(212, 184, 150, 0.12)',
-  lg: '0 8px 24px rgba(212, 184, 150, 0.16)',
-  xl: '0 16px 48px rgba(212, 184, 150, 0.20)',
+  sm: '0 1px 2px rgba(15, 16, 18, 0.06)',
+  md: '0 2px 8px rgba(15, 16, 18, 0.08)',
+  lg: '0 8px 24px rgba(15, 16, 18, 0.12)',
+  xl: '0 16px 48px rgba(15, 16, 18, 0.16)',
 } as const;
 
 /**
- * Эффекты Aura и Backlight (ТЗ п.5.2).
- * Период анимации «дыхания» — 4 секунды.
+ * Эффекты. Принцип: свечение разрешено только там, где идёт действие.
+ * Нет постоянного декоративного свечения на холсте — мешает оценивать
+ * контраст текста и границы блоков чужого дизайна.
  */
 export const effects = {
-  /** Свечение вокруг активного элемента. Двухслойное. */
+  /**
+   * Aura — применяется на перетаскиваемом элементе и активном инструменте.
+   * Двухслойное: обводка + ореол.
+   */
   aura: {
-    near: '0 0 0 1px rgba(212, 184, 150, 0.5)',
-    far: '0 0 24px 4px rgba(212, 184, 150, 0.35)',
-    strong: {
-      near: '0 0 0 1px rgba(212, 184, 150, 0.7)',
-      far: '0 0 32px 8px rgba(212, 184, 150, 0.45)',
+    dragging: {
+      near: '0 0 0 1px rgba(217, 164, 65, 0.9)',
+      far: '0 0 24px 4px rgba(217, 164, 65, 0.35)',
+    },
+    active: {
+      near: '0 0 0 1px rgba(217, 164, 65, 0.6)',
+      far: '0 0 16px 2px rgba(217, 164, 65, 0.22)',
     },
   },
-  /** Свет за панелью. z-index: -1 ставится на самом элементе. */
+  /**
+   * Backlight — только для работающего AI-ассистента.
+   * Раньше применялся постоянно ко всем панелям.
+   */
   backlight: {
     glow: `radial-gradient(
       600px 300px at 50% 0%,
-      rgba(212, 184, 150, 0.6) 0%,
-      rgba(212, 184, 150, 0.2) 40%,
+      rgba(217, 164, 65, 0.28) 0%,
+      rgba(217, 164, 65, 0.10) 40%,
       transparent 75%
     )`,
-    blur: 'blur(45px)',
+    blur: 'blur(40px)',
   },
-  /** Анимация дыхания. Отключается при prefers-reduced-motion. */
+  /** Пульсация активности. Отключается при prefers-reduced-motion. */
   pulse: {
-    duration: '4s',
+    duration: '2.4s',
     easing: 'cubic-bezier(0.4, 0, 0.6, 1)',
     keyframes: `
       @keyframes aura-pulse {
-        0%, 100% { opacity: 1; transform: scale(1); }
-        50% { opacity: 0.75; transform: scale(1.04); }
+        0%, 100% { opacity: 0.85; }
+        50% { opacity: 0.45; }
       }
     `,
+  },
+  /** Общие анимации дизайн-системы — вместо keyframes в каждом экране. */
+  motion: {
+    fadeIn: 'fade-in',
+    slideUp: 'slide-up',
+    scaleIn: 'scale-in',
   },
   /** Собственные easing-функции, ТЗ п.15.2 — разработаны с нуля. */
   easing: {
@@ -164,22 +188,23 @@ export const effects = {
 } as const;
 
 /**
- * Слои. Холст занимает максимум экрана (ТЗ п.4.2), поэтому панели
- * накладываются, а не сдвигают холст.
+ * Слои — компактная шкала (ТЗ п.4.2).
+ * Холст занимает максимум экрана, поэтому панели накладываются,
+ * а не сдвигают холст. Значения 0–4 + два служебных для тостов и палитры.
  */
 export const layers = {
-  backlight: -1,
   canvas: 0,
-  canvasContent: 10,
-  canvasSelection: 20,
-  canvasGuides: 30,
-  floatingPalette: 100,
-  bottomDock: 110,
-  topBar: 120,
-  drawer: 200,
-  modal: 300,
-  toast: 400,
-  commandPalette: 500,
+  canvasContent: 1,
+  canvasSelection: 2,
+  canvasGuides: 3,
+  canvasDropTarget: 4,
+  floatingPalette: 10,
+  bottomDock: 11,
+  topBar: 12,
+  drawer: 20,
+  modal: 30,
+  toast: 40,
+  commandPalette: 50,
 } as const;
 
 /** Сетка и брейкпоинты холста (ТЗ п.6). */
@@ -201,23 +226,25 @@ export const canvas = {
 
 /**
  * Доступность (ТЗ п.5.1.1).
- * focusRing использует accentText, а не accentSurface: последний
- * невидим на песочном фоне.
+ * focusRing использует borderFocus темы, а не фиксированный акцент:
+ * в тёмной теме золотой текст не виден на тёмном фоне.
  */
 export const a11y = {
-  focusRing: `0 0 0 2px ${palette.canvas}, 0 0 0 4px ${palette.borderFocus}`,
+  focusRing: '0 0 0 2px var(--focus-offset), 0 0 0 4px var(--focus-ring)',
   focusRingOffset: '2px',
-  minTargetSize: '44px', // WCAG 2.5.5 — целевой размер
+  minTargetSize: '44px',
   contrast: {
-    text: 4.5,    // AA для обычного текста
-    largeText: 3, // AA для текста от 18px или 14px полужирного
-    ui: 3,        // AA для границ и состояний
+    text: 4.5,
+    largeText: 3,
+    ui: 3,
   },
   reducedMotion: '@media (prefers-reduced-motion: reduce)',
 } as const;
 
 export const tokens = {
-  palette,
+  neutral,
+  gold,
+  themes,
   typography,
   spacing,
   radii,
