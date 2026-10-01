@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AuraBuilder — палитра</title>
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    --ink: #1A1C1E;
+    --dim: #5B6169;
+    --line: rgba(20,22,26,.12);
+    --gold: #7E5A12;
+    --gold-bg: #D9A441;
+  }
+  body {
+    margin: 0;
+    font: 15px/1.55 'Segoe UI', system-ui, sans-serif;
+    color: var(--ink);
+    background: #E4E6E9;
+  }
+  header {
+    background: #15171A;
+    color: #E8EAED;
+    padding: 32px 40px;
+  }
+  header h1 { margin: 0 0 8px; font-size: 26px; letter-spacing: -.2px; }
+  header p { margin: 0; color: #A8AEB8; max-width: 70ch; }
+  header b { color: var(--gold-bg); }
+  main { padding: 32px 40px 64px; }
+  h2 { font-size: 20px; margin: 40px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 14px; text-transform: uppercase; letter-spacing: .6px; color: var(--dim); margin: 24px 0 12px; }
+  .themes { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 1100px) { .themes { grid-template-columns: 1fr; } }
+  .theme { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 24px; }
+  .theme > h2 { margin: 0 0 4px; border: 0; padding: 0; font-size: 18px; }
+  .theme > p { margin: 0 0 20px; color: var(--dim); font-size: 13px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .sw { margin: 0; }
+  .chip { height: 60px; border-radius: 8px; border: 1px solid var(--line); }
+  figcaption { margin-top: 6px; font-size: 12px; display: flex; flex-direction: column; gap: 1px; }
+  figcaption b { font-weight: 600; }
+  code { font: 11px/1.4 Consolas, monospace; color: var(--dim); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--dim); }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .ok { color: #3F6B33; font-weight: 600; }
+  .bad { color: #A4503C; font-weight: 700; }
+  .pair { display: inline-flex; }
+  .pair i { width: 16px; height: 16px; border: 1px solid var(--line); }
+  .sample { padding: 20px; border-radius: 8px; margin-top: 8px; }
+  .card { padding: 20px; border-radius: 10px; border: 1px solid; }
+  .card h4 { margin: 0 0 4px; font-size: 16px; }
+  .card p { margin: 0 0 16px; font-size: 14px; }
+  .row { display: flex; gap: 10px; margin-bottom: 16px; }
+  button { font: inherit; font-size: 14px; padding: 8px 16px; border-radius: 6px; border: 1px solid transparent; cursor: pointer; }
+  .ghost { background: transparent; }
+  .focusable { padding: 10px 12px; border: 1px solid; border-radius: 6px; font-size: 13px; }
+  .focusable:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .notes { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 16px; font-size: 13px; }
+  .tag { font-size: 11px; padding: 3px 8px; border-radius: 999px; }
+  footer { padding: 0 40px 48px; color: var(--dim); font-size: 13px; max-width: 90ch; }
+  a { color: var(--gold); }
+</style>
+</head>
+<body>
+<header>
+  <h1>AuraBuilder — палитра редактора</h1>
+  <p>Хром <b>нейтральный</b>, золото — <b>только бренд-акцент</b>. Тёплая палитра
+  «Golden Sand» тинтила превью чужого дизайна, поэтому ушла в brand-гайд и на
+  публичный сайт. Обе темы проверены по WCAG: <b>40 пар, 0 непройденных</b>.</p>
+</header>
+<main>
+  <div class="themes">
+    <div class="theme">
+      <h2>Светлая тема</h2>
+      <p>canvas #F7F8F9 · панель #FFFFFF · текст #1A1C1E</p>
+      <section><h3>Поверхности</h3><div class="grid">
+        <figure class="sw">
+          <div class="chip" style="background:#E4E6E9"></div>
+          <figcaption>
+            <b>Фон приложения</b>
+            <code>appBg</code>
+            <code>#E4E6E9</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#F7F8F9"></div>
+          <figcaption>
+            <b>Холст редактора</b>
+            <code>canvas</code>
+            <code>#F7F8F9</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#FFFFFF"></div>
+          <figcaption>
+            <b>Панели</b>
+            <code>panel</code>
+            <code>#FFFFFF</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#FFFFFF"></div>
+          <figcaption>
+            <b>Приподнятая панель</b>
+            <code>panelRaised</code>
+            <code>#FFFFFF</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#F0F1F3"></div>
+          <figcaption>
+            <b>Утопленная панель</b>
+            <code>panelSunken</code>
+            <code>#F0F1F3</code>
+          </figcaption>
+        </figure></div></section><section><h3>Текст</h3><div class="grid">
+        <figure class="sw">
+          <div class="chip" style="background:#1A1C1E"></div>
+          <figcaption>
+            <b>Основной текст</b>
+            <code>textPrimary</code>
+            <code>#1A1C1E</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#5B6169"></div>
+          <figcaption>
+            <b>Вторичный текст</b>
+            <code>textSecondary</code>
+            <code>#5B6169</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#8D949E"></div>
+          <figcaption>
+            <b>Неактивный текст</b>
+            <code>textDisabled</code>
+            <code>#8D949E</code>
+          </figcaption>
+        </figure></div></section><section><h3>Золотой акцент</h3><div class="grid">
+        <figure class="sw">
+          <div class="chip" style="background:#D9A441"></div>
+          <figcaption>
+            <b>Акцент: заливка</b>
+            <code>accentSurface</code>
+            <code>#D9A441</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#E0AE4E"></div>
+          <figcaption>
+            <b>Акцент: заливка hover</b>
+            <code>accentSurfaceHover</code>
+            <code>#E0AE4E</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#C9962E"></div>
+          <figcaption>
+            <b>Акцент: заливка active</b>
+            <code>accentSurfaceActive</code>
+            <code>#C9962E</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#F5E6C4"></div>
+          <figcaption>
+            <b>Акцент: слабая заливка</b>
+            <code>accentSurfaceSubtle</code>
+            <code>#F5E6C4</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#7E5A12"></div>
+          <figcaption>
+            <b>Акцент: текст</b>
+            <code>accentText</code>
+            <code>#7E5A12</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#6B4E0F"></div>
+          <figcaption>
+            <b>Акцент: текст усиленный</b>
+            <code>accentTextStrong</code>
+            <code>#6B4E0F</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#7E5A12"></div>
+          <figcaption>
+            <b>Кольцо фокуса</b>
+            <code>borderFocus</code>
+            <code>#7E5A12</code>
+          </figcaption>
+        </figure></div></section><section><h3>Служебные и состояния</h3><div class="grid">
+        <figure class="sw">
+          <div class="chip" style="background:#3F6B33"></div>
+          <figcaption>
+            <b>Успех</b>
+            <code>success</code>
+            <code>#3F6B33</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#8A652D"></div>
+          <figcaption>
+            <b>Предупреждение</b>
+            <code>warning</code>
+            <code>#8A652D</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#A4503C"></div>
+          <figcaption>
+            <b>Ошибка</b>
+            <code>danger</code>
+            <code>#A4503C</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#3F5A70"></div>
+          <figcaption>
+            <b>Информация</b>
+            <code>info</code>
+            <code>#3F5A70</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:rgba(217, 164, 65, 0.22)"></div>
+          <figcaption>
+            <b>Выделение</b>
+            <code>selection</code>
+            <code>rgba(217, 164, 65, 0.22)</code>
+          </figcaption>
+        </figure></div></section>
+      
+  <div class="sample" style="background:#F7F8F9;color:#1A1C1E">
+    <div class="card" style="background:#FFFFFF;border-color:rgba(20, 22, 26, 0.10)">
+      <h4>Новый проект</h4>
+      <p style="color:#5B6169">Описание проекта видно здесь вторичным текстом.</p>
+      <div class="row">
+        <button class="primary" style="background:#D9A441;color:#1A1C1E">Опубликовать</button>
+        <button class="ghost" style="border-color:rgba(20, 22, 26, 0.18);color:#1A1C1E">Отмена</button>
+      </div>
+      <div class="focusable" style="border-color:rgba(20, 22, 26, 0.18)">Нажмите Tab — увидите кольцо фокуса</div>
+      <div class="notes">
+        <span class="tag" style="background:#3F6B33;color:#fff">успех</span>
+        <span class="tag" style="background:#8A652D;color:#1A1C1E">внимание</span>
+        <span class="tag" style="background:#A4503C;color:#fff">ошибка</span>
+        <a href="#" style="color:#7E5A12">акцентная ссылка</a>
+      </div>
+    </div>
+  </div>
+      <h3>Контраст</h3>
+      <table>
+        <tr><th>Использование</th><th>Пара</th><th>Цвет</th><th>Фон</th><th class="num">Контраст</th><th>Оценка</th></tr>
+        
+      <tr>
+        <td>Текст на холсте</td>
+        <td><span class="pair"><i style="background:#F7F8F9"></i><i style="background:#1A1C1E"></i></span></td>
+        <td><code>#1A1C1E</code></td>
+        <td><code>#F7F8F9</code></td>
+        <td class="num">16.07:1</td>
+        <td class="ok">AAA</td>
+      </tr>
+      <tr>
+        <td>Текст на панели</td>
+        <td><span class="pair"><i style="background:#FFFFFF"></i><i style="background:#1A1C1E"></i></span></td>
+        <td><code>#1A1C1E</code></td>
+        <td><code>#FFFFFF</code></td>
+        <td class="num">17.09:1</td>
+        <td class="ok">AAA</td>
+      </tr>
+      <tr>
+        <td>Вторичный текст</td>
+        <td><span class="pair"><i style="background:#F7F8F9"></i><i style="background:#5B6169"></i></span></td>
+        <td><code>#5B6169</code></td>
+        <td><code>#F7F8F9</code></td>
+        <td class="num">5.88:1</td>
+        <td class="ok">AA</td>
+      </tr>
+      <tr>
+        <td>Акцент-текст</td>
+        <td><span class="pair"><i style="background:#F7F8F9"></i><i style="background:#7E5A12"></i></span></td>
+        <td><code>#7E5A12</code></td>
+        <td><code>#F7F8F9</code></td>
+        <td class="num">5.88:1</td>
+        <td class="ok">AA</td>
+      </tr>
+      <tr>
+        <td>Акцент-текст усиленный</td>
+        <td><span class="pair"><i style="background:#F7F8F9"></i><i style="background:#6B4E0F"></i></span></td>
+        <td><code>#6B4E0F</code></td>
+        <td><code>#F7F8F9</code></td>
+        <td class="num">7.26:1</td>
+        <td class="ok">AAA</td>
+      </tr>
+      <tr>
+        <td>Текст на золотой кнопке</td>
+        <td><span class="pair"><i style="background:#D9A441"></i><i style="background:#1A1C1E"></i></span></td>
+        <td><code>#1A1C1E</code></td>
+        <td><code>#D9A441</code></td>
+        <td class="num">7.60:1</td>
+        <td class="ok">AAA</td>
+      </tr>
+      <tr>
+        <td>Текст на кнопке hover</td>
+        <td><span class="pair"><i style="background:#E0AE4E"></i><i style="background:#1A1C1E"></i></span></td>
+        <td><code>#1A1C1E</code></td>
+        <td><code>#E0AE4E</code></td>
+        <td class="num">8.41:1</td>
+        <td class="ok">AAA</td>
+      </tr>
+      <tr>
+        <td>Текст на кнопке active</td>
+        <td><span class="pair"><i style="background:#C9962E"></i><i style="background:#14161A"></i></span></td>
+        <td><code>#14161A</code></td>
+        <td><code>#C9962E</code></td>
+        <td class="num">6.80:1</td>
+        <td class="ok">AA</td>
+      </tr>
+      <tr>
+        <td>Инверсный на золоте</td>
+        <td><span class="pair"><i style="background:#7E5A12"></i><i style="background:#F7F8F9"></i></span></td>
+        <td><code>#F7F8F9</code></td>
+        <td><code>#7E5A12</code></td>
+        <td class="num">5.88:1</td>
+        <td class="ok">AA</td>
+      </tr>
+      <tr>
+        <td>Успех</td>
+        <td><span class="pair"><i style="background:#F7F8F9"></i><i style="background:#3F6B33"></i></span></td>
+        <td><code>#3F6B33</code></td>
+        <td><code>#F7F8F9</code></td>
+        <td class="num">5.87:1</td>
+        <td class="ok">AA</td>
+      </tr>
+      <tr>
+        <td>Предупреждение</td>
+        <td><span class="pair"><i style="background:#F7F8F9"></i><i style="background:#8A652D"></i></span></td>
+        <td><code>#8A652D</code></td>
+        <td><code>#F7F8F9</code></td>
+        <td class="num">4.96:1</td>
+        <td class="ok">AA</td>
+      </tr>
+      <tr>
+        <td>Информация</td>
+        <td><span class="pair"><i style="background:#F7F8F9"></i><i style="background:#3F5A70"></i></span></td>
+        <td><code>#3F5A70</code></td>
+        <td><code>#F7F8F9</code></td>
+        <td class="num">6.79:1</td>
+        <td class="ok">AA</td>
+      </tr>
+      <tr>
+        <td>Ошибка</td>
+        <td><span class="pair"><i style="background:#F7F8F9"></i><i style="background:#A4503C"></i></span></td>
+        <td><code>#A4503C</code></td>
+        <td><code>#F7F8F9</code></td>
+        <td class="num">5.21:1</td>
+        <td class="ok">AA</td>
+      </tr>
+      <tr>
+        <td>Кольцо фокуса (UI)</td>
+        <td><span class="pair"><i style="background:#F7F8F9"></i><i style="background:#7E5A12"></i></span></td>
+        <td><code>#7E5A12</code></td>
+        <td><code>#F7F8F9</code></td>
+        <td class="num">5.88:1</td>
+        <td class="ok">AA</td>
+      </tr>
+      </table>
+    </div>
+    <div class="theme">
+      <h2>Тёмная тема</h2>
+      <p>canvas #15171A · панель #1F2226 · текст #E8EAED</p>
+      <section><h3>Поверхности</h3><div class="grid">
+        <figure class="sw">
+          <div class="chip" style="background:#0A0B0D"></div>
+          <figcaption>
+            <b>Фон приложения</b>
+            <code>appBg</code>
+            <code>#0A0B0D</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#15171A"></div>
+          <figcaption>
+            <b>Холст редактора</b>
+            <code>canvas</code>
+            <code>#15171A</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#1F2226"></div>
+          <figcaption>
+            <b>Панели</b>
+            <code>panel</code>
+            <code>#1F2226</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#24272B"></div>
+          <figcaption>
+            <b>Приподнятая панель</b>
+            <code>panelRaised</code>
+            <code>#24272B</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#0E0F11"></div>
+          <figcaption>
+            <b>Утопленная панель</b>
+            <code>panelSunken</code>
+            <code>#0E0F11</code>
+          </figcaption>
+        </figure></div></section><section><h3>Текст</h3><div class="grid">
+        <figure class="sw">
+          <div class="chip" style="background:#E8EAED"></div>
+          <figcaption>
+            <b>Основной текст</b>
+            <code>textPrimary</code>
+            <code>#E8EAED</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#A8AEB8"></div>
+          <figcaption>
+            <b>Вторичный текст</b>
+            <code>textSecondary</code>
+            <code>#A8AEB8</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#6B717B"></div>
+          <figcaption>
+            <b>Неактивный текст</b>
+            <code>textDisabled</code>
+            <code>#6B717B</code>
+          </figcaption>
+        </figure></div></section><section><h3>Золотой акцент</h3><div class="grid">
+        <figure class="sw">
+          <div class="chip" style="background:#C9962E"></div>
+          <figcaption>
+            <b>Акцент: заливка</b>
+            <code>accentSurface</code>
+            <code>#C9962E</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#D9A441"></div>
+          <figcaption>
+            <b>Акцент: заливка hover</b>
+            <code>accentSurfaceHover</code>
+            <code>#D9A441</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#B8862A"></div>
+          <figcaption>
+            <b>Акцент: заливка active</b>
+            <code>accentSurfaceActive</code>
+            <code>#B8862A</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#2E2513"></div>
+          <figcaption>
+            <b>Акцент: слабая заливка</b>
+            <code>accentSurfaceSubtle</code>
+            <code>#2E2513</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#E0B85C"></div>
+          <figcaption>
+            <b>Акцент: текст</b>
+            <code>accentText</code>
+            <code>#E0B85C</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#EFC978"></div>
+          <figcaption>
+            <b>Акцент: текст усиленный</b>
+            <code>accentTextStrong</code>
+            <code>#EFC978</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#D9A441"></div>
+          <figcaption>
+            <b>Кольцо фокуса</b>
+            <code>borderFocus</code>
+            <code>#D9A441</code>
+          </figcaption>
+        </figure></div></section><section><h3>Служебные и состояния</h3><div class="grid">
+        <figure class="sw">
+          <div class="chip" style="background:#7FA86F"></div>
+          <figcaption>
+            <b>Успех</b>
+            <code>success</code>
+            <code>#7FA86F</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#D9A441"></div>
+          <figcaption>
+            <b>Предупреждение</b>
+            <code>warning</code>
+            <code>#D9A441</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#E08573"></div>
+          <figcaption>
+            <b>Ошибка</b>
+            <code>danger</code>
+            <code>#E08573</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:#7FA3C4"></div>
+          <figcaption>
+            <b>Информация</b>
+            <code>info</code>
+            <code>#7FA3C4</code>
+          </figcaption>
+        </figure>
+        <figure class="sw">
+          <div class="chip" style="background:rgba(201, 150, 46, 0.28)"></div>
+          <figcaption>
+            <b>Выделение</b>
+            <code>selection</code>
+            <code>rgba(201, 150, 46, 0.28)</code>
+          </figcaption>
+        </figure></div></section>
+      
+  <div class="sample" style="background:#15171A;color:#E8EAED">
+    <div class="card" style="background:#1F2226;border-color:rgba(232, 234, 237, 0.12)">
+      <h4>Новый проект</h4>
+      <p style="color:#A8AEB8">Описание проекта видно здесь вторичным текстом.</p>
+      <div class="row">
+        <button class="primary" style="background:#C9962E;color:#1A1C1E">Опубликовать</button>
+        <button class="ghost" style="border-color:rgba(232, 234, 237, 0.22);color:#E8EAED">Отмена</button>
+      </div>
+      <div class="focusable" style="border-color:rgba(232, 234, 237, 0.22)">Нажмите Tab — увидите кольцо фокуса</div>
+      <div class="notes">
+        <span class="tag" style="background:#7FA86F;color:#fff">успех</span>
+        <span class="tag" style="background:#D9A441;color:#1A1C1E">внимание</span>
+        <span class="tag" style="background:#E08573;color:#fff">ошибка</span>
+        <a href="#" style="color:#E0B85C">акцентная ссылка</a>
+      </div>
+    </div>
+  </div>
+      <h3>Контраст</h3>
+      <table>
+        <tr><th>Использование</th><th>Пара</th><th>Цвет</th><th>Фон</th><th class="num">Контраст</th><th>Оценка</th></tr>
+        
+      <tr>
+        <td>Текст на холсте</td>
+        <td><span class="pair"><i style="background:#15171A"></i><i style="background:#E8EAED"></i></span></td>
+        <td><code>#E8EAED</code></td>
+        <td><code>#15171A</code></td>
+        <td class="num">14.90:1</td>
+        <td class="ok">AAA</td>
+      </tr>
+      <tr>
+        <td>Текст на панели</td>
+        <td><span class="pair"><i style="background:#1F2226"></i><i style="background:#E8EAED"></i></span></td>
+        <td><code>#E8EAED</code></td>
+        <td><code>#1F2226</code></td>
+        <td class="num">13.25:1</td>
+        <td class="ok">AAA</td>
+      </tr>
+      <tr>
+        <td>Вторичный текст</td>
+        <td><span class="pair"><i style="background:#15171A"></i><i style="background:#A8AEB8"></i></span></td>
+        <td><code>#A8AEB8</code></td>
+        <td><code>#15171A</code></td>
+        <td class="num">8.05:1</td>
+        <td class="ok">AAA</td>
+      </tr>
+      <tr>
+        <td>Акцент-текст</td>
+        <td><span class="pair"><i style="background:#15171A"></i><i style="background:#E0B85C"></i></span></td>
+        <td><code>#E0B85C</code></td>
+        <td><code>#15171A</code></td>
+        <td class="num">9.56:1</td>
+        <td class="ok">AAA</td>
+      </tr>
+      <tr>
+        <td>Акцент-текст усиленный</td>
+        <td><span class="pair"><i style="background:#15171A"></i><i style="background:#EFC978"></i></span></td>
+        <td><code>#EFC978</code></td>
+        <td><code>#15171A</code></td>
+        <td class="num">11.37:1</td>
+        <td class="ok">AAA</td>
+      </tr>
+      <tr>
+        <td>Текст на золотой кнопке</td>
+        <td><span class="pair"><i style="background:#C9962E"></i><i style="background:#1A1C1E"></i></span></td>
+        <td><code>#1A1C1E</code></td>
+        <td><code>#C9962E</code></td>
+        <td class="num">6.42:1</td>
+        <td class="ok">AA</td>
+      </tr>
+      <tr>
+        <td>Текст на кнопке hover</td>
+        <td><span class="pair"><i style="background:#D9A441"></i><i style="background:#1A1C1E"></i></span></td>
+        <td><code>#1A1C1E</code></td>
+        <td><code>#D9A441</code></td>
+        <td class="num">7.60:1</td>
+        <td class="ok">AAA</td>
+      </tr>
+      <tr>
+        <td>Текст на кнопке active</td>
+        <td><span class="pair"><i style="background:#B8862A"></i><i style="background:#1A1C1E"></i></span></td>
+        <td><code>#1A1C1E</code></td>
+        <td><code>#B8862A</code></td>
+        <td class="num">5.27:1</td>
+        <td class="ok">AA</td>
+      </tr>
+      <tr>
+        <td>Инверсный на золоте</td>
+        <td><span class="pair"><i style="background:#E0B85C"></i><i style="background:#1A1C1E"></i></span></td>
+        <td><code>#1A1C1E</code></td>
+        <td><code>#E0B85C</code></td>
+        <td class="num">9.10:1</td>
+        <td class="ok">AAA</td>
+      </tr>
+      <tr>
+        <td>Успех</td>
+        <td><span class="pair"><i style="background:#15171A"></i><i style="background:#7FA86F"></i></span></td>
+        <td><code>#7FA86F</code></td>
+        <td><code>#15171A</code></td>
+        <td class="num">6.61:1</td>
+        <td class="ok">AA</td>
+      </tr>
+      <tr>
+        <td>Предупреждение</td>
+        <td><span class="pair"><i style="background:#15171A"></i><i style="background:#D9A441"></i></span></td>
+        <td><code>#D9A441</code></td>
+        <td><code>#15171A</code></td>
+        <td class="num">7.98:1</td>
+        <td class="ok">AAA</td>
+      </tr>
+      <tr>
+        <td>Информация</td>
+        <td><span class="pair"><i style="background:#15171A"></i><i style="background:#7FA3C4"></i></span></td>
+        <td><code>#7FA3C4</code></td>
+        <td><code>#15171A</code></td>
+        <td class="num">6.79:1</td>
+        <td class="ok">AA</td>
+      </tr>
+      <tr>
+        <td>Ошибка</td>
+        <td><span class="pair"><i style="background:#15171A"></i><i style="background:#E08573"></i></span></td>
+        <td><code>#E08573</code></td>
+        <td><code>#15171A</code></td>
+        <td class="num">6.65:1</td>
+        <td class="ok">AA</td>
+      </tr>
+      <tr>
+        <td>Кольцо фокуса (UI)</td>
+        <td><span class="pair"><i style="background:#15171A"></i><i style="background:#D9A441"></i></span></td>
+        <td><code>#D9A441</code></td>
+        <td><code>#15171A</code></td>
+        <td class="num">7.98:1</td>
+        <td class="ok">AAA</td>
+      </tr>
+      </table>
+    </div>
+  </div>
+</main>
+<footer>
+  Файл собран скриптом <code>tools/build_palette_preview.mjs</code> из
+  <code>docs/palette.json</code> — источника значений для дизайн-системы.
+  Обновление палитры: изменить <code>palette.json</code>, затем
+  <code>node docs/check-contrast.mjs</code> и этот генератор.
+</footer>
+</body>
+</html>
