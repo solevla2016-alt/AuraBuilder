@@ -5,20 +5,21 @@
  * максимум площади под холст: в конструкторе пользователь смотрит на
  * страницу, а не на интерфейс. Панель сворачивается в одну иконку.
  *
- * Особенности реализации:
- *  - холст рисуется на Konva, а не div: нужны координаты узлов,
- *    трансформации и будущий z-порядок блоков;
- *  - палитра позиционируется через CSS-переменные слоёв, а не z-index
- *    вразброс (в шаблонах он достигал 16);
- *  - инструменты — настоящие radio-элементы в role=radiogroup,
- *    а не div с обработчиками: работает клавиатура.
+ * Холст на Konva подгружается лениво (React.lazy): Konva — около 100 КБ
+ * gzip, и в критическом пути первого экрана он съедал запас бюджета
+ * LCP (ТЗ п.1.3). Панель и верхняя строка от Konva не зависят.
+ *
+ * Инструменты — настоящие role=radio, а не div с обработчиками:
+ * работает клавиатура. z-index берётся из шкалы слоёв токенов.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Layer, Rect, Stage, Text, Transformer } from 'react-konva';
-import type Konva from 'konva';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, type IconName } from './icons';
+import { api, ApiError } from './api';
+import { defaultTree, type PageTree } from './project';
 import './editor.css';
+
+const Canvas = lazy(() => import('./Canvas'));
 
 /* ------------------------------------------------------------------ */
 /*  Инструменты                                                        */
@@ -43,75 +44,110 @@ const TOOLS: Tool[] = [
 ];
 
 /* ------------------------------------------------------------------ */
-/*  Демо-сцена: временная сцена, пока нет загрузки проекта             */
+/*  Состояние сохранения                                               */
 /* ------------------------------------------------------------------ */
 
-interface Block {
-  id: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  kind: 'section' | 'text' | 'media';
-  label: string;
-}
+type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
-/**
- * Данные-заглушка. На этапе 1 заменяется содержимым проекта из Control Plane;
- * формат повторит модель дерева из docs/MODULE-CATALOG.md.
- */
-const DEMO_BLOCKS: Block[] = [
-  { id: 'b1', x: 40, y: 40, width: 640, height: 200, kind: 'section', label: 'Первый экран' },
-  { id: 'b2', x: 40, y: 264, width: 640, height: 64, kind: 'text', label: 'Заголовок' },
-  { id: 'b3', x: 40, y: 352, width: 300, height: 180, kind: 'media', label: 'Изображение' },
-  { id: 'b4', x: 364, y: 352, width: 316, height: 180, kind: 'text', label: 'Описание' },
-];
+const PROJECT_ID = '00000000-0000-4000-8000-000000000001';
 
 /* ------------------------------------------------------------------ */
 /*  Компонент                                                          */
 /* ------------------------------------------------------------------ */
 
-const PAGE_WIDTH = 720;
-
 export function EditorCanvas() {
   const [tool, setTool] = useState('select');
-  const [selectedId, setSelectedId] = useState<string | null>('b1');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
-  const stageRef = useRef<Konva.Stage>(null);
-  const trRef = useRef<Konva.Transformer>(null);
+  const [tree, setTree] = useState<PageTree>(() => defaultTree());
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const dirtyRef = useRef(false);
 
-  const selected = DEMO_BLOCKS.find((b) => b.id === selectedId) ?? null;
+  const selected = useMemo(
+    () => tree.blocks.find((b) => b.id === selectedId) ?? null,
+    [tree.blocks, selectedId],
+  );
 
-  // Трансформер подстраивается под выделенный узел. Без этого он
-  // остаётся с прошлым размером после смены выделения.
+  // Загрузка проекта при старте. При недоступном API остаётся дерево
+  // по умолчанию и показывается причина: редактор должен открываться
+  // и без бэкенда, иначе стенд 1С блокирует фронтенд-работу.
   useEffect(() => {
-    const tr = trRef.current;
-    const stage = stageRef.current;
-    if (!tr || !stage) return;
-    if (selectedId) {
-      const node = stage.findOne(`#${selectedId}`);
-      tr.nodes(node ? [node] : []);
-    } else {
-      tr.nodes([]);
+    let cancelled = false;
+    api
+      .getProject(PROJECT_ID)
+      .then((p) => {
+        if (cancelled) return;
+        setTree(p.tree);
+        dirtyRef.current = false;
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setSaveError(
+          e instanceof ApiError
+            ? `Control Plane недоступен (${e.status}). Работаем локально.`
+            : 'Control Plane недоступен. Работаем локально.',
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleMove = useCallback((id: string, x: number, y: number) => {
+    setTree((prev) => ({
+      ...prev,
+      blocks: prev.blocks.map((b) => (b.id === id ? { ...b, x, y } : b)),
+    }));
+    dirtyRef.current = true;
+    setSaveState('idle');
+  }, []);
+
+  async function handleSave() {
+    setSaveState('saving');
+    setSaveError(null);
+    try {
+      const saved = await api.saveProject(
+        PROJECT_ID,
+        'Интернет-магазин «Цветы»',
+        tree,
+      );
+      setTree(saved.tree);
+      dirtyRef.current = false;
+      setSaveState('saved');
+    } catch (e) {
+      setSaveError(
+        e instanceof ApiError ? `Не сохранено: ${e.message}` : 'Не сохранено: сеть недоступна',
+      );
+      setSaveState('error');
     }
-    tr.getLayer()?.batchDraw();
-  }, [selectedId]);
+  }
 
-  const handleSelect = useCallback((id: string) => {
-    setSelectedId((prev) => (prev === id ? null : id));
-  }, []);
+  // Ctrl/Cmd+S — привычная комбинация для сохранения. Раньше в шаблонах
+  // горячих клавиш не было вовсе.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        void handleSave();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
-  // Клик по пустому месту снимает выделение. Тип события общий для мыши
-  // и касания: Konva не различает их в KonvaEventObject.
-  const handleStageClick = useCallback((e: Konva.KonvaEventObject<Event>) => {
-    if (e.target === e.target.getStage()) setSelectedId(null);
-  }, []);
-
-  const kindFill: Record<Block['kind'], string> = {
-    section: 'var(--accentSurfaceSubtle)',
-    text: 'var(--panel)',
-    media: 'var(--panelSunken)',
-  };
+  const saveLabel =
+    saveState === 'saving'
+      ? 'Сохранение…'
+      : saveState === 'saved'
+        ? 'Сохранено'
+        : dirtyRef.current
+          ? 'Есть изменения'
+          : 'Сохранить';
 
   return (
     <div className="editor">
@@ -129,9 +165,14 @@ export function EditorCanvas() {
             <Icon name="redo" />
           </button>
           <span className="top-bar__sep" aria-hidden="true" />
-          <button type="button" className="btn btn--ghost">
-            <Icon name="history" />
-            История
+          <button
+            type="button"
+            className={`btn btn--ghost btn--save is-${saveState}`}
+            onClick={() => void handleSave()}
+            disabled={saveState === 'saving'}
+          >
+            <Icon name="check" />
+            {saveLabel}
           </button>
           <button type="button" className="btn btn--primary">
             <Icon name="rocket" />
@@ -140,83 +181,24 @@ export function EditorCanvas() {
         </div>
       </header>
 
+      {saveError ? (
+        <p className="banner banner--warn" role="status">
+          <Icon name="settings" size={16} />
+          {saveError}
+        </p>
+      ) : null}
+
       <div className="editor__body">
-        <main className="canvas" aria-label="Холст редактора">
-          <Stage
-            ref={stageRef}
-            width={PAGE_WIDTH}
-            height={900}
-            onClick={handleStageClick}
-            onTap={handleStageClick}
-          >
-            <Layer>
-              {/* Фон страницы пользователя — нейтральный, чтобы не тинтить дизайн */}
-              <Rect
-                x={0}
-                y={0}
-                width={PAGE_WIDTH}
-                height={900}
-                fill="var(--canvas)"
-                cornerRadius={4}
-                shadowColor="rgba(15,16,18,0.12)"
-                shadowBlur={24}
-                shadowOpacity={0.5}
-                shadowOffsetY={4}
-              />
-
-              {DEMO_BLOCKS.map((b) => (
-                <Rect
-                  key={b.id}
-                  id={b.id}
-                  x={b.x}
-                  y={b.y}
-                  width={b.width}
-                  height={b.height}
-                  fill={kindFill[b.kind]}
-                  stroke={selectedId === b.id ? 'var(--selectionBorder)' : 'var(--border)'}
-                  strokeWidth={selectedId === b.id ? 2 : 1}
-                  cornerRadius={8}
-                  draggable={tool === 'select'}
-                  onClick={() => handleSelect(b.id)}
-                  onTap={() => handleSelect(b.id)}
-                  onDragEnd={(e) => {
-                    // Сохраняем позицию: без этого блок возвращается
-                    // при первой перерисовке сцены.
-                    b.x = e.target.x();
-                    b.y = e.target.y();
-                  }}
-                />
-              ))}
-
-              {DEMO_BLOCKS.map((b) => (
-                <Text
-                  key={`${b.id}-label`}
-                  x={b.x + 14}
-                  y={b.y + 14}
-                  text={b.label}
-                  fontSize={13}
-                  fontFamily="Inter, sans-serif"
-                  fill="var(--textSecondary)"
-                  listening={false}
-                />
-              ))}
-
-              <Transformer
-                ref={trRef}
-                rotateEnabled={false}
-                borderStroke="var(--selectionBorder)"
-                anchorFill="var(--accentSurface)"
-                anchorStroke="var(--selectionBorder)"
-                anchorSize={10}
-                anchorCornerRadius={2}
-                padding={2}
-                enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right']}
-                boundBoxFunc={(oldBox, newBox) =>
-                  newBox.width < 40 || newBox.height < 24 ? oldBox : newBox
-                }
-              />
-            </Layer>
-          </Stage>
+        <main className="canvas" aria-label="Холст редактора" aria-busy={loading}>
+          <Suspense fallback={<div className="canvas__loading" role="status">Загрузка холста…</div>}>
+            <Canvas
+              blocks={tree.blocks}
+              selectedId={selectedId}
+              tool={tool}
+              onSelect={setSelectedId}
+              onMove={handleMove}
+            />
+          </Suspense>
         </main>
 
         {/* Плавающая палитра — V1. Слой --layer-floating-palette. */}
@@ -257,18 +239,12 @@ export function EditorCanvas() {
             </div>
 
             <div className="palette__meta">
-              <span className="palette__hint">
-                {TOOLS.find((t) => t.id === tool)?.hint}
+              <span className="palette__hint">{TOOLS.find((t) => t.id === tool)?.hint}</span>
+              <span
+                className={`palette__selection ${selected ? '' : 'palette__selection--none'}`}
+              >
+                {selected ? `Выбрано: ${selected.label}` : 'Ничего не выбрано'}
               </span>
-              {selected ? (
-                <span className="palette__selection">
-                  Выбрано: {selected.label}
-                </span>
-              ) : (
-                <span className="palette__selection palette__selection--none">
-                  Ничего не выбрано
-                </span>
-              )}
             </div>
           </div>
         </div>

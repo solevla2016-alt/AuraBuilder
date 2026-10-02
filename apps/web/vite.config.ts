@@ -49,17 +49,33 @@ export default defineConfig({
   build: {
     target: 'es2022',
     sourcemap: true,
-    // ТЗ п.1.3: LCP < 1.5 с. Konva выносится в отдельный чанк,
-    // чтобы не попадать в критический путь первого экрана.
+    // ТЗ п.1.3: LCP < 1.5 с.
     //
-    // Rolldown (движок Vite 8) принимает здесь только функцию:
-    // объектная форма manualChunks не поддерживается.
+    // Konva (около 100 КБ gzip) НЕ должен попадать в критический путь:
+    // он нужен только холсту, а панель инструментов рисуется без него.
+    // Поэтому чанк с Konva не получает modulepreload — иначе браузер
+    // качает его параллельно React и первый экран откладывается.
+    // Загрузка холста идёт через React.lazy после появления каркаса.
+    // Konva намеренно НЕ выносится в отдельный manualChunks-чанк.
+    // Такой чанк Vite помечает modulepreload, и браузер начинает качать
+    // 100 КБ gzip канваса параллельно с React: первый экран откладывается
+    // (замер: LCP вырос с 1408 до 1592 мс при бюджете 1500).
+    // Без ручного чанка Konva уезжает внутрь ленивого чанка холста,
+    // который React.lazy подгружает уже после отрисовки каркаса.
+    modulePreload: {
+      // Канвас не в критическом пути — фильтруем его зависимости.
+      resolveDependencies(filename, deps) {
+        if (filename.includes('Canvas')) {
+          return deps.filter((d) => !/node_modules[\\/](konva|react-konva)/.test(d));
+        }
+        return deps;
+      },
+    },
     rollupOptions: {
       output: {
         manualChunks(id: string) {
           if (id.includes('node_modules')) {
-            if (id.includes('konva')) return 'konva';
-            if (id.includes('react')) return 'react';
+            if (id.includes('react-dom') || /node_modules[\\/]react[\\/]/.test(id)) return 'react';
           }
           return undefined;
         },

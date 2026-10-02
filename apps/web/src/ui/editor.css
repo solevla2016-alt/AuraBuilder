@@ -105,6 +105,61 @@
   align-items: flex-start;
 }
 
+/* Заглушка на время ленивой загрузки Konva */
+.canvas__loading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-2xl) var(--space-3xl);
+  color: var(--textSecondary);
+  font-size: var(--text-sm);
+}
+
+.canvas__spinner,
+.canvas__loading::before {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--borderStrong);
+  border-top-color: var(--accentSurface);
+  animation: aura-pulse 1.2s linear infinite;
+}
+
+/* Предупреждение: например, Control Plane недоступен */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin: 0;
+  padding: var(--space-sm) var(--space-lg);
+  font-size: var(--text-sm);
+  border-bottom: 1px solid var(--border);
+}
+
+.banner--warn {
+  background: var(--accentSurfaceSunken);
+  color: var(--textPrimary);
+}
+
+.banner--warn svg {
+  color: var(--warning);
+  flex: none;
+}
+
+/* Состояние кнопки сохранения */
+.btn--save.is-saved {
+  color: var(--success);
+}
+
+.btn--save.is-error {
+  color: var(--danger);
+}
+
+.btn--save:disabled {
+  color: var(--textDisabled);
+  cursor: default;
+}
+
 /* --- Плавающая палитра (V1) --- */
 
 .palette {

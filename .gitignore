@@ -15,6 +15,12 @@ venv/
 .ruff_cache/
 *.egg-info/
 
+# Django
+db.sqlite3
+db.sqlite3-journal
+staticfiles/
+media/
+
 # Node
 node_modules/
 dist/

@@ -76,31 +76,66 @@ WCAG AA/AAA. Значения цветов лежат в `docs/palette.json` и 
 
 ## Приложение
 
-Монорепозиторий npm workspaces.
+Монорепозиторий: npm workspaces для фронтенда, Django для Control Plane.
 
 ```
-packages/tokens/   генерация CSS-переменных из docs/palette.json
-apps/web/          редактор: React 19 + TypeScript + Konva 10 + Vite 8
+packages/tokens/          генерация CSS-переменных из docs/palette.json
+apps/web/                 редактор: React 19 + TypeScript + Konva 10 + Vite 8
+apps/controlplane/        Control Plane: Django 6.1 + DRF + PostgreSQL
+apps/projects/            модель проекта и дерева страницы
+tools/                    скрипты проверок и замерен
 ```
+
+### Фронтенд
 
 ```bash
 npm install
-npm run dev            # http://localhost:5173
-npm run build          # сборка с проверкой типов
-npm run typecheck
-npm run tokens:build   # перегенерировать токены из палитры
-npm run tokens:check   # убедиться, что токены не разошлись с палитрой
-npm run licenses       # лицензионный gate: запрет copyleft по ТЗ п.7.1.6
+npm run dev               # http://localhost:5173
+npm run build             # сборка с проверкой типов
+npm run measure:lcp       # замер LCP на прод-сборке (нужен Chrome)
 ```
 
-**Значения цветов не дублируются.** `docs/palette.json` — единственный
-источник. Из него генерируются CSS-переменные обеих тем, проверка контраста
-и страница предпросмотра. Правка палитры требует `npm run tokens:build`,
-иначе `tokens:check` в CI упадёт.
+### Control Plane
+
+```bash
+python -m venv .venv
+.venv\Scripts\pip install -r apps/requirements.txt
+copy apps\.env.example apps\.env      # Windows; Linux: cp
+cd apps
+..\.venv\Scripts\python manage.py migrate
+..\.venv\Scripts\python manage.py runserver 8000
+```
+
+Базу создаёт администратор, приложение только работает со схемой:
+
+```sql
+CREATE ROLE aurabuilder LOGIN PASSWORD 'пароль';
+CREATE DATABASE aurabuilder OWNER aurabuilder;
+```
+
+Без PostgreSQL разработка и тесты идут на SQLite: `USE_SQLITE=1`.
+
+### Проверки
+
+```bash
+npm run typecheck          # типы фронтенда
+npm run tokens:check       # токены не разошлись с docs/palette.json
+node docs/check-contrast.mjs   # контраст 40 пар по WCAG
+npm run licenses           # лицензии npm-зависимостей
+node tools/measure-lcp.mjs # LCP против бюджета ТЗ п.1.3
+.venv\Scripts\python tools/license_gate_py.py   # лицензии Python
+cd apps && ..\.venv\Scripts\python manage.py test projects
+```
+
+### Значения цветов не дублируются
+
+`docs/palette.json` — единственный источник. Из него генерируются CSS-переменные
+обеих тем, проверка контраста и страница предпросмотра. Правка палитры требует
+`npm run tokens:build`, иначе `tokens:check` в CI упадёт.
 
 В редакторе токены приходят виртуальным модулем (плагин в
-`apps/web/vite.config.ts`), а не файлом: путь к репозиторию содержит
-кириллицу, и Vite не декодирует такие пути в dev-режиме.
+`apps/web/vite.config.ts`), а не файлом: путь к репозиторию содержит кириллицу,
+и Vite не декодирует такие пути в dev-режиме.
 
 ### Стек и решения
 
@@ -109,11 +144,29 @@ npm run licenses       # лицензионный gate: запрет copyleft п
 | React | 19.3 | Отступление от ТЗ (React 18): Konva 10 совместим только с React 19 |
 | Konva | 10.7 | Canvas-рендерер, нужен для координат узлов и трансформаций |
 | Vite | 8.3 | В dev отдаёт нативные ES-модули: перезагрузка мгновенная |
-| TypeScript | 5.9 | `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes` |
+| Django | 6.1 | ТЗ п.3.2, Control Plane |
+| pg8000 | 1.31.5 | **Не** psycopg: тот LGPL-3.0, а ТЗ п.7.1.6 запрещает copyleft |
 
 React 19 вместо 18 — решение заказчика от 01.10.2026. Konva 10 требует
 `react-konva` 19, а тот — React 19.3; связка React 18 упирается в
 Konva 9 (версия 2023 года).
+
+### Производительность
+
+Замер `npm run measure:lcp` на продакшен-сборке, мобильная эмуляция
+(1.6 Мбит/с, задержка 150 мс):
+
+| Метрика | Значение | Бюджет ТЗ п.1.3 |
+|---------|----------|-----------------|
+| FCP | 800 мс | — |
+| **LCP** | **984 мс** | 1500 мс |
+| Первый экран | 12 КБ + 68 КБ React | — |
+| Холст (лениво) | 100 КБ gzip | вне критического пути |
+
+Konva не попадает в критический путь: `manualChunks` для неё намеренно
+не используется, иначе Vite добавляет `modulepreload` и первый экран
+откладывается (замер: LCP вырос с 1408 до 1592 мс). Холст подгружается
+через `React.lazy` после отрисовки каркаса.
 
 ## Работа с ТЗ
 
