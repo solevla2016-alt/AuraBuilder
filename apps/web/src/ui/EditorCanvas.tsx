@@ -259,7 +259,16 @@ export function EditorCanvas() {
       ) : null}
 
       <div className="editor__body">
-        <main className="canvas" aria-label="Холст редактора" aria-busy={loading}>
+        <main
+          className="canvas"
+          aria-label="Холст редактора"
+          aria-busy={loading}
+          // Состояние в data-атрибутах: используется автопроверкой
+          // отрисовки (tools/screenshot-editor.mjs), которая не может
+          // заглянуть внутрь Konva.
+          data-blocks={tree.blocks.length}
+          data-selected={selectedId ?? ''}
+        >
           <Suspense fallback={<div className="canvas__loading" role="status">Загрузка холста…</div>}>
             <Canvas
               blocks={tree.blocks}

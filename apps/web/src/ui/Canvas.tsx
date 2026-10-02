@@ -8,12 +8,18 @@
  * Пока модуль не загружен, вместо холста показывается заглушка.
  * Экран редактора при этом уже отрисован: верхняя панель и палитра
  * не зависят от Konva.
+ *
+ * ВАЖНО: цвета сюда передаются готовыми строками, а не CSS-переменными.
+ * Konva рисует в <canvas> и разбирает цвета своим парсером; строку
+ * «var(--canvas)» она не понимает и заливает фигуру чёрным. Значения
+ * токенов читает хук useCanvasTokens.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Layer, Rect, Stage, Text, Transformer } from 'react-konva';
 import type Konva from 'konva';
 import type { Block } from './project';
+import { useCanvasTokens } from './useCanvasTokens';
 
 export interface CanvasProps {
   blocks: Block[];
@@ -26,16 +32,22 @@ export interface CanvasProps {
 const PAGE_WIDTH = 720;
 const PAGE_HEIGHT = 900;
 
-const FILL_BY_KIND: Record<Block['kind'], string> = {
-  section: 'var(--accentSurfaceSubtle)',
-  text: 'var(--panel)',
-  media: 'var(--panelSunken)',
-};
-
 export default function Canvas({ blocks, selectedId, tool, onSelect, onMove }: CanvasProps) {
   const stageRef = useRef<Konva.Stage>(null);
   const trRef = useRef<Konva.Transformer>(null);
   const [ready, setReady] = useState(false);
+  const tokens = useCanvasTokens();
+
+  // Заливка блока зависит от его вида на холсте, а не от категории
+  // каталога: section — секция, text и media — плоские блоки.
+  const fillByKind = useMemo(
+    () => ({
+      section: tokens.accentSurfaceSubtle,
+      text: tokens.panel,
+      media: tokens.panelSunken,
+    }),
+    [tokens],
+  );
 
   // Первый кадр рисуем после появления узла Stage: до этого ref пуст,
   // и Transformer не находит выделение.
@@ -73,7 +85,7 @@ export default function Canvas({ blocks, selectedId, tool, onSelect, onMove }: C
           y={0}
           width={PAGE_WIDTH}
           height={PAGE_HEIGHT}
-          fill="var(--canvas)"
+          fill={tokens.canvas}
           cornerRadius={4}
           shadowColor="rgba(15,16,18,0.12)"
           shadowBlur={24}
@@ -89,8 +101,8 @@ export default function Canvas({ blocks, selectedId, tool, onSelect, onMove }: C
             y={b.y}
             width={b.width}
             height={b.height}
-            fill={FILL_BY_KIND[b.kind]}
-            stroke={selectedId === b.id ? 'var(--selectionBorder)' : 'var(--border)'}
+            fill={fillByKind[b.kind]}
+            stroke={selectedId === b.id ? tokens.selectionBorder : tokens.border}
             strokeWidth={selectedId === b.id ? 2 : 1}
             cornerRadius={8}
             draggable={tool === 'select'}
@@ -108,7 +120,7 @@ export default function Canvas({ blocks, selectedId, tool, onSelect, onMove }: C
             text={b.label}
             fontSize={13}
             fontFamily="Inter, sans-serif"
-            fill="var(--textSecondary)"
+            fill={tokens.textSecondary}
             listening={false}
           />
         ))}
@@ -121,7 +133,7 @@ export default function Canvas({ blocks, selectedId, tool, onSelect, onMove }: C
             text={b.module}
             fontSize={11}
             fontFamily="'JetBrains Mono', monospace"
-            fill="var(--textDisabled)"
+            fill={tokens.textDisabled}
             listening={false}
           />
         ))}
@@ -129,9 +141,9 @@ export default function Canvas({ blocks, selectedId, tool, onSelect, onMove }: C
         <Transformer
           ref={trRef}
           rotateEnabled={false}
-          borderStroke="var(--selectionBorder)"
-          anchorFill="var(--accentSurface)"
-          anchorStroke="var(--selectionBorder)"
+          borderStroke={tokens.selectionBorder}
+          anchorFill={tokens.guideLine}
+          anchorStroke={tokens.selectionBorder}
           anchorSize={10}
           anchorCornerRadius={2}
           padding={2}

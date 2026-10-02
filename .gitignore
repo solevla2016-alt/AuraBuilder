@@ -37,3 +37,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Снимки экрана автопроверок (временные артефакты)
+editor.png
+*.local.png
