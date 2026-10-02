@@ -18,6 +18,9 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "tokens:build": "node packages/tokens/build.mjs",
     "tokens:check": "node docs/check-contrast.mjs",
+    "registry:catalog": "python tools/catalog_to_registry.py",
+    "registry:build": "node packages/registry/build.mjs",
+    "registry:check": "node packages/registry/build.mjs --check && python tools/catalog_to_registry.py --check",
     "preview:palette": "node tools/build_palette_preview.mjs",
     "measure:lcp": "node tools/measure-lcp.mjs",
     "licenses": "node tools/license-gate.mjs"

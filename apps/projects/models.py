@@ -16,19 +16,21 @@ from django.db import models
 def default_tree() -> dict:
     """Дерево нового проекта.
 
-    Временная структура до появления реестра модулей этапа 3.
+    Модули взяты из реестра (apps/projects/module_registry.py), который
+    генерируется из docs/MODULE-CATALOG.md. Здесь только раскладка:
+    конкретный набор стартовых блоков изменится вместе с редактором.
     """
     return {
         'width': 720,
         'blocks': [
-            {'id': 'b1', 'x': 40, 'y': 40, 'width': 640, 'height': 200,
-             'kind': 'section', 'label': 'Первый экран'},
-            {'id': 'b2', 'x': 40, 'y': 264, 'width': 640, 'height': 64,
-             'kind': 'text', 'label': 'Заголовок'},
-            {'id': 'b3', 'x': 40, 'y': 352, 'width': 300, 'height': 180,
-             'kind': 'media', 'label': 'Изображение'},
-            {'id': 'b4', 'x': 364, 'y': 352, 'width': 316, 'height': 180,
-             'kind': 'text', 'label': 'Описание'},
+            {'id': 'b1', 'module': 'section.hero', 'x': 40, 'y': 40,
+             'width': 640, 'height': 200, 'label': 'Первый экран'},
+            {'id': 'b2', 'module': 'text.heading', 'x': 40, 'y': 264,
+             'width': 640, 'height': 64, 'label': 'Заголовок'},
+            {'id': 'b3', 'module': 'media.image', 'x': 40, 'y': 352,
+             'width': 300, 'height': 180, 'label': 'Изображение'},
+            {'id': 'b4', 'module': 'text.paragraph', 'x': 364, 'y': 352,
+             'width': 316, 'height': 180, 'label': 'Описание'},
         ],
     }
 

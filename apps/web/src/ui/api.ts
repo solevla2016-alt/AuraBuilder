@@ -10,6 +10,7 @@
  */
 
 import type { Project } from './project';
+import type { CategoryDef, ModuleDef } from './moduleRegistry';
 
 const BASE = (import.meta.env['VITE_API_BASE'] as string | undefined) ?? '/api';
 
@@ -48,6 +49,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+export interface ModuleCatalog {
+  total: number;
+  categories: CategoryDef[];
+  modules: ModuleDef[];
+}
+
 export const api = {
   getProject: (id: string) => request<Project>(`/projects/${id}/`),
 
@@ -62,6 +69,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ name, tree }),
     }),
+
+  /**
+   * Каталог модулей. Без stage отдаётся весь реестр (65 модулей);
+   * с stage — только доступные на этом этапе выпуска.
+   */
+  getModules: (stage?: number) =>
+    request<ModuleCatalog>(`/modules/${stage === undefined ? '' : `?stage=${stage}`}`),
 
   health: () => request<{ status: string }>('/health/'),
 };

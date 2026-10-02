@@ -14,7 +14,7 @@ from django.urls import include, path
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from projects.views import health
+from projects.views import health, module_catalog
 
 
 @api_view(['GET'])
@@ -24,6 +24,9 @@ def root(request):
 
 urlpatterns = [
     path('', root, name='root'),
+    # Каталог модулей лежит на верхнем уровне API, а не внутри проектов:
+    # он общий для всех проектов и редактор спрашивает его при старте.
+    path('api/modules/', module_catalog, name='module-catalog'),
     path('api/health/', health, name='health'),
     path('api/projects/', include('projects.urls')),
 ]

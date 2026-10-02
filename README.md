@@ -80,10 +80,11 @@ WCAG AA/AAA. Значения цветов лежат в `docs/palette.json` и 
 
 ```
 packages/tokens/          генерация CSS-переменных из docs/palette.json
+packages/registry/        реестр модулей: modules.json + генерация кода
 apps/web/                 редактор: React 19 + TypeScript + Konva 10 + Vite 8
 apps/controlplane/        Control Plane: Django 6.1 + DRF + PostgreSQL
-apps/projects/            модель проекта и дерева страницы
-tools/                    скрипты проверок и замерен
+apps/projects/            модель проекта, дерева страницы, каталог модулей
+tools/                    скрипты проверок и замеров
 ```
 
 ### Фронтенд
@@ -126,11 +127,35 @@ PostgreSQL ведут себя по-разному на больших дере�
 npm run typecheck          # типы фронтенда
 npm run tokens:check       # токены не разошлись с docs/palette.json
 node docs/check-contrast.mjs   # контраст 40 пар по WCAG
+npm run registry:check    # реестр модулей не разошёлся с каталогом
 npm run licenses           # лицензии npm-зависимостей
 node tools/measure-lcp.mjs # LCP против бюджета ТЗ п.1.3
 .venv\Scripts\python tools/license_gate_py.py   # лицензии Python
 cd apps && ..\.venv\Scripts\python manage.py test projects
 ```
+
+### Реестр модулей
+
+Состав каталога живёт в `docs/MODULE-CATALOG.md` и дублировать его
+в коде нельзя. Цепочка генерации:
+
+```
+docs/MODULE-CATALOG.md
+  └─ tools/catalog_to_registry.py   → packages/registry/modules.json
+       └─ packages/registry/build.mjs → apps/projects/module_registry.py
+                                     → apps/web/src/ui/moduleRegistry.ts
+```
+
+`npm run registry:check` падает, если любой слой разошёлся с каталогом.
+После правки каталога: `python tools/catalog_to_registry.py` и
+`npm run registry:build`.
+
+Реестр: 65 модулей, 5 категорий. Этапы выпуска — 3 (MVP, 26 модулей),
+5 (27), 6 (12).
+
+⚠️ В `docs/MODULE-CATALOG.md` есть расхождение, ожидающее решения:
+заголовок объявляет 28 модулей MVP, но перечислено 27 (в категории B
+счётчик 14 при 13 в списке). Реестр строится по фактическому перечню.
 
 ### Значения цветов не дублируются
 

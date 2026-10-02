@@ -13,7 +13,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Layer, Rect, Stage, Text, Transformer } from 'react-konva';
 import type Konva from 'konva';
-import { Icon } from './icons';
 import type { Block } from './project';
 
 export interface CanvasProps {
@@ -32,15 +31,6 @@ const FILL_BY_KIND: Record<Block['kind'], string> = {
   text: 'var(--panel)',
   media: 'var(--panelSunken)',
 };
-
-export function CanvasFallback() {
-  return (
-    <div className="canvas__loading" role="status">
-      <span className="canvas__spinner" aria-hidden="true" />
-      Загрузка холста…
-    </div>
-  );
-}
 
 export default function Canvas({ blocks, selectedId, tool, onSelect, onMove }: CanvasProps) {
   const stageRef = useRef<Konva.Stage>(null);
@@ -123,6 +113,19 @@ export default function Canvas({ blocks, selectedId, tool, onSelect, onMove }: C
           />
         ))}
 
+        {blocks.map((b) => (
+          <Text
+            key={`${b.id}-module`}
+            x={b.x + 14}
+            y={b.y + 36}
+            text={b.module}
+            fontSize={11}
+            fontFamily="'JetBrains Mono', monospace"
+            fill="var(--textDisabled)"
+            listening={false}
+          />
+        ))}
+
         <Transformer
           ref={trRef}
           rotateEnabled={false}
@@ -141,5 +144,3 @@ export default function Canvas({ blocks, selectedId, tool, onSelect, onMove }: C
     </Stage>
   );
 }
-
-export { Icon };

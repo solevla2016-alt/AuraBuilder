@@ -11,6 +11,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from .models import Project
+from .module_registry import CATEGORIES, MODULES, modules_for_stage
 from .serializers import ProjectCreateSerializer, ProjectSerializer
 
 
@@ -18,6 +19,55 @@ from .serializers import ProjectCreateSerializer, ProjectSerializer
 def health(request):
     """Проверка живости: редактор спрашивает её перед загрузкой проекта."""
     return Response({'status': 'ok'})
+
+
+def _module_payload(module) -> dict:
+    return {
+        'id': module.id,
+        'name': module.name,
+        'category': module.category,
+        'categoryLabel': module.category_label,
+        'kind': module.kind,
+        'stages': list(module.stages),
+        'minStage': module.min_stage,
+    }
+
+
+@api_view(['GET'])
+def module_catalog(request):
+    """Каталог модулей редактора.
+
+    Фильтр ?stage=N отдаёт модули, доступные на этапе выпуска: палитра
+    в редакторе не должна показывать то, чего ещё нет в платформе.
+    Без фильтра возвращается весь реестр (65 модулей).
+    """
+    raw_stage = request.query_params.get('stage')
+    if raw_stage is None:
+        modules = MODULES
+    else:
+        try:
+            stage = int(raw_stage)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'stage должен быть целым числом'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        modules = modules_for_stage(stage)
+
+    category_filter = request.query_params.get('category')
+    if category_filter:
+        modules = tuple(m for m in modules if m.category == category_filter)
+
+    return Response(
+        {
+            'total': len(modules),
+            'categories': [
+                {'code': c['code'], 'id': c['id'], 'label': c['label']}
+                for c in CATEGORIES
+            ],
+            'modules': [_module_payload(m) for m in modules],
+        }
+    )
 
 
 @api_view(['GET', 'POST'])

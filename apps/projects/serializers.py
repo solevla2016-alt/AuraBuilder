@@ -11,8 +11,8 @@ from typing import Any
 from rest_framework import serializers
 
 from .models import Project, default_tree
+from .module_registry import MODULE_IDS
 
-ALLOWED_KINDS = ('section', 'text', 'media')
 MAX_BLOCKS = 500
 MAX_LABEL = 200
 MAX_ID_LEN = 64
@@ -63,8 +63,11 @@ def validate_tree(value: Any) -> str | None:
         if block['width'] <= 0 or block['height'] <= 0:
             return prefix + 'width и height должны быть положительными'
 
-        if block.get('kind') not in ALLOWED_KINDS:
-            return prefix + f'kind: допустимо {", ".join(ALLOWED_KINDS)}'
+        # Модуль сверяется с реестром: неизвестный id в базу попасть не
+        # может, иначе экспорт (ТЗ п.16.2) не найдёт для него блок.
+        module_id = block.get('module')
+        if not isinstance(module_id, str) or module_id not in MODULE_IDS:
+            return prefix + f'module: неизвестный модуль "{module_id}"'
 
         label = block.get('label')
         if not isinstance(label, str) or len(label) > MAX_LABEL:

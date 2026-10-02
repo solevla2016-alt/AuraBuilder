@@ -16,7 +16,10 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, type IconName } from './icons';
 import { api, ApiError } from './api';
-import { defaultTree, type PageTree } from './project';
+import { defaultTree, newBlockId, validateTree, type PageTree } from './project';
+import { MODULE_CATEGORIES, MODULES, kindOf } from './moduleRegistry';
+import type { ModuleDef } from './moduleRegistry';
+import { ModulePalette } from './ModulePalette';
 import './editor.css';
 
 const Canvas = lazy(() => import('./Canvas'));
@@ -51,6 +54,12 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 const PROJECT_ID = '00000000-0000-4000-8000-000000000001';
 
+/**
+ * Этап выпуска, для которого показываются модули.
+ * На стенде это MVP — этап 3 из ТЗ п.12.
+ */
+const CURRENT_STAGE = 3;
+
 /* ------------------------------------------------------------------ */
 /*  Компонент                                                          */
 /* ------------------------------------------------------------------ */
@@ -64,6 +73,31 @@ export function EditorCanvas() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const dirtyRef = useRef(false);
+
+  // Каталог модулей: сначала локальный реестр, чтобы палитра появилась
+  // мгновенно, затем ответ Control Plane — он авторитетен.
+  const [modules, setModules] = useState<ModuleDef[]>(() => MODULES);
+  const [modulesLoading, setModulesLoading] = useState(false);
+  const [category, setCategory] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setModulesLoading(true);
+    api
+      .getModules(CURRENT_STAGE)
+      .then((c) => {
+        if (!cancelled && c.modules.length > 0) setModules(c.modules);
+      })
+      .catch(() => {
+        // Локальный реестр остаётся: палитра должна работать и без сети.
+      })
+      .finally(() => {
+        if (!cancelled) setModulesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const selected = useMemo(
     () => tree.blocks.find((b) => b.id === selectedId) ?? null,
@@ -107,7 +141,43 @@ export function EditorCanvas() {
     setSaveState('idle');
   }, []);
 
+  /**
+   * Вставка модуля. Новый блок ставится под последним на странице —
+   * это соответствует «inline insert»: пользователь не возится с
+   * координатами, а получает блок сразу под тем, что редактировал.
+   */
+  const insertModule = useCallback((module: ModuleDef) => {
+    const kind = kindOf(module.id);
+    const height = kind === 'section' ? 200 : 80;
+    const y = tree.blocks.reduce((max, b) => Math.max(max, b.y + b.height), 0) + 24;
+
+    const block = {
+      id: newBlockId(),
+      module: module.id,
+      x: 40,
+      y,
+      width: module.category === 'structure' ? tree.width - 80 : 320,
+      height,
+      kind,
+      label: module.name,
+    };
+
+    setTree((prev) => ({ ...prev, blocks: [...prev.blocks, block] }));
+    setSelectedId(block.id);
+    dirtyRef.current = true;
+    setSaveState('idle');
+  }, [tree.blocks, tree.width]);
+
   async function handleSave() {
+    // Клиентская проверка дублирует серверную, но даёт мгновенный ответ:
+    // не нужно ждать round-trip, чтобы узнать про опечатку в модуле.
+    const problem = validateTree(tree);
+    if (problem) {
+      setSaveError(`Дерево не прошло проверку: ${problem}`);
+      setSaveState('error');
+      return;
+    }
+
     setSaveState('saving');
     setSaveError(null);
     try {
@@ -200,6 +270,25 @@ export function EditorCanvas() {
             />
           </Suspense>
         </main>
+
+        {/* Палитра модулей V7. Открывается инструментом «Модули»,
+            но панель присутствует в разметке всегда: иначе её появление
+            сдвигало бы холст. */}
+        <aside
+          className={`modules-panel ${tool === 'modules' ? 'is-open' : ''}`}
+          style={{ zIndex: 'var(--layer-drawer)' }}
+          aria-hidden={tool !== 'modules'}
+        >
+          <ModulePalette
+            modules={modules}
+            categories={MODULE_CATEGORIES}
+            activeCategory={category}
+            onCategoryChange={setCategory}
+            onPick={insertModule}
+            onOpenFullCatalog={() => setTool('modules')}
+            loading={modulesLoading}
+          />
+        </aside>
 
         {/* Плавающая палитра — V1. Слой --layer-floating-palette. */}
         <div

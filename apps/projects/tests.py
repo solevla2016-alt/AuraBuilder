@@ -30,33 +30,67 @@ class ValidateTreeTests(APITestCase):
     def test_rejects_negative_block_size(self):
         tree = {'width': 720, 'blocks': [
             {'id': 'a', 'x': 0, 'y': 0, 'width': -10, 'height': 20,
-             'kind': 'text', 'label': 'x'},
+             'module': 'text.paragraph', 'label': 'x'},
         ]}
         self.assertIsNotNone(validate_tree(tree))
 
     def test_rejects_duplicate_ids(self):
         tree = {'width': 720, 'blocks': [
             {'id': 'a', 'x': 0, 'y': 0, 'width': 10, 'height': 20,
-             'kind': 'text', 'label': 'x'},
+             'module': 'text.paragraph', 'label': 'x'},
             {'id': 'a', 'x': 5, 'y': 5, 'width': 10, 'height': 20,
-             'kind': 'text', 'label': 'y'},
+             'module': 'text.paragraph', 'label': 'y'},
         ]}
         error = validate_tree(tree)
         self.assertIsNotNone(error)
         self.assertIn('повторяющийся', error)
 
-    def test_rejects_unknown_kind(self):
+    def test_rejects_unknown_module(self):
+        # Модуль сверяется с реестром: неизвестный id в базу попасть не
+        # может, иначе экспорт (ТЗ п.16.2) не найдёт для него блок.
         tree = {'width': 720, 'blocks': [
             {'id': 'a', 'x': 0, 'y': 0, 'width': 10, 'height': 20,
-             'kind': 'неизвестно', 'label': 'x'},
+             'module': 'нетакого.модуля', 'label': 'x'},
+        ]}
+        error = validate_tree(tree)
+        self.assertIsNotNone(error)
+        self.assertIn('неизвестный модуль', error)
+
+    def test_rejects_missing_module(self):
+        tree = {'width': 720, 'blocks': [
+            {'id': 'a', 'x': 0, 'y': 0, 'width': 10, 'height': 20, 'label': 'x'},
         ]}
         self.assertIsNotNone(validate_tree(tree))
+
+    def test_rejects_kind_instead_of_module(self):
+        # Старое поле kind больше не принимается: оно описывало заливку
+        # холста, а не модуль каталога.
+        tree = {'width': 720, 'blocks': [
+            {'id': 'a', 'x': 0, 'y': 0, 'width': 10, 'height': 20,
+             'kind': 'text', 'label': 'x'},
+        ]}
+        self.assertIsNotNone(validate_tree(tree))
+
+    def test_accepts_every_registry_module(self):
+        # Каждый модуль реестра должен приниматься валидатором: иначе
+        # палитра покажет модуль, который невозможно положить на холст.
+        from .module_registry import MODULES
+
+        tree = {
+            'width': 720,
+            'blocks': [
+                {'id': f'b{i}', 'module': m.id, 'x': 0, 'y': 0,
+                 'width': 100, 'height': 40, 'label': m.name}
+                for i, m in enumerate(MODULES)
+            ],
+        }
+        self.assertIsNone(validate_tree(tree))
 
     def test_rejects_nan_and_infinity(self):
         # float('nan') проходит isinstance(x, float), но ломает JSON-экспорт
         tree = {'width': 720, 'blocks': [
             {'id': 'a', 'x': float('nan'), 'y': 0, 'width': 10, 'height': 20,
-             'kind': 'text', 'label': 'x'},
+             'module': 'text.paragraph', 'label': 'x'},
         ]}
         self.assertIsNotNone(validate_tree(tree))
 
@@ -64,14 +98,14 @@ class ValidateTreeTests(APITestCase):
         # True — экземпляр int в Python; такое значение не должно проходить
         tree = {'width': 720, 'blocks': [
             {'id': 'a', 'x': True, 'y': 0, 'width': 10, 'height': 20,
-             'kind': 'text', 'label': 'x'},
+             'module': 'text.paragraph', 'label': 'x'},
         ]}
         self.assertIsNotNone(validate_tree(tree))
 
     def test_rejects_too_many_blocks(self):
         blocks = [
             {'id': f'b{i}', 'x': 0, 'y': 0, 'width': 10, 'height': 20,
-             'kind': 'text', 'label': 'x'}
+             'module': 'text.paragraph', 'label': 'x'}
             for i in range(501)
         ]
         self.assertIsNotNone(validate_tree({'width': 720, 'blocks': blocks}))
@@ -112,9 +146,9 @@ class ProjectApiTests(APITestCase):
             'width': 900,
             'blocks': [
                 {'id': 'hero', 'x': 12, 'y': 34, 'width': 800, 'height': 300,
-                 'kind': 'section', 'label': 'Первый экран'},
+                 'module': 'section.hero', 'label': 'Первый экран'},
                 {'id': 'txt', 'x': 12, 'y': 400, 'width': 400, 'height': 90,
-                 'kind': 'text', 'label': 'Акция'},
+                 'module': 'text.paragraph', 'label': 'Акция'},
             ],
         }
         response = self.client.put(
