@@ -1,0 +1,24 @@
+{
+  "name": "aurabuilder",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AuraBuilder — No-Code/Low-Code конструктор веб-приложений",
+  "type": "module",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @aurabuilder/web",
+    "build": "npm run build --workspace @aurabuilder/web",
+    "preview": "npm run preview --workspace @aurabuilder/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "tokens:build": "node packages/tokens/build.mjs",
+    "tokens:check": "node docs/check-contrast.mjs",
+    "preview:palette": "node tools/build_palette_preview.mjs",
+    "licenses": "node tools/license-gate.mjs"
+  }
+}

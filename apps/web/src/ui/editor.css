@@ -1,0 +1,215 @@
+/*
+ * Стили редактора. Только компоновка и состояния — все значения
+ * цветов, отступов и теней приходят из CSS-переменных (tokens.css).
+ */
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--appBg);
+}
+
+/* --- Верхняя панель. Слой --layer-top-bar. --- */
+
+.top-bar {
+  position: relative;
+  z-index: var(--layer-top-bar);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  height: 56px;
+  padding: 0 var(--space-lg);
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+
+.top-bar__group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.top-bar__brand {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.top-bar__project {
+  font-size: var(--text-sm);
+  color: var(--textSecondary);
+}
+
+.top-bar__sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 var(--space-xs);
+}
+
+/* --- Кнопки --- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  height: var(--min-target);
+  padding: 0 var(--space-md);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  background: transparent;
+  color: var(--textPrimary);
+  transition: background var(--duration-fast) var(--ease-standard);
+}
+
+.btn--ghost {
+  border-color: var(--border);
+}
+
+.btn--ghost:hover {
+  background: var(--panelSunken);
+}
+
+.btn--primary {
+  background: var(--accentSurface);
+  color: var(--onAccentSurface);
+  font-weight: 600;
+}
+
+.btn--primary:hover {
+  background: var(--accentSurfaceHover);
+}
+
+.btn--primary:active {
+  background: var(--accentSurfaceActive);
+}
+
+/* --- Рабочая область --- */
+
+.editor__body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.canvas {
+  flex: 1;
+  overflow: auto;
+  padding: var(--space-2xl);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+/* --- Плавающая палитра (V1) --- */
+
+.palette {
+  position: absolute;
+  left: 50%;
+  bottom: var(--space-xl);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-xs);
+  max-width: calc(100% - var(--space-3xl));
+}
+
+.palette__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--textSecondary);
+}
+
+.palette__toggle:hover {
+  background: var(--panelSunken);
+  color: var(--textPrimary);
+}
+
+.palette--collapsed {
+  flex-direction: row;
+  padding: var(--space-xs) var(--space-sm);
+}
+
+.palette__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.palette__tools {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.palette__tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--min-target);
+  height: var(--min-target);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--textSecondary);
+  transition:
+    background var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+
+.palette__tool:hover {
+  background: var(--panelSunken);
+  color: var(--textPrimary);
+}
+
+/* Активный инструмент — единственное место, где золото заливает площадь */
+.palette__tool.is-active {
+  background: var(--accentSurface);
+  color: var(--onAccentSurface);
+  border-color: var(--accentSurfaceActive);
+}
+
+.palette__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: 0 var(--space-sm) var(--space-xs);
+  font-size: var(--text-xs);
+  color: var(--textSecondary);
+  border-top: 1px solid var(--border);
+  width: 100%;
+}
+
+.palette__selection {
+  margin-left: auto;
+  color: var(--accentText);
+  font-weight: 500;
+}
+
+.palette__selection--none {
+  color: var(--textDisabled);
+  font-weight: 400;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn,
+  .palette__tool {
+    transition: none;
+  }
+}

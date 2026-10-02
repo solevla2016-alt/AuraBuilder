@@ -1,0 +1,160 @@
+/*
+ * Базовые стили редактора. Токены приходят из packages/tokens/dist/tokens.css,
+ * который генерируется из docs/palette.json. Здесь только правила поведения.
+ *
+ * Принцип: хром нейтральный, золото — только акцент. Подробности в
+ * docs/UI-DECISIONS.md, раздел 0.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  color: var(--textPrimary);
+  background: var(--appBg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/*
+ * Фокус. Правило из шаблонов, которое там нарушалось: `outline: none`
+ * без замены. Здесь обводка всегда видна, толщина 2px + разрыв 2px,
+ * чтобы кольцо читалось и на золотой кнопке, и на тёмном холсте.
+ */
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Мышиный фокус не рисуем — клавиатурный остаётся. */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Мишень не меньше 44px — WCAG 2.5.5. */
+button,
+[role='button'],
+a,
+input,
+select {
+  min-height: var(--min-target);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+/*
+ * Общие анимации дизайн-системы. Раньше в каждом экране были свои
+ * keyframes; теперь анимации живут здесь, а компоненты их включают.
+ */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/*
+ * Индикатор работающего действия. Применяется к перетаскиваемому элементу
+ * и к AI-ассистенту, а не ко всему интерфейсу.
+ */
+@keyframes aura-pulse {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/*
+ * Уважение к настройке системы. В 13 шаблонах её не было ни разу —
+ * для пользователя с вестибулярными расстройствами анимации опасны.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Переключатель темы. Вне редактора он не нужен — при появлении
+   настоящей навигации переедет в неё. */
+.theme-toggle {
+  position: fixed;
+  right: var(--space-lg);
+  bottom: var(--space-lg);
+  z-index: var(--layer-top-bar);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--min-target);
+  height: var(--min-target);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  color: var(--textSecondary);
+  box-shadow: var(--shadow-md);
+}
+
+.theme-toggle:hover {
+  color: var(--textPrimary);
+  background: var(--panelRaised);
+}

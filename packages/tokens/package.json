@@ -1,0 +1,16 @@
+{
+  "name": "@aurabuilder/tokens",
+  "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "description": "Дизайн-токены AuraBuilder: генерация CSS-переменных из docs/palette.json",
+  "exports": {
+    "./palette.json": "../../docs/palette.json",
+    "./tokens.css": "./dist/tokens.css"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "node build.mjs --check"
+  }
+}

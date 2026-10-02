@@ -20,6 +20,8 @@ node_modules/
 dist/
 build/
 .vite/
+*.tsbuildinfo
+.turbo/
 
 # Editors / OS
 .idea/
