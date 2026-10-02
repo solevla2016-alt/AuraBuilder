@@ -109,11 +109,16 @@ cd apps
 Базу создаёт администратор, приложение только работает со схемой:
 
 ```sql
-CREATE ROLE aurabuilder LOGIN PASSWORD 'пароль';
+CREATE ROLE aurabuilder LOGIN PASSWORD 'пароль' CREATEDB;
 CREATE DATABASE aurabuilder OWNER aurabuilder;
 ```
 
+`CREATEDB` нужен, чтобы `manage.py test` создавал временную тестовую базу —
+без него тесты падают с «нет права создавать базу».
+
 Без PostgreSQL разработка и тесты идут на SQLite: `USE_SQLITE=1`.
+Но приёмочные тесты должны идти на PostgreSQL: JSONField в SQLite и
+PostgreSQL ведут себя по-разному на больших деревьях.
 
 ### Проверки
 
@@ -145,11 +150,18 @@ cd apps && ..\.venv\Scripts\python manage.py test projects
 | Konva | 10.7 | Canvas-рендерер, нужен для координат узлов и трансформаций |
 | Vite | 8.3 | В dev отдаёт нативные ES-модули: перезагрузка мгновенная |
 | Django | 6.1 | ТЗ п.3.2, Control Plane |
-| pg8000 | 1.31.5 | **Не** psycopg: тот LGPL-3.0, а ТЗ п.7.1.6 запрещает copyleft |
+| psycopg | 3.3.6 | Драйвер PostgreSQL. **LGPL-3.0 — исключение из п.7.1.6**, решение заказчика 02.10.2026 |
 
 React 19 вместо 18 — решение заказчика от 01.10.2026. Konva 10 требует
 `react-konva` 19, а тот — React 19.3; связка React 18 упирается в
 Konva 9 (версия 2023 года).
+
+psycopg — единственное отступление от белого списка лицензий. Django
+поддерживает только `psycopg` и `psycopg2`; `pg8000` (BSD-3-Clause)
+лицензионно чист, но бэкенд Django его не принимает. Основание и границы
+исключения — `docs/TZ-GAPS.md`, раздел 1.1. Скрипт
+`tools/license_gate_py.py` печатает исключение отдельным блоком, а не
+пропускает пакет молча.
 
 ### Производительность
 

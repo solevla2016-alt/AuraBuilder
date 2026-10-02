@@ -50,6 +50,24 @@ FORBIDDEN = {
     'cc-by-nc': 'запрет коммерческого использования',
 }
 
+# Осознанные исключения из п.7.1.6, утверждённые заказчиком.
+#
+# psycopg — драйвер PostgreSQL для Django. Лицензия LGPL-3.0-only формально
+# не входит в белый список «MIT, Apache 2.0, BSD», но исключение принято
+# 02.10.2026 по двум основаниям:
+#   1. Django не имеет драйвера на чистом Python: pg8000 лицензионно чист,
+#      но бэкенд Django его не поддерживает (требует psycopg/psycopg2).
+#      Альтернатива — писать собственный бэкенд, что дороже и рискованнее.
+#   2. LGPL слабее GPL: при динамической линковке закрытый код раскрывать
+#      не требуется, а psycopg остаётся отдельной библиотекой.
+# Исключение действует только на пакет psycopg и его сборку для Windows.
+ALLOWED_EXCEPTIONS = {
+    'psycopg': 'LGPL-3.0-only — драйвер PostgreSQL для Django, исключение '
+    'утверждено 02.10.2026 (см. docs/TZ-GAPS.md)',
+    'psycopg-binary': 'LGPL-3.0-only — бинарная сборка psycopg для Windows, '
+    'то же исключение, что и у psycopg',
+}
+
 
 def read_license_text(dist) -> str:
     """Читает файл лицензии из dist-info: у psycopg и pg8000 он там есть."""
@@ -128,7 +146,13 @@ def main() -> int:
     print('-' * 70)
     bad = []
     unknown = []
+    exceptions = []
     for name, version, lic in rows:
+        key = name.lower().replace('_', '-')
+        if key in ALLOWED_EXCEPTIONS:
+            exceptions.append((name, lic, ALLOWED_EXCEPTIONS[key]))
+            print(f'{name:26s}{version:14s}{lic}  <-- исключение п.7.1.6')
+            continue
         mark = ''
         if lic in FORBIDDEN:
             mark = '  <-- ЗАПРЕЩЕНА'
@@ -138,7 +162,15 @@ def main() -> int:
             unknown.append((name, lic))
         print(f'{name:26s}{version:14s}{lic}{mark}')
     print('-' * 70)
-    print(f'пакетов: {len(rows)}, запрещённых: {len(bad)}, неопознанных: {len(unknown)}')
+    print(
+        f'пакетов: {len(rows)}, запрещённых: {len(bad)}, '
+        f'неопознанных: {len(unknown)}, исключений: {len(exceptions)}'
+    )
+
+    if exceptions:
+        print('\nИСКЛЮЧЕНИЯ ИЗ п.7.1.6 (утверждены заказчиком):')
+        for name, lic, why in exceptions:
+            print(f'  {name} — {lic}: {why}')
 
     if bad:
         print('\nЗАПРЕЩЁННЫЕ ЛИЦЕНЗИИ (ТЗ п.7.1.6):')

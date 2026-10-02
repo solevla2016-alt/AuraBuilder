@@ -8,8 +8,9 @@
 * Секреты и параметры подключения читаются из переменных окружения.
   Значения по умолчанию подходят только для локальной разработки —
   в продакшене Django обязан их прервать (см. проверку ниже).
-* Драйвер PostgreSQL — pg8000 (BSD-3-Clause), а не psycopg (LGPL-3.0).
-  ТЗ п.7.1.6 запрещает GPL-копилефт, поэтому psycopg исключён.
+* Драйвер PostgreSQL — psycopg (LGPL-3.0-only), исключение из п.7.1.6,
+  утверждённое заказчиком 02.10.2026. Django не поддерживает драйверы
+  на чистом Python: pg8000 лицензионно чист, но бэкенд его не принимает.
 * RLS в PostgreSQL включается на этапе командной работы (ТЗ п.3.2);
   для одиночного стенда достаточно прав на уровне Django.
 * CORS для локальной разработки редактора (порт 5173).
@@ -51,6 +52,23 @@ if not DEBUG and SECRET_KEY == 'dev-only-insecure-key-change-me':
     )
 
 CSRF_TRUSTED_ORIGINS = env_list('DJANGO_CSRF_TRUSTED_ORIGINS')
+
+# --- Продакшен-безопасность (ТЗ п.7.7) ---
+# В разработке эти параметры мешают: редирект на HTTPS уводит на
+# несуществующий домен, а HSTS запоминает адрес без срока действия.
+# Поэтому они включаются только при DEBUG=0, а значения приходят
+# из окружения — иначе сервер встанет с неверными настройками TLS.
+
+if not DEBUG:
+    SECURE_SSL_REDIRECT = env_bool('DJANGO_SECURE_SSL_REDIRECT', True)
+    SECURE_HSTS_SECONDS = int(os.environ.get('DJANGO_SECURE_HSTS_SECONDS', '31536000'))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool('DJANGO_HSTS_INCLUDE_SUBDOMAINS', True)
+    SECURE_HSTS_PRELOAD = env_bool('DJANGO_HSTS_PRELOAD', True)
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = 'same-origin'
+    X_FRAME_OPTIONS = 'DENY'
 
 # --- Приложения ---------------------------------------------------------
 
@@ -113,8 +131,8 @@ else:
             'PASSWORD': env('POSTGRES_PASSWORD', ''),
             'HOST': env('POSTGRES_HOST', '127.0.0.1'),
             'PORT': env('POSTGRES_PORT', '5432'),
-            # pg8000 не умеет CREATE DATABASE из соединения: базу создаёт
-            # администратор, приложение только работает со схемой.
+            # psycopg-binary ставит libpq под Windows; на сервере Linux
+            # достаточно psycopg без бинарной сборки.
             'OPTIONS': {'client_encoding': 'UTF8'},
             'CONN_MAX_AGE': 60,
         }
