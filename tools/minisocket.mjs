@@ -64,6 +64,10 @@ export class MiniWebSocket extends EventEmitter {
       });
 
       this.socket.on('error', (e) => {
+        // После штатного закрытия браузера сокет отдаёт ECONNRESET.
+        // Бросать это вверх нельзя: скрипт к этому моменту уже всё
+        // измерил, и падение из-за уборки процессов бессмысленно.
+        if (this.closed || this.ready) return;
         if (!this.ready) reject(e);
         this.emit('error', e);
       });

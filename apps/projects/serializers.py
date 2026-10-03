@@ -15,8 +15,12 @@ from .module_registry import MODULE_IDS
 
 MAX_BLOCKS = 500
 MAX_LABEL = 200
+MAX_CONTENT = 5000
 MAX_ID_LEN = 64
 COORD_LIMIT = 10000
+
+#: Допустимые выравнивания содержимого блока (см. project.ts).
+ALLOWED_ALIGN = ('left', 'center', 'right')
 
 
 def validate_tree(value: Any) -> str | None:
@@ -72,6 +76,23 @@ def validate_tree(value: Any) -> str | None:
         label = block.get('label')
         if not isinstance(label, str) or len(label) > MAX_LABEL:
             return prefix + f'label: строка до {MAX_LABEL} символов'
+
+        # Клиентскую проверку можно обойти, поэтому align и content
+        # проверяются здесь же: без этого в базу попадали произвольные
+        # строки, которые ломали бы экспорт (ТЗ п.16.2).
+        align = block.get('align')
+        if align is not None:
+            if not isinstance(align, str):
+                return prefix + 'align: строка'
+            if align not in ALLOWED_ALIGN:
+                return prefix + f'align: допустимо {", ".join(ALLOWED_ALIGN)}'
+
+        content = block.get('content')
+        if content is not None:
+            if not isinstance(content, str):
+                return prefix + 'content: строка'
+            if len(content) > MAX_CONTENT:
+                return prefix + f'content: длиннее {MAX_CONTENT} символов'
 
     return None
 

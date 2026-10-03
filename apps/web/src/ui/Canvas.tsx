@@ -19,6 +19,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Layer, Rect, Stage, Text, Transformer } from 'react-konva';
 import type Konva from 'konva';
 import type { Block } from './project';
+import { kindOf } from './moduleRegistry';
 import { useCanvasTokens } from './useCanvasTokens';
 
 export interface CanvasProps {
@@ -38,8 +39,8 @@ export default function Canvas({ blocks, selectedId, tool, onSelect, onMove }: C
   const [ready, setReady] = useState(false);
   const tokens = useCanvasTokens();
 
-  // Заливка блока зависит от его вида на холсте, а не от категории
-  // каталога: section — секция, text и media — плоские блоки.
+  // Заливка выводится из модуля через реестр, а не хранится в блоке:
+  // вид блока — производная величина, и в данных ей место не нужно.
   const fillByKind = useMemo(
     () => ({
       section: tokens.accentSurfaceSubtle,
@@ -101,7 +102,7 @@ export default function Canvas({ blocks, selectedId, tool, onSelect, onMove }: C
             y={b.y}
             width={b.width}
             height={b.height}
-            fill={fillByKind[b.kind]}
+            fill={fillByKind[kindOf(b.module)]}
             stroke={selectedId === b.id ? tokens.selectionBorder : tokens.border}
             strokeWidth={selectedId === b.id ? 2 : 1}
             cornerRadius={8}
@@ -125,12 +126,36 @@ export default function Canvas({ blocks, selectedId, tool, onSelect, onMove }: C
           />
         ))}
 
+        {blocks.map((b) =>
+          b.content?.trim() ? (
+            <Text
+              key={`${b.id}-content`}
+              x={b.x + 14}
+              y={b.y + 34}
+              width={b.width - 28}
+              // Высота текста ограничена блоком: без этого содержимое
+              // вылезало бы за нижнюю границу короткого блока.
+              height={Math.max(0, b.height - 44)}
+              text={b.content}
+              fontSize={13}
+              fontFamily="Inter, sans-serif"
+              fill={tokens.textPrimary}
+              ellipsis
+              wrap="word"
+              listening={false}
+            />
+          ) : null,
+        )}
+
         {blocks.map((b) => (
           <Text
             key={`${b.id}-module`}
             x={b.x + 14}
-            y={b.y + 36}
+            y={b.y + 34}
             text={b.module}
+            // Когда есть содержимое, идентификатор модуля уступает ему
+            // место: подпись нужна только для отладки.
+            visible={!b.content?.trim() || b.height > 92}
             fontSize={11}
             fontFamily="'JetBrains Mono', monospace"
             fill={tokens.textDisabled}

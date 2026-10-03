@@ -94,6 +94,41 @@ class ValidateTreeTests(APITestCase):
         ]}
         self.assertIsNotNone(validate_tree(tree))
 
+    def test_accepts_align_and_content(self):
+        tree = {'width': 720, 'blocks': [
+            {'id': 'a', 'x': 0, 'y': 0, 'width': 10, 'height': 20,
+             'module': 'text.heading', 'label': 'x',
+             'align': 'center', 'content': 'Привет'},
+        ]}
+        self.assertIsNone(validate_tree(tree))
+
+    def test_rejects_unknown_align(self):
+        # Клиентскую проверку можно обойти: сервер обязан отвергнуть
+        # произвольное значение align, иначе экспорт его не разберёт.
+        tree = {'width': 720, 'blocks': [
+            {'id': 'a', 'x': 0, 'y': 0, 'width': 10, 'height': 20,
+             'module': 'text.heading', 'label': 'x', 'align': 'по диагонали'},
+        ]}
+        error = validate_tree(tree)
+        self.assertIsNotNone(error)
+        self.assertIn('align', error)
+
+    def test_rejects_too_long_content(self):
+        tree = {'width': 720, 'blocks': [
+            {'id': 'a', 'x': 0, 'y': 0, 'width': 10, 'height': 20,
+             'module': 'text.heading', 'label': 'x', 'content': 'я' * 6000},
+        ]}
+        error = validate_tree(tree)
+        self.assertIsNotNone(error)
+        self.assertIn('content', error)
+
+    def test_rejects_non_string_content(self):
+        tree = {'width': 720, 'blocks': [
+            {'id': 'a', 'x': 0, 'y': 0, 'width': 10, 'height': 20,
+             'module': 'text.heading', 'label': 'x', 'content': 42},
+        ]}
+        self.assertIsNotNone(validate_tree(tree))
+
     def test_rejects_boolean_as_number(self):
         # True — экземпляр int в Python; такое значение не должно проходить
         tree = {'width': 720, 'blocks': [

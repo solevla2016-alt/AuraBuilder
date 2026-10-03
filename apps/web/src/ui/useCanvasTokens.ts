@@ -20,6 +20,7 @@ export interface CanvasTokens {
   accentSurfaceSubtle: string;
   border: string;
   selectionBorder: string;
+  textPrimary: string;
   textSecondary: string;
   textDisabled: string;
   guideLine: string;
@@ -32,6 +33,7 @@ const VARS: Record<keyof CanvasTokens, string> = {
   accentSurfaceSubtle: '--accentSurfaceSubtle',
   border: '--border',
   selectionBorder: '--selectionBorder',
+  textPrimary: '--textPrimary',
   textSecondary: '--textSecondary',
   textDisabled: '--textDisabled',
   guideLine: '--guideLine',

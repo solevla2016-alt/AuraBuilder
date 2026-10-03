@@ -127,6 +127,35 @@ class CDP {
 const version = await waitForDevtools();
 console.log(`браузер: ${version.Browser}\nцель:   ${URL_TO_TEST}\n`);
 
+/**
+ * Проверка цели до запуска браузера.
+ *
+ * Без неё инструмент молча измеряет страницу ошибки Chrome: у неё
+ * есть свой <h1>, TTFB около нуля, и замер выглядит как отличный
+ * результат — хотя редактор не открывался вовсе.
+ */
+async function assertTargetReachable() {
+  try {
+    const res = await fetch(URL_TO_TEST, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const html = await res.text();
+    if (!html.includes('<div id="root">')) {
+      throw new Error('в ответе нет #root — это не редактор');
+    }
+    return true;
+  } catch (e) {
+    console.error(
+      `цель ${URL_TO_TEST} недоступна: ${e.message}.\n` +
+        'Запустите сборку и предпросмотр: npm run build, затем npm run preview',
+    );
+    process.exit(2);
+  }
+}
+
+await assertTargetReachable();
+
 const cdp = await CDP.connect(version.webSocketDebuggerUrl);
 const { targetId } = await cdp.send('Target.createTarget', { url: 'about:blank' });
 const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();

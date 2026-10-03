@@ -16,6 +16,11 @@ import type { ModuleKind } from './moduleRegistry';
 
 export type { ModuleKind };
 
+/**
+ * Выравнивание содержимого внутри блока.
+ */
+export type Align = 'left' | 'center' | 'right';
+
 export interface Block {
   /** Идентификатор экземпляра блока на странице, не модуля. */
   id: string;
@@ -25,9 +30,11 @@ export interface Block {
   y: number;
   width: number;
   height: number;
-  /** Вид заливки на холсте; выводится из реестра, клиентом не задаётся. */
-  kind: ModuleKind;
   label: string;
+  /** Выравнивание содержимого; по умолчанию left. */
+  align?: Align;
+  /** Текстовое содержимое. Для блоков данных появится на этапе 3. */
+  content?: string;
 }
 
 export interface PageTree {
@@ -46,19 +53,27 @@ export interface Project {
 const MAX_BLOCKS = 500;
 const MAX_LABEL = 200;
 const MAX_ID_LEN = 64;
+const MAX_CONTENT = 5000;
 const COORD_LIMIT = 10000;
+
+/** Допустимые выравнивания содержимого блока. */
+const ALIGNS: Align[] = ['left', 'center', 'right'];
 
 /**
  * Стартовое дерево нового проекта.
  * Должно совпадать с default_tree() на сервере (projects/models.py):
  * это два конца одного контракта.
+ *
+ * Поля kind здесь нет намеренно: вид заливки — производная величина от
+ * module (см. kindOf в moduleRegistry). Хранить его в данных означало бы
+ * держать в базе значение, которое может разойтись с реестром модулей.
  */
 export function defaultTree(): PageTree {
   const blocks: Block[] = [
-    { id: 'b1', module: 'section.hero', x: 40, y: 40, width: 640, height: 200, kind: 'section', label: 'Первый экран' },
-    { id: 'b2', module: 'text.heading', x: 40, y: 264, width: 640, height: 64, kind: 'text', label: 'Заголовок' },
-    { id: 'b3', module: 'media.image', x: 40, y: 352, width: 300, height: 180, kind: 'text', label: 'Изображение' },
-    { id: 'b4', module: 'text.paragraph', x: 364, y: 352, width: 316, height: 180, kind: 'text', label: 'Описание' },
+    { id: 'b1', module: 'section.hero', x: 40, y: 40, width: 640, height: 200, label: 'Первый экран' },
+    { id: 'b2', module: 'text.heading', x: 40, y: 264, width: 640, height: 64, label: 'Заголовок' },
+    { id: 'b3', module: 'media.image', x: 40, y: 352, width: 300, height: 180, label: 'Изображение' },
+    { id: 'b4', module: 'text.paragraph', x: 364, y: 352, width: 316, height: 180, label: 'Описание' },
   ];
   return { width: 720, blocks };
 }
@@ -115,6 +130,20 @@ export function validateTree(value: unknown): string | null {
 
     if (typeof b.label !== 'string' || b.label.length > MAX_LABEL) {
       return p + `label: строка до ${MAX_LABEL} символов`;
+    }
+
+    if (b.align !== undefined && !ALIGNS.includes(b.align as Align)) {
+      return p + `align: допустимо ${ALIGNS.join(', ')}`;
+    }
+    if (b.align !== undefined && typeof b.align !== 'string') {
+      return p + 'align: строка';
+    }
+
+    if (b.content !== undefined) {
+      if (typeof b.content !== 'string') return p + 'content: строка';
+      if (b.content.length > MAX_CONTENT) {
+        return p + `content: длиннее ${MAX_CONTENT} символов`;
+      }
     }
   }
   return null;

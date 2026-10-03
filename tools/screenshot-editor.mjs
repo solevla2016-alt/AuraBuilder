@@ -165,6 +165,241 @@ writeFileSync(OUT, png);
 
 // Статистика берётся из самого снимка: буфер Konva через getImageData
 // отдаёт данные, не совпадающие с тем, что видно на экране.
+/**
+ * Сценарии проверки редактора.
+ *
+ * getImageData из контекста Konva отдаёт буфер, не совпадающий с тем, что
+ * видно на экране, поэтому состояние проверяется через DOM: приложение
+ * выставляет data-атрибуты, которые невозможно «нарисовать».
+ */
+async function runScenarios(page, box) {
+  const results = [];
+  const state = async () => {
+    const r = await page.send('Runtime.evaluate', {
+      returnByValue: true,
+      expression: `(() => {
+        const holder = document.querySelector('.canvas');
+        const props = document.querySelector('.props-panel');
+        const input = document.querySelector('.prop__input');
+        return {
+          blocks: Number(holder?.dataset.blocks ?? -1),
+          selected: holder?.dataset.selected ?? '',
+          panelTitle: props?.querySelector('.props__title b')?.textContent ?? null,
+          panelVisible: !!props?.querySelector('.props__group'),
+          firstLabel: input?.value ?? null,
+          undoDisabled: document.querySelector('[aria-label="Отменить"]')?.disabled ?? null,
+        };
+      })()`,
+    });
+    return r.result.value;
+  };
+
+  // Клик по центру верхнего блока на холсте.
+  const clickOnBlock = async () => {
+    await page.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: Math.round(box.x + box.width / 2),
+      y: Math.round(box.y + 120),
+      button: 'left',
+      clickCount: 1,
+    });
+    await page.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: Math.round(box.x + box.width / 2),
+      y: Math.round(box.y + 120),
+      button: 'left',
+      clickCount: 1,
+    });
+    await new Promise((r) => setTimeout(r, 400));
+  };
+
+  /**
+ * Отправка горячей клавиши.
+ *
+ * Для сочетаний с Ctrl нужен rawKeyDown: при keyDown браузер сначала
+ * пытается вставить символ, и событие с модификатором доходит до
+ * обработчика не всегда.
+ */
+const key = async (letter, code, modifiers = 0) => {
+  const common = {
+    modifiers,
+    windowsVirtualKeyCode: letter.toUpperCase().charCodeAt(0),
+    code,
+    key: letter,
+  };
+  await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...common });
+  await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...common });
+  await new Promise((r) => setTimeout(r, 350));
+};
+
+  const before = await state();
+  results.push(['блоки загружены', before.blocks > 0]);
+
+  await clickOnBlock();
+  const justAfter = await state();
+  await new Promise((r) => setTimeout(r, 900));
+  const afterClick = await state();
+  results.push(['клик выбирает блок', afterClick.selected !== '']);
+  results.push(['выделение не слетает само', afterClick.selected === justAfter.selected]);
+  results.push(['панель свойств открыта', afterClick.panelVisible && !!afterClick.panelTitle]);
+
+  // Меняем название блока через панель, затем отменяем.
+  await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `(() => {
+      const inputs = [...document.querySelectorAll('.prop__input')];
+      const text = inputs.find(el => el.type === 'text');
+      if (!text) return { error: 'нет текстового поля' };
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype, 'value').set;
+      setter.call(text, 'Изменённый заголовок');
+      text.dispatchEvent(new Event('input', { bubbles: true }));
+      return { ok: true, value: text.value, count: inputs.length };
+    })()`,
+  });
+  await new Promise((r) => setTimeout(r, 600));
+  const afterRename = await state();
+  results.push(['название блока изменилось', afterRename.firstLabel === 'Изменённый заголовок']);
+  results.push(['кнопка отмены активна', afterRename.undoDisabled === false]);
+
+  // Пока фокус в поле ввода, Ctrl+Z должен отменять правку текста, а не
+  // движение блока. Это осознанное поведение — снимаем фокус заранее.
+  const renameTo = async (value) => {
+    await page.send('Runtime.evaluate', {
+      returnByValue: true,
+      expression: `(() => {
+        const text = [...document.querySelectorAll('.prop__input')].find(el => el.type === 'text');
+        if (!text) return false;
+        const setter = Object.getOwnPropertyDescriptor(
+          window.HTMLInputElement.prototype, 'value').set;
+        setter.call(text, ${JSON.stringify(value)});
+        text.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      })()`,
+    });
+    await new Promise((r) => setTimeout(r, 450));
+  };
+
+  // Путь 1: кнопка в верхней панели.
+  await renameTo('Правка через кнопку');
+  const beforeButton = (await state()).firstLabel;
+  await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `(() => {
+      const btn = document.querySelector('[aria-label="Отменить"]');
+      if (!btn || btn.disabled) return false;
+      btn.click();
+      return true;
+    })()`,
+  });
+  await new Promise((r) => setTimeout(r, 350));
+  const afterButton = (await state()).firstLabel;
+  results.push(['кнопка «Отменить» отменяет правку', afterButton !== 'Правка через кнопку']);
+  void beforeButton;
+
+  // Путь 2: горячая клавиша. Сначала проверяем, что она НЕ перехватывается
+  // полем ввода: пока фокус в поле, Ctrl+Z отменяет правку текста.
+  await renameTo('Правка через Ctrl+Z');
+  await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `(() => {
+      const text = [...document.querySelectorAll('.prop__input')].find(el => el.type === 'text');
+      if (!text) return false;
+      text.focus();
+      return document.activeElement === text;
+    })()`,
+  });
+  await key('z', 'KeyZ', 2);
+  const inField = await state();
+  results.push([
+    'в поле ввода Ctrl+Z не отменяет блок',
+    inField.firstLabel === 'Правка через Ctrl+Z',
+  ]);
+
+  // Теперь снимаем фокус — отмена должна действовать на холст.
+  await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `(() => {
+      document.activeElement?.blur?.();
+      return document.activeElement?.tagName ?? 'нет';
+    })()`,
+  });
+  await new Promise((r) => setTimeout(r, 200));
+  await key('z', 'KeyZ', 2);
+  const afterUndo = await state();
+  results.push(['Ctrl+Z отменяет правку блока', afterUndo.firstLabel !== 'Правка через Ctrl+Z']);
+
+  // Выделение обязано пережить правки: иначе пользователь потерял бы
+  // блок, который настраивал.
+  results.push(['выделение сохраняется после правок', afterUndo.selected !== '']);
+
+  // Содержимое текстового блока вводится через панель и должно появиться
+  // на холсте. Берём блок text.*: у section.hero поля содержимого нет,
+  // его наполняют данные на этапе 3.
+  // Выбираем текстовый блок кликом ниже по холсту.
+  await page.send('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    x: Math.round(box.x + box.width / 2),
+    y: Math.round(box.y + 290),
+    button: 'left',
+    clickCount: 1,
+  });
+  await page.send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x: Math.round(box.x + box.width / 2),
+    y: Math.round(box.y + 290),
+    button: 'left',
+    clickCount: 1,
+  });
+  await new Promise((r) => setTimeout(r, 500));
+
+  // Правка содержимого попадает в дерево по blur поля. Без реального
+  // фокуса blur не сработает и текст останется только в DOM — поэтому
+  // фокусируем поле явно, а затем проверяем, что значение дошло до state.
+  const typed = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `(() => {
+      const area = document.querySelector('.props__textarea');
+      if (!area) return { error: 'нет поля содержимого' };
+      area.focus();
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype, 'value').set;
+      setter.call(area, 'Текст блока на холсте');
+      area.dispatchEvent(new Event('input', { bubbles: true }));
+      return { focused: document.activeElement === area };
+    })()`,
+  });
+  await new Promise((r) => setTimeout(r, 300));
+
+  // blur: поле теряет фокус, обработчик записывает правку в дерево.
+  await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `(() => {
+      document.activeElement?.blur?.();
+      return true;
+    })()`,
+  });
+  await new Promise((r) => setTimeout(r, 500));
+
+  // Поле управляемое: после blur его значение приходит из state дерева.
+  const contentValue = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `(() => {
+      const area = document.querySelector('.props__textarea');
+      return area ? area.value : null;
+    })()`,
+  });
+  const contentApplied = contentValue.result.value === 'Текст блока на холсте';
+
+  results.push([
+    'у текстового блока есть поле содержимого',
+    !typed.result.value.error,
+  ]);
+  results.push(['правка содержимого доходит до дерева', contentApplied]);
+
+  return results;
+}
+
 const info = probe.result.value;
 let stats = null;
 if (info.found) {
@@ -188,19 +423,33 @@ if (errors.length) {
   }
 }
 
-page.ws.close();
-cleanup();
-
 const checks = [
   ['холст найден', info.found],
   ['на холсте есть блоки', info.blocks > 0],
   ['холст не чёрный', stats ? stats.blackShare < 0.5 : false],
   ['на холсте видны разные цвета', stats ? stats.distinct >= 2 : false],
 ];
+
+// Сценарии выполняются до закрытия сокета: они шлют команды в браузер.
+// После cleanup() соединение уже разорвано и CDP отвечает таймаутом.
+const scenarios = info.found ? await runScenarios(page, info.box) : [];
+
+// Кадр после сценариев: на нём видны панель свойств и выделенный блок.
+// Раньше снимок брался до сценариев и показывал пустую панель.
+const shotAfter = await page.send('Page.captureScreenshot', { format: 'png' });
+writeFileSync('editor-props.png', Buffer.from(shotAfter.data, 'base64'));
+
+page.ws.close();
+cleanup();
+
 console.log('');
 let ok = true;
-for (const [name, pass] of checks) {
+for (const [name, pass] of [...checks, ...scenarios]) {
   if (!pass) ok = false;
   console.log(`  ${pass ? 'ок  ' : '!!  '}${name}`);
 }
-process.exit(ok ? 0 : 1);
+
+// Именно exitCode, а не process.exit: при перенаправлении вывода
+// в файл process.exit обрывает асинхронную запись stdout, и часть
+// строк (включая результаты проверок) теряется.
+process.exitCode = ok ? 0 : 1;
