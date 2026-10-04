@@ -32,6 +32,7 @@ const ALLOWED = new Set([
   'BlueOak-1.0.0',
   'Zlib',
   'MPL-2.0', // Mozilla — слабый copyleft, разрешён ТЗ явно
+  'OFL-1.1', // Inter и JetBrains Mono — ТЗ п.225, п.775: SIL OFL
   'LGPL-3.0-or-later',
   'LGPL-2.1-or-later',
   // Собственные закрытые пакеты AuraBuilder

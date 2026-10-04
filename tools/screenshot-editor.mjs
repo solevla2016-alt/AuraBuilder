@@ -487,6 +487,30 @@ const key = async (letter, code, modifiers = 0) => {
     undoProbe.has && undoProbe.value !== 'Проверка отмены после автосохранения',
   ]);
 
+  // Шрифт должен быть свой (ТЗ п.225, п.10.1) и реально применяться:
+  // подключённый, но не загрузившийся Inter выглядит как системный
+  // шрифт и внешних запросов не видно — ошибка проходит молча.
+  const fontProbe = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `(() => {
+      const applied = getComputedStyle(document.body).fontFamily;
+      const loaded = [...document.fonts].filter(f => f.status === 'loaded')
+        .map(f => f.family + ' ' + f.weight);
+      const wanted = [...document.fonts].filter(f => f.family === 'Inter')
+        .map(f => f.status);
+      return { applied, loaded, interCount: wanted.length, interLoaded: wanted.filter(s => s === 'loaded').length };
+    })()`,
+  });
+  const font = fontProbe.result.value ?? {};
+  results.push([
+    'в стеке шрифтов есть Inter',
+    String(font.applied ?? '').includes('Inter'),
+  ]);
+  results.push([
+    `Inter реально загружен (${font.interLoaded} из ${font.interCount} начертаний)`,
+    font.interLoaded > 0,
+  ]);
+
   return results;
 }
 

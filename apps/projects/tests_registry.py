@@ -8,7 +8,7 @@
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from projects.models import default_tree
+from projects.models import Project, default_tree
 from projects.module_registry import (
     CATEGORIES,
     KINDS,
@@ -193,6 +193,125 @@ class SchemaTests(APITestCase):
         error = validate_tree(self._tree(props={'heading': 'я' * 500}))
         self.assertIsNotNone(error)
         self.assertIn('heading', error)
+
+
+class SchemaPropsRoundTripTests(APITestCase):
+    """Свойства доходят до базы и обратно, а мусор не проходит.
+
+    Отдельная проверка validate_tree тут не годится: панель пишет props
+    через API, и ошибка может прятаться в сериализаторе, в преобразовании
+    имён полей или в самой записи в jsonb.
+    """
+
+    def _save(self, props):
+        project = Project.objects.create(name='Проверка props', tree=default_tree())
+        response = self.client.put(
+            f'/api/projects/{project.pk}/',
+            {
+                'name': 'Проверка props',
+                'tree': {
+                    'width': 720,
+                    'blocks': [
+                        {
+                            'id': 'hero',
+                            'module': 'section.hero',
+                            'x': 40,
+                            'y': 40,
+                            'width': 640,
+                            'height': 200,
+                            'label': 'Первый экран',
+                            'props': props,
+                        }
+                    ],
+                },
+            },
+            format='json',
+        )
+        return project, response
+
+    def test_valid_props_are_stored_and_returned(self):
+        props = {'heading': 'Заголовок', 'background': 'accent', 'size': 'fullscreen'}
+        project, response = self._save(props)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        project.refresh_from_db()
+        stored = project.tree['blocks'][0]['props']
+        self.assertEqual(stored['heading'], 'Заголовок')
+        self.assertEqual(stored['background'], 'accent')
+
+        # Сервер отдаёт дерево в том же виде, в каком его читает редактор.
+        again = self.client.get(f'/api/projects/{project.pk}/')
+        self.assertEqual(again.json()['tree']['blocks'][0]['props']['heading'], 'Заголовок')
+
+    def test_number_prop_stays_number(self):
+        # Строкой число прошло бы незаметно для интерфейса, но
+        # отрендерилось бы как «480px» в поле и уехало в экспорт строкой.
+        project, response = self._save({'heading': 'Проверка числа'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self.client.patch(
+            f'/api/projects/{project.pk}/',
+            {
+                'tree': {
+                    'width': 720,
+                    'blocks': [
+                        {
+                            'id': 'text',
+                            'module': 'text.paragraph',
+                            'x': 0,
+                            'y': 0,
+                            'width': 320,
+                            'height': 80,
+                            'label': 'Текст',
+                            'props': {'maxWidth': 480},
+                        }
+                    ],
+                }
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        project.refresh_from_db()
+        self.assertEqual(project.tree['blocks'][0]['props']['maxWidth'], 480)
+
+    def test_invalid_props_rejected_with_reason(self):
+        project, response = self._save({'background': 'розовый'})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        # Причина нужна в ответе: панель показывает её пользователю.
+        self.assertIn('background', str(response.data))
+
+    def test_props_survive_round_trip_with_label(self):
+        # Свойства и название правятся одной панелью: одно поле не
+        # должно затирать остальные.
+        project, response = self._save({'heading': 'Первый'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self.client.patch(
+            f'/api/projects/{project.pk}/',
+            {
+                'tree': {
+                    'width': 720,
+                    'blocks': [
+                        {
+                            'id': 'hero',
+                            'module': 'section.hero',
+                            'x': 40,
+                            'y': 40,
+                            'width': 640,
+                            'height': 200,
+                            'label': 'Переименован',
+                            'props': {'heading': 'Первый'},
+                        }
+                    ],
+                }
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        project.refresh_from_db()
+        block = project.tree['blocks'][0]
+        self.assertEqual(block['label'], 'Переименован')
+        self.assertEqual(block['props']['heading'], 'Первый')
 
 
 class ModuleCatalogApiTests(APITestCase):
