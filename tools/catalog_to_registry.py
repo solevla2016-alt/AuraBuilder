@@ -86,19 +86,30 @@ PREFIX_CATEGORY = {
 }
 
 
+#: Названия, которые в каталоге записаны по-человечески, а в реестре
+#: имеют другой id. Без этого «custom code» не совпал бы с code.custom
+#: и модуль молча уезжал из MVP на этап 5: в документе 27 модулей, а
+#: в реестре получалось 26, и расхождения никто не замечал — генератор
+#: проверял сам себя.
+NAME_ALIASES = {
+    'custom_code': 'code.custom',
+}
+
+
 def split_modules(text: str) -> list[str]:
     """Разбирает список «header, hero, custom code» в названия модулей.
 
     В списках MVP названия записаны по-человечески («custom code» вместо
-    code.custom), поэтому пробелы сводим к подчёркиванию — иначе
-    code.custom никогда не совпадёт со своей же записью.
+    code.custom), поэтому пробелы сводим к подчёркиванию, а известные
+    синонимы переводим в id из реестра.
     """
     out = []
     for raw in text.split(','):
         item = raw.strip().strip('`').strip()
         if not item or item in {'и вся категория E', 'и вся категория D'}:
             continue
-        out.append(item.replace(' ', '_').replace('-', '_'))
+        item = item.replace(' ', '_').replace('-', '_')
+        out.append(NAME_ALIASES.get(item, item))
     return out
 
 
@@ -189,12 +200,29 @@ def parse_catalog() -> list[dict]:
             # «вся категория X» — принадлежность к категории решает всё
             return f'@{code}' in names
 
-        if short_name in mvp_names:
+        # Сверять нужно и по полному id, и по короткому имени: в списках
+        # MVP названия записаны по-человечески («custom code»), и после
+        # подстановки синонима там лежит code.custom, а не «custom».
+        # Раньше проверялось только короткое имя, code.custom уезжал на
+        # этап 5, и в реестре получалось 26 модулей MVP вместо 27 —
+        # расхождение с документом не ловилось, потому что генератор
+        # проверял сам себя.
+        if module_id in mvp_names or short_name in mvp_names:
             stages = [STAGE_MVP]
         elif in_stage(STAGE_EXPANSION_2):
             stages = [STAGE_EXPANSION_2]
         else:
             stages = [STAGE_EXPANSION_1]
+
+        # Модуль из списка MVP обязан быть на этапе 3. Раньше такая
+        # ошибка проходила молча: генератор сам себя и проверял.
+        if stages != [STAGE_MVP] and (
+            module_id in mvp_names or short_name in mvp_names
+        ):
+            raise SystemExit(
+                f'модуль {module_id} есть в списке MVP, но попал на этап '
+                f'{stages[0]}: проверьте синоним в NAME_ALIASES'
+            )
 
         modules.append(
             {

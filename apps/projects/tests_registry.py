@@ -14,7 +14,10 @@ from projects.module_registry import (
     KINDS,
     MODULES,
     MODULE_IDS,
+    SCHEMAS,
+    SCHEMA_IDS,
     modules_for_stage,
+    schema_for,
 )
 from projects.serializers import validate_tree
 
@@ -81,6 +84,115 @@ class RegistryIntegrityTests(APITestCase):
         self.assertIsNone(validate_tree(default_tree()))
         for block in default_tree()['blocks']:
             self.assertIn(block['module'], MODULE_IDS)
+
+
+class SchemaTests(APITestCase):
+    """Схемы свойств: реестр, валидация и применение."""
+
+    def _tree(self, module='section.hero', **block):
+        base = {
+            'id': 'a',
+            'x': 0,
+            'y': 0,
+            'width': 640,
+            'height': 200,
+            'label': 'x',
+            'module': module,
+        }
+        base.update(block)
+        return {'width': 720, 'blocks': [base]}
+
+    def test_three_schemas_defined(self):
+        self.assertEqual(len(SCHEMAS), 3)
+        self.assertEqual(SCHEMA_IDS, frozenset({'section.hero', 'text.heading', 'text.paragraph'}))
+
+    def test_schema_props_have_types_from_allowed_set(self):
+        from projects.serializers import ALLOWED_PROP_TYPES
+
+        for schema in SCHEMAS.values():
+            for prop in schema.props:
+                self.assertIn(prop.type, ALLOWED_PROP_TYPES, f'{schema.module_id}.{prop.name}')
+
+    def test_select_props_have_options(self):
+        for schema in SCHEMAS.values():
+            for prop in schema.props:
+                if prop.type == 'select':
+                    self.assertTrue(prop.limits.get('options'), f'{schema.module_id}.{prop.name}')
+
+    def test_required_props_have_defaults(self):
+        for schema in SCHEMAS.values():
+            for prop in schema.props:
+                if prop.required:
+                    self.assertIsNotNone(prop.default, f'{schema.module_id}.{prop.name}')
+
+    def test_defaults_only_contain_set_values(self):
+        for schema in SCHEMAS.values():
+            for name, value in schema.defaults().items():
+                self.assertIsNotNone(value, f'{schema.module_id}.{name}')
+
+    def test_schema_known_to_backend(self):
+        self.assertIsNotNone(schema_for('section.hero'))
+        self.assertIsNone(schema_for('section.header'))
+
+    def test_accepts_valid_props(self):
+        from projects.serializers import validate_tree
+
+        self.assertIsNone(
+            validate_tree(self._tree(props={'background': 'accent', 'size': 'fullscreen'}))
+        )
+
+    def test_rejects_unknown_prop(self):
+        from projects.serializers import validate_tree
+
+        error = validate_tree(self._tree(props={'нетакого': 'x'}))
+        self.assertIsNotNone(error)
+        self.assertIn('не описано', error)
+
+    def test_rejects_bad_select_value(self):
+        from projects.serializers import validate_tree
+
+        error = validate_tree(self._tree(props={'background': 'розовый'}))
+        self.assertIsNotNone(error)
+        self.assertIn('background', error)
+
+    def test_rejects_prop_for_module_without_schema(self):
+        # У section.header схемы нет: принимаются только скаляры,
+        # иначе в базу попадёт вложенность, которую экспорт не разберёт.
+        from projects.serializers import validate_tree
+
+        tree = self._tree(module='section.header', props={'любое': 'значение'})
+        self.assertIsNone(validate_tree(tree))
+
+        nested = self._tree(module='section.header', props={'любое': {'a': 1}})
+        self.assertIsNotNone(validate_tree(nested))
+
+    def test_rejects_too_many_props(self):
+        from projects.serializers import MAX_PROPS, validate_tree
+
+        tree = self._tree(props={f'p{i}': 'x' for i in range(MAX_PROPS + 1)})
+        self.assertIsNotNone(validate_tree(tree))
+
+    def test_number_prop_bounds(self):
+        from projects.serializers import validate_tree
+
+        # maxWidth у text.paragraph ограничен 240–960.
+        self.assertIsNone(validate_tree(self._tree(module='text.paragraph', props={'maxWidth': 480})))
+        self.assertIsNotNone(validate_tree(self._tree(module='text.paragraph', props={'maxWidth': 10})))
+        self.assertIsNotNone(validate_tree(self._tree(module='text.paragraph', props={'maxWidth': 5000})))
+
+    def test_number_prop_rejects_string(self):
+        from projects.serializers import validate_tree
+
+        error = validate_tree(self._tree(module='text.paragraph', props={'maxWidth': 'много'}))
+        self.assertIsNotNone(error)
+        self.assertIn('maxWidth', error)
+
+    def test_long_text_prop_rejected(self):
+        from projects.serializers import validate_tree
+
+        error = validate_tree(self._tree(props={'heading': 'я' * 500}))
+        self.assertIsNotNone(error)
+        self.assertIn('heading', error)
 
 
 class ModuleCatalogApiTests(APITestCase):

@@ -126,7 +126,7 @@ PostgreSQL ведут себя по-разному на больших дере�
 ```bash
 npm run typecheck          # типы фронтенда
 npm run tokens:check       # токены не разошлись с docs/palette.json
-node docs/check-contrast.mjs   # контраст 40 пар по WCAG
+npm run tokens:contrast    # контраст 40 пар по WCAG
 npm run registry:check    # реестр модулей не разошёлся с каталогом
 npm run licenses           # лицензии npm-зависимостей
 node tools/measure-lcp.mjs # LCP против бюджета ТЗ п.1.3
@@ -142,16 +142,23 @@ cd apps && ..\.venv\Scripts\python manage.py test projects
 ```
 docs/MODULE-CATALOG.md
   └─ tools/catalog_to_registry.py   → packages/registry/modules.json
+docs/MODULE-PROPS.md
+  └─ tools/props_to_registry.py     → packages/registry/props.json
        └─ packages/registry/build.mjs → apps/projects/module_registry.py
-                                     → apps/web/src/ui/moduleRegistry.ts
+                                      → apps/web/src/ui/moduleRegistry.ts
 ```
 
-`npm run registry:check` падает, если любой слой разошёлся с каталогом.
-После правки каталога: `python tools/catalog_to_registry.py` и
-`npm run registry:build`.
+`npm run registry:check` падает, если любой слой разошёлся с документами.
+После правки каталога или схем свойств: `npm run registry:catalog`,
+`npm run props:catalog` и `npm run registry:build`.
 
-Реестр: 65 модулей, 5 категорий. Этапы выпуска — 3 (MVP, 26 модулей),
-5 (27), 6 (12).
+Схемы свойств описывают лишь модули, у которых настройки отличаются от
+общих полей позиционирования. Панель редактора и сервер читают одну и ту
+же схему из реестра: неизвестное поле блока сервер отвергает, иначе
+экспорт наткнулся бы на поле, которого он не разбирает.
+
+Реестр: 65 модулей, 5 категорий. Этапы выпуска — 3 (MVP, 27 модулей),
+5 (26), 6 (12).
 
 ⚠️ В `docs/MODULE-CATALOG.md` есть расхождение, ожидающее решения:
 заголовок объявляет 28 модулей MVP, но перечислено 27 (в категории B

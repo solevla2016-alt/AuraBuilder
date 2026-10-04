@@ -397,6 +397,96 @@ const key = async (letter, code, modifiers = 0) => {
   ]);
   results.push(['правка содержимого доходит до дерева', contentApplied]);
 
+  // Панель первого блока — section.hero, у которого есть схема свойств.
+  // Переключаемся на него и проверяем, что поля отрисов��ются по
+  // реестру, а не по общему списку.
+  await page.send('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    x: Math.round(box.x + box.width / 2),
+    y: Math.round(box.y + 120),
+    button: 'left',
+    clickCount: 1,
+  });
+  await page.send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x: Math.round(box.x + box.width / 2),
+    y: Math.round(box.y + 120),
+    button: 'left',
+    clickCount: 1,
+  });
+  await new Promise((r) => setTimeout(r, 600));
+
+  const schemaFields = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `(() => {
+      const ids = [...document.querySelectorAll('.props-panel [id^="prop-"]')].map(el => el.id);
+      return { ids, hasSelect: !!document.querySelector('.props-panel select') };
+    })()`,
+  });
+  const fields = schemaFields.result.value;
+  results.push([
+    'панель показывает поля схемы модуля',
+    ['prop-heading', 'prop-buttonLabel', 'prop-background', 'prop-size'].every((id) =>
+      fields.ids.includes(id),
+    ),
+  ]);
+  results.push(['для select нарисованы варианты', fields.hasSelect]);
+
+// Регрессия: автосохранение сбрасывало историю, и Ctrl+Z переставал
+  // работать через секунду после правки — отмена пропадала ровно тогда,
+  // когда пользователь возвращался к работе. Проверяем, что после
+  // автоматического сохранения отмена жива.
+  const typedLabel = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `(() => {
+      const input = document.querySelector('#block-label');
+      if (!input) return { ok: false, why: 'поля нет' };
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype, 'value',
+      ).set;
+      setter.call(input, 'Проверка отмены после автосохранения');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return { ok: input.value === 'Проверка отмены после автосохранения' };
+    })()`,
+  });
+  results.push([
+    'панель дала изменить название блока',
+    typedLabel.result.value?.ok === true,
+  ]);
+
+  // Ждём заведомо больше паузы автосохранения (1200 мс).
+  await new Promise((r) => setTimeout(r, 2600));
+
+  const saveLabel = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `(document.querySelector('.save-state')?.textContent ?? '').trim()`,
+  });
+  results.push([
+    'автосохранение сработало без Ctrl+S',
+    saveLabel.result.value.includes('Сохранено'),
+  ]);
+
+  // Фокус с поля ввода нужно снять: иначе Ctrl+Z отменит правку
+  // текста, а не действие редактора.
+  await page.send('Runtime.evaluate', {
+    expression: `document.activeElement?.blur?.()`,
+  });
+  await key('z', 'KeyZ', 2);
+  await new Promise((r) => setTimeout(r, 500));
+
+  const afterAutosaveUndo = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `(() => {
+      const el = document.querySelector('#block-label');
+      return { has: !!el, value: el ? el.value : '' };
+    })()`,
+  });
+  const undoProbe = afterAutosaveUndo.result.value ?? {};
+  results.push([
+    'Ctrl+Z работает после автосохранения',
+    undoProbe.has && undoProbe.value !== 'Проверка отмены после автосохранения',
+  ]);
+
   return results;
 }
 

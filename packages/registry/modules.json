@@ -184,6 +184,17 @@
       "minStage": 3
     },
     {
+      "id": "code.custom",
+      "name": "Произвольный код",
+      "category": "content",
+      "categoryLabel": "Контентные модули",
+      "kind": "text",
+      "stages": [
+        3
+      ],
+      "minStage": 3
+    },
+    {
       "id": "text.list",
       "name": "Список",
       "category": "content",
@@ -384,17 +395,6 @@
     {
       "id": "text.code",
       "name": "Код",
-      "category": "content",
-      "categoryLabel": "Контентные модули",
-      "kind": "text",
-      "stages": [
-        5
-      ],
-      "minStage": 5
-    },
-    {
-      "id": "code.custom",
-      "name": "Произвольный код",
       "category": "content",
       "categoryLabel": "Контентные модули",
       "kind": "text",

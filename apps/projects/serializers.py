@@ -11,16 +11,21 @@ from typing import Any
 from rest_framework import serializers
 
 from .models import Project, default_tree
-from .module_registry import MODULE_IDS
+from .module_registry import MODULE_IDS, schema_for
 
 MAX_BLOCKS = 500
 MAX_LABEL = 200
 MAX_CONTENT = 5000
+MAX_PROPS = 50
 MAX_ID_LEN = 64
 COORD_LIMIT = 10000
 
 #: Допустимые выравнивания содержимого блока (см. project.ts).
 ALLOWED_ALIGN = ('left', 'center', 'right')
+
+#: Типы свойств, которые панель умеет отрисовывать. Всё, чего здесь нет,
+#: сервер обязан отвергнуть: неизвестное поле экспорт не разберёт.
+ALLOWED_PROP_TYPES = ('text', 'textarea', 'number', 'select', 'boolean', 'color')
 
 
 def validate_tree(value: Any) -> str | None:
@@ -93,6 +98,72 @@ def validate_tree(value: Any) -> str | None:
                 return prefix + 'content: строка'
             if len(content) > MAX_CONTENT:
                 return prefix + f'content: длиннее {MAX_CONTENT} символов'
+
+        error = validate_props(module_id, block.get('props'), prefix + 'props: ')
+        if error:
+            return error
+
+    return None
+
+
+def validate_props(module_id: str, value: Any, prefix: str) -> str | None:
+    """Проверяет свойства блока по схеме его модуля.
+
+    Схема берётся из реестра, поэтому сервер и редактор смотрят в один
+    источник. Клиентскую проверку обойти можно, а экспорт (ТЗ п.16.2)
+    встретит поле, которого не знает, и упадёт на позапросной сборке.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        return prefix + 'ожидается объект'
+    if len(value) > MAX_PROPS:
+        return prefix + f'больше {MAX_PROPS} свойств'
+
+    schema = schema_for(module_id)
+    if schema is None:
+        # Схемы у модуля нет: принимаем только плоские скалярные значения.
+        # Произвольная вложенность сюда попадать не должна.
+        for key, item in value.items():
+            if not isinstance(key, str) or len(key) > 64:
+                return prefix + 'ключ: строка до 64 символов'
+            if not isinstance(item, (str, int, float, bool)):
+                return f'{prefix}{key}: ожидается скалярное значение'
+            if isinstance(item, str) and len(item) > MAX_CONTENT:
+                return f'{prefix}{key}: длиннее {MAX_CONTENT} символов'
+        return None
+
+    known = {p.name: p for p in schema.props}
+
+    for key, item in value.items():
+        prop = known.get(key)
+        if prop is None:
+            return prefix + f'свойство "{key}" не описано у модуля {module_id}'
+
+        if prop.type == 'number':
+            if isinstance(item, bool) or not isinstance(item, (int, float)):
+                return f'{prefix}{key}: ожидается число'
+            limits = prop.limits or {}
+            if 'min' in limits and item < limits['min']:
+                return f'{prefix}{key}: меньше {limits["min"]}'
+            if 'max' in limits and item > limits['max']:
+                return f'{prefix}{key}: больше {limits["max"]}'
+        elif prop.type == 'boolean':
+            if not isinstance(item, bool):
+                return f'{prefix}{key}: ожидается true или false'
+        elif prop.type == 'select':
+            options = (prop.limits or {}).get('options') or []
+            if item not in options:
+                return f'{prefix}{key}: допустимо {", ".join(map(str, options))}'
+        elif prop.type == 'color':
+            if not isinstance(item, str) or len(item) > 32:
+                return f'{prefix}{key}: строка до 32 символов'
+        elif prop.type in ('text', 'textarea'):
+            if not isinstance(item, str):
+                return f'{prefix}{key}: строка'
+            limit = MAX_LABEL if prop.type == 'text' else MAX_CONTENT
+            if len(item) > limit:
+                return f'{prefix}{key}: длиннее {limit} символов'
 
     return None
 

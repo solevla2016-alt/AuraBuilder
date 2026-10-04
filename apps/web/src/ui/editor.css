@@ -176,6 +176,49 @@
   cursor: default;
 }
 
+/* Состояние автосохранения в верхней панели. Постоянно на виду:
+   без него страх потерять работу возвращается. */
+
+.save-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--text-xs);
+  color: var(--textSecondary);
+  white-space: nowrap;
+}
+
+.save-state.is-saved {
+  color: var(--success);
+}
+
+.save-state.is-dirty {
+  color: var(--textSecondary);
+}
+
+.save-state.is-error {
+  color: var(--danger);
+}
+
+.save-state__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid var(--borderStrong);
+  border-top-color: var(--accentSurface);
+  animation: aura-pulse 0.9s linear infinite;
+}
+
+@media (max-width: 900px) {
+  .save-state {
+    /* На узком экране длинная подпись «сохранено 4 минуты назад»
+       вытесняет кнопки. */
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
 /* --- Контекстная панель свойств --- */
 
 /*
@@ -291,6 +334,47 @@
   outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
   border-color: transparent;
+}
+
+/* Нативный select в тёмной теме рисует светлую выпадающую часть, а
+   системный список вообще не наследует токены. Свой вид выглядит
+   одинаково в обеих темах и не зависит от настроек Windows. */
+select.prop__input {
+  appearance: none;
+  padding-right: var(--space-lg);
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    right var(--space-md) center,
+    right calc(var(--space-md) - 4px) center;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+select.prop__input option {
+  background: var(--panel);
+  color: var(--textPrimary);
+}
+
+/* Строка с переключателем: подпись справа от него, а не под ним. */
+.prop--row {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-sm);
+  min-height: var(--min-target);
+  cursor: pointer;
+}
+
+.prop--row input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accentSurface);
+  cursor: pointer;
+}
+
+.prop--row .prop__label {
+  color: var(--textPrimary);
 }
 
 .props__aligns {

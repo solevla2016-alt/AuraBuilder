@@ -13,15 +13,16 @@
  * работает клавиатура. z-index берётся из шкалы слоёв токенов.
  */
 
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { Icon, type IconName } from './icons';
 import { api, ApiError } from './api';
 import { defaultTree, newBlockId, validateTree, type Block, type PageTree } from './project';
-import { MODULE_CATEGORIES, MODULES, kindOf } from './moduleRegistry';
+import { MODULE_CATEGORIES, MODULES, kindOf, propDefaults } from './moduleRegistry';
 import type { ModuleDef } from './moduleRegistry';
 import { ModulePalette } from './ModulePalette';
 import { PropertiesPanel, type Align, type BlockPatch } from './PropertiesPanel';
 import { useHistory } from './useHistory';
+import { useAutosave } from './useAutosave';
 import './editor.css';
 
 const Canvas = lazy(() => import('./Canvas'));
@@ -52,8 +53,6 @@ const TOOLS: Tool[] = [
 /*  Состояние сохранения                                               */
 /* ------------------------------------------------------------------ */
 
-type SaveState = 'idle' | 'saving' | 'saved' | 'error';
-
 const PROJECT_ID = '00000000-0000-4000-8000-000000000001';
 
 /**
@@ -70,10 +69,8 @@ export function EditorCanvas() {
   const [tool, setTool] = useState('select');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
-  const [saveState, setSaveState] = useState<SaveState>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const dirtyRef = useRef(false);
 
   // Дерево живёт в истории: каждое действие — одна запись, Ctrl+Z
   // откатывает действие целиком, а не доли пикселя.
@@ -131,7 +128,6 @@ export function EditorCanvas() {
         // reset, а не commit: то, что пришло с сервера, не должно
         // попадать в историю и отменяться по Ctrl+Z.
         history.reset(p.tree);
-        dirtyRef.current = false;
       })
       .catch((e: unknown) => {
         if (cancelled) return;
@@ -152,11 +148,6 @@ export function EditorCanvas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const markDirty = useCallback(() => {
-    dirtyRef.current = true;
-    setSaveState('idle');
-  }, []);
-
   const handleMove = useCallback(
     (id: string, x: number, y: number) => {
       // Один жест перетаскивания — одна запись в истории: onDragEnd
@@ -165,9 +156,8 @@ export function EditorCanvas() {
         ...tree,
         blocks: tree.blocks.map((b) => (b.id === id ? { ...b, x, y } : b)),
       });
-      markDirty();
     },
-    [history, tree, markDirty],
+    [history, tree],
   );
 
   /** Применение патча к выбранному блоку. */
@@ -182,6 +172,9 @@ export function EditorCanvas() {
           if (patch.label !== undefined) next.label = patch.label;
           if (patch.align !== undefined) next.align = patch.align;
           if (patch.content !== undefined) next.content = patch.content;
+          // Схема свойств приходит целиком: так добавление одного поля
+          // не затирает остальные, о которых панель не знает.
+          if (patch.props !== undefined) next.props = { ...(b.props ?? {}), ...patch.props };
           if (patch.width !== undefined) next.width = Math.max(1, patch.width);
           if (patch.height !== undefined) next.height = Math.max(1, patch.height);
           if (patch.x !== undefined) next.x = Math.max(0, patch.x);
@@ -189,9 +182,8 @@ export function EditorCanvas() {
           return next;
         }),
       });
-      markDirty();
     },
-    [history, tree, selectedId, markDirty],
+    [history, tree, selectedId],
   );
 
   const deleteSelected = useCallback(() => {
@@ -201,8 +193,7 @@ export function EditorCanvas() {
       blocks: tree.blocks.filter((b) => b.id !== selectedId),
     });
     setSelectedId(null);
-    markDirty();
-  }, [history, tree, selectedId, markDirty]);
+  }, [history, tree, selectedId]);
 
   const duplicateSelected = useCallback(() => {
     if (!selected) return;
@@ -216,8 +207,7 @@ export function EditorCanvas() {
     };
     history.commit({ ...tree, blocks: [...tree.blocks, copy] });
     setSelectedId(copy.id);
-    markDirty();
-  }, [history, tree, selected, markDirty]);
+  }, [history, tree, selected]);
 
   const copyStyle = useCallback(() => {
     if (!selected) return;
@@ -247,8 +237,7 @@ export function EditorCanvas() {
         return next;
       }),
     });
-    markDirty();
-  }, [history, tree, selected, selectedId, copiedStyle, markDirty]);
+  }, [history, tree, selected, selectedId, copiedStyle]);
 
   /**
    * Вставка модуля. Новый блок ставится под последним на странице —
@@ -270,11 +259,18 @@ export function EditorCanvas() {
         label: module.name,
       };
 
+      // Значения по умолчанию подставляются в панель из реестра, а не
+      // пишутся в блок: иначе каждый блок хранил бы одинаковый мусор,
+      // и правка одного поля затирала бы остальные при слиянии.
+      const defaults = propDefaults(module.id);
+      if (Object.keys(defaults).length > 0) {
+        block.props = defaults;
+      }
+
       history.commit({ ...tree, blocks: [...tree.blocks, block] });
       setSelectedId(block.id);
-      markDirty();
     },
-    [history, tree, markDirty],
+    [history, tree],
   );
 
   async function handleSave() {
@@ -282,31 +278,29 @@ export function EditorCanvas() {
     // не нужно ждать round-trip, чтобы узнать про опечатку в модуле.
     const problem = validateTree(tree);
     if (problem) {
-      setSaveError(`Дерево не прошло проверку: ${problem}`);
-      setSaveState('error');
-      return;
+      throw new Error(`Дерево не прошло проверку: ${problem}`);
     }
 
-    setSaveState('saving');
+    const saved = await api.saveProject(
+      PROJECT_ID,
+      'Интернет-магазин «Цветы»',
+      tree,
+    );
+    // Ответ сервера помечается сохранённым, но история не сбрасывается:
+    // сброс здесь означал бы, что Ctrl+Z перестаёт работать через
+    // секунду после каждой правки — отмена пропадала бы именно в тот
+    // момент, когда пользователь вернулся к работе.
+    history.markSaved(saved.tree);
     setSaveError(null);
-    try {
-      const saved = await api.saveProject(
-        PROJECT_ID,
-        'Интернет-магазин «Цветы»',
-        tree,
-      );
-      // Ответ сервера становится текущим состоянием без записи
-      // в историю: это та же правка, уже сохранённая.
-      history.reset(saved.tree);
-      dirtyRef.current = false;
-      setSaveState('saved');
-    } catch (e) {
-      setSaveError(
-        e instanceof ApiError ? `Не сохранено: ${e.message}` : 'Не сохранено: сеть недоступна',
-      );
-      setSaveState('error');
-    }
   }
+
+  // Автосохранение: работа не должна теряться при закрытии вкладки.
+  // Ctrl+S остаётся — он сохраняет немедленно, не дожидаясь паузы.
+  const autosave = useAutosave({
+    save: handleSave,
+    dirty: history.dirty,
+    enabled: !loading,
+  });
 
   /**
    * Горячие клавиши — основа интерфейса, а не бонус (см.
@@ -329,7 +323,7 @@ export function EditorCanvas() {
 
       if (mod && key === 's') {
         e.preventDefault();
-        void handleSave();
+        void autosave.saveNow();
         return;
       }
 
@@ -366,16 +360,7 @@ export function EditorCanvas() {
 
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [history, selectedId, duplicateSelected, deleteSelected]);
-
-  const saveLabel =
-    saveState === 'saving'
-      ? 'Сохранение…'
-      : saveState === 'saved'
-        ? 'Сохранено'
-        : dirtyRef.current
-          ? 'Есть изменения'
-          : 'Сохранить';
+  }, [history, selectedId, duplicateSelected, deleteSelected, autosave]);
 
   return (
     <div className="editor">
@@ -407,14 +392,32 @@ export function EditorCanvas() {
             <Icon name="redo" />
           </button>
           <span className="top-bar__sep" aria-hidden="true" />
+          {/*
+            Состояние сохранения живёт здесь же, а не в отдельном
+            баннере: подпись «сохранено 2 минуты назад» должна быть
+            на виду постоянно, иначе страх потери работы возвращается.
+          */}
+          <span
+            className={`save-state is-${autosave.state}`}
+            role="status"
+            aria-live="polite"
+          >
+            {autosave.state === 'saving' ? (
+              <span className="save-state__dot" aria-hidden="true" />
+            ) : null}
+            {autosave.state === 'error' ? <Icon name="settings" size={14} /> : null}
+            {autosave.state === 'saved' ? <Icon name="check" size={14} /> : null}
+            {autosave.label}
+          </span>
           <button
             type="button"
-            className={`btn btn--ghost btn--save is-${saveState}`}
-            onClick={() => void handleSave()}
-            disabled={saveState === 'saving'}
+            className="btn btn--ghost"
+            onClick={() => void autosave.saveNow()}
+            disabled={autosave.state === 'saving'}
+            title="Сохранить сейчас (Ctrl+S)"
           >
-            <Icon name="check" />
-            {saveLabel}
+            <Icon name="download" size={16} />
+            Сохранить
           </button>
           <button type="button" className="btn btn--primary">
             <Icon name="rocket" />
@@ -423,10 +426,10 @@ export function EditorCanvas() {
         </div>
       </header>
 
-      {saveError ? (
+      {autosave.state === 'error' ? (
         <p className="banner banner--warn" role="status">
           <Icon name="settings" size={16} />
-          {saveError}
+          {autosave.error ?? saveError}
         </p>
       ) : null}
 

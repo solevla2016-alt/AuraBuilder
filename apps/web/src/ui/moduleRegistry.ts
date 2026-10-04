@@ -49,6 +49,7 @@ export const MODULES: ModuleDef[] = [
   { id: 'media.image', name: 'Изображение', category: 'content', categoryLabel: 'Контентные модули', kind: 'text', stages: [3], minStage: 3 },
   { id: 'action.button', name: 'Кнопка', category: 'content', categoryLabel: 'Контентные модули', kind: 'text', stages: [3], minStage: 3 },
   { id: 'seo.schema', name: 'Микроразметка', category: 'content', categoryLabel: 'Контентные модули', kind: 'text', stages: [3], minStage: 3 },
+  { id: 'code.custom', name: 'Произвольный код', category: 'content', categoryLabel: 'Контентные модули', kind: 'text', stages: [3], minStage: 3 },
   { id: 'text.list', name: 'Список', category: 'content', categoryLabel: 'Контентные модули', kind: 'text', stages: [3], minStage: 3 },
   { id: 'action.link', name: 'Ссылка', category: 'content', categoryLabel: 'Контентные модули', kind: 'text', stages: [3], minStage: 3 },
   { id: 'text.paragraph', name: 'Текст', category: 'content', categoryLabel: 'Контентные модули', kind: 'text', stages: [3], minStage: 3 },
@@ -68,7 +69,6 @@ export const MODULES: ModuleDef[] = [
   { id: 'section.steps', name: 'Шаги', category: 'structure', categoryLabel: 'Структурные секции', kind: 'section', stages: [5], minStage: 5 },
   { id: 'media.audio', name: 'Аудио', category: 'content', categoryLabel: 'Контентные модули', kind: 'text', stages: [5], minStage: 5 },
   { id: 'text.code', name: 'Код', category: 'content', categoryLabel: 'Контентные модули', kind: 'text', stages: [5], minStage: 5 },
-  { id: 'code.custom', name: 'Произвольный код', category: 'content', categoryLabel: 'Контентные модули', kind: 'text', stages: [5], minStage: 5 },
   { id: 'social.links', name: 'Соцсети', category: 'content', categoryLabel: 'Контентные модули', kind: 'text', stages: [5], minStage: 5 },
   { id: 'text.table', name: 'Таблица', category: 'content', categoryLabel: 'Контентные модули', kind: 'text', stages: [5], minStage: 5 },
   { id: 'media.file', name: 'Файл', category: 'content', categoryLabel: 'Контентные модули', kind: 'text', stages: [5], minStage: 5 },
@@ -122,4 +122,72 @@ export function moduleById(id: string): ModuleDef | undefined {
  */
 export function kindOf(moduleId: string): ModuleKind {
   return moduleById(moduleId)?.kind ?? 'text';
+}
+
+/* --- Схемы свойств --- */
+
+export type PropType = 'text' | 'textarea' | 'number' | 'select' | 'boolean' | 'color';
+
+export interface PropLimits {
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: string[];
+}
+
+export interface PropDef {
+  name: string;
+  type: PropType;
+  required: boolean;
+  default: string | number | boolean | null;
+  limits: PropLimits;
+  description: string;
+}
+
+export interface ModuleSchema {
+  moduleId: string;
+  props: PropDef[];
+}
+
+export const SCHEMAS: ModuleSchema[] = [
+  { moduleId: 'section.hero', props: [
+    { name: 'heading', type: 'text', required: true, default: "Создавайте сайты без кода", limits: {}, description: 'Главный заголовок первого экрана' },
+    { name: 'subheading', type: 'textarea', required: false, default: null, limits: {}, description: 'Подзаголовок под заголовком' },
+    { name: 'buttonLabel', type: 'text', required: false, default: "Опубликовать", limits: {}, description: 'Надпись на кнопке действия' },
+    { name: 'buttonLink', type: 'text', required: false, default: "#", limits: {}, description: 'Адрес кнопки' },
+    { name: 'background', type: 'select', required: true, default: "light", limits: {"options":["light","accent","dark"]}, description: 'Заливка секции' },
+    { name: 'align', type: 'select', required: true, default: "left", limits: {"options":["left","center","right"]}, description: 'Выравнивание текста' },
+    { name: 'size', type: 'select', required: true, default: "regular", limits: {"options":["compact","regular","fullscreen"]}, description: 'Высота первого экрана' }
+  ] },
+  { moduleId: 'text.heading', props: [
+    { name: 'text', type: 'text', required: true, default: "Заголовок", limits: {}, description: 'Текст заголовка' },
+    { name: 'level', type: 'select', required: true, default: "h2", limits: {"options":["h2","h3","h4"]}, description: 'Уровень заголовка' },
+    { name: 'align', type: 'select', required: true, default: "left", limits: {"options":["left","center","right"]}, description: 'Выравнивание' }
+  ] },
+  { moduleId: 'text.paragraph', props: [
+    { name: 'text', type: 'textarea', required: true, default: "Расскажите о вашем проекте", limits: {}, description: 'Текст абзаца' },
+    { name: 'align', type: 'select', required: true, default: "left", limits: {"options":["left","center","right"]}, description: 'Выравнивание' },
+    { name: 'maxWidth', type: 'number', required: false, default: 720, limits: {"min":240,"max":960,"step":40}, description: 'Ограничение ширины строки, px' }
+  ] },
+];
+
+/** Схема свойств модуля либо null, если модуль её не описал. */
+export function schemaFor(moduleId: string): ModuleSchema | null {
+  return SCHEMAS.find((s) => s.moduleId === moduleId) ?? null;
+}
+
+/** Значения по умолчанию для только что вставленного блока. */
+export type PropValue = string | number | boolean;
+
+// Тип без null: значения по умолчанию, равные null, отбрасываются
+// и в дерево не попадают.
+export function propDefaults(moduleId: string): Record<string, PropValue> {
+  const schema = schemaFor(moduleId);
+  if (!schema) return {};
+  const out: Record<string, PropValue> = {};
+  for (const p of schema.props) {
+    const v = p.default;
+    if (v !== null) out[p.name] = v as PropValue;
+  }
+  return out;
 }

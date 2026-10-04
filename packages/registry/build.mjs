@@ -31,6 +31,14 @@ if (!existsSync(source)) {
 const registry = JSON.parse(readFileSync(source, 'utf8'));
 const modules = registry.modules;
 
+// Схемы свойств необязательны: модуль без схемы использует общий набор
+// полей, и отсутствие файла не должно ломать сборку.
+const propsPath = join(here, 'props.json');
+const propsRegistry = existsSync(propsPath)
+  ? JSON.parse(readFileSync(propsPath, 'utf8'))
+  : { modules: [] };
+const propsByModule = new Map(propsRegistry.modules.map((m) => [m.id, m]));
+
 const BANNER = 'СГЕНЕРИРОВАНО — не править руками. Источник: packages/registry/modules.json';
 
 /* ---------------------------------------------------------------- */
@@ -88,17 +96,82 @@ function renderPython() {
   }
   lines.push(')');
   lines.push('');
-  lines.push('MODULES_BY_ID: dict[str, Module] = {m.id: m for m in MODULES}');
-  lines.push('MODULE_IDS: frozenset[str] = frozenset(MODULES_BY_ID)');
+lines.push('MODULES_BY_ID: dict[str, Module] = {m.id: m for m in MODULES}');
+lines.push('MODULE_IDS: frozenset[str] = frozenset(MODULES_BY_ID)');
+lines.push('');
+lines.push('#: Виды блока на холсте: от них зависит заливка в редакторе.');
+lines.push('KINDS: frozenset[str] = frozenset({m.kind for m in MODULES})');
+lines.push('');
+lines.push('');
+lines.push('@dataclass(frozen=True)');
+lines.push('class Prop:');
+lines.push('    """Одно настраиваемое свойство модуля."""');
+lines.push('');
+lines.push('    name: str');
+lines.push('    type: str');
+lines.push('    required: bool');
+lines.push('    default: object | None');
+lines.push('    limits: dict');
+lines.push('    description: str');
+lines.push('');
+lines.push('');
+lines.push('@dataclass(frozen=True)');
+lines.push('class ModuleSchema:');
+lines.push('    """Схема свойств модуля."""');
+lines.push('');
+lines.push('    module_id: str');
+lines.push('    props: tuple[Prop, ...]');
+lines.push('');
+lines.push('    def defaults(self) -> dict:');
+lines.push('        """Значения по умолчанию для только что вставленного блока."""');
+lines.push('        return {p.name: p.default for p in self.props if p.default is not None}');
+lines.push('');
+
+if (propsByModule.size) {
+  lines.push('SCHEMAS: dict[str, ModuleSchema] = {');
+  for (const m of propsRegistry.modules) {
+    const entries = m.props
+      .map((p) => {
+        const limits = JSON.stringify(p.limits ?? {});
+        const def =
+          p.default === null || p.default === undefined
+            ? 'None'
+            : typeof p.default === 'number' || typeof p.default === 'boolean'
+              ? String(p.default)
+              : JSON.stringify(p.default);
+        const cls = 'Prop';
+        return (
+          `        ${cls}('${p.name}', '${p.type}', ` +
+          `${p.required ? 'True' : 'False'}, ${def}, ${limits}, '${p.description}')`
+        );
+      })
+      .join(',\n');
+    lines.push(`    '${m.id}': ModuleSchema(`);
+    lines.push(`        '${m.id}',`);
+    lines.push('        (');
+    lines.push(entries);
+    lines.push('        ),');
+    lines.push('    ),');
+  }
+  lines.push('}');
   lines.push('');
-  lines.push('#: Виды блока на холсте: от них зависит заливка в редакторе.');
-  lines.push('KINDS: frozenset[str] = frozenset({m.kind for m in MODULES})');
+  lines.push('SCHEMA_IDS: frozenset[str] = frozenset(SCHEMAS)');
+} else {
+  lines.push('SCHEMAS: dict[str, ModuleSchema] = {}');
   lines.push('');
-  lines.push('');
-  lines.push('def modules_for_stage(stage: int) -> tuple[Module, ...]:');
-  lines.push('    """Модули, доступные на указанном этапе выпуска."""');
-  lines.push('    return tuple(m for m in MODULES if stage in m.stages)');
-  lines.push('');
+  lines.push('SCHEMA_IDS: frozenset[str] = frozenset()');
+}
+lines.push('');
+lines.push('');
+lines.push('def schema_for(module_id: str) -> ModuleSchema | None:');
+lines.push('    """Схема свойств модуля либо None, если модуль её не описал."""');
+lines.push('    return SCHEMAS.get(module_id)');
+lines.push('');
+lines.push('');
+lines.push('def modules_for_stage(stage: int) -> tuple[Module, ...]:');
+lines.push('    """Модули, доступные на указанном этапе выпуска."""');
+lines.push('    return tuple(m for m in MODULES if stage in m.stages)');
+lines.push('');
   return lines.join('\n');
 }
 
@@ -170,11 +243,84 @@ function renderTypeScript() {
   lines.push(' * Не путать с категорией каталога: data.list — категория data,');
   lines.push(' * но рисуется как текстовый блок.');
   lines.push(' */');
-  lines.push('export function kindOf(moduleId: string): ModuleKind {');
-  lines.push("  return moduleById(moduleId)?.kind ?? 'text';");
-  lines.push('}');
-  lines.push('');
-  return lines.join('\n');
+lines.push('export function kindOf(moduleId: string): ModuleKind {');
+lines.push("  return moduleById(moduleId)?.kind ?? 'text';");
+lines.push('}');
+lines.push('');
+lines.push('/* --- Схемы свойств --- */');
+lines.push('');
+lines.push("export type PropType = 'text' | 'textarea' | 'number' | 'select' | 'boolean' | 'color';");
+lines.push('');
+lines.push('export interface PropLimits {');
+lines.push('  min?: number;');
+lines.push('  max?: number;');
+lines.push('  step?: number;');
+lines.push('  options?: string[];');
+lines.push('}');
+lines.push('');
+lines.push('export interface PropDef {');
+lines.push('  name: string;');
+lines.push('  type: PropType;');
+lines.push('  required: boolean;');
+lines.push('  default: string | number | boolean | null;');
+lines.push('  limits: PropLimits;');
+lines.push('  description: string;');
+lines.push('}');
+lines.push('');
+lines.push('export interface ModuleSchema {');
+lines.push('  moduleId: string;');
+lines.push('  props: PropDef[];');
+lines.push('}');
+lines.push('');
+if (propsByModule.size) {
+  lines.push('export const SCHEMAS: ModuleSchema[] = [');
+  for (const m of propsRegistry.modules) {
+    const props = m.props
+      .map((p) => {
+        const def =
+          p.default === null || p.default === undefined
+            ? 'null'
+            : typeof p.default === 'number' || typeof p.default === 'boolean'
+              ? String(p.default)
+              : JSON.stringify(p.default);
+        return (
+          `    { name: '${p.name}', type: '${p.type}', required: ${p.required}, ` +
+          `default: ${def}, limits: ${JSON.stringify(p.limits ?? {})}, ` +
+          `description: '${p.description.replace(/'/g, "\\'")}' }`
+        );
+      })
+      .join(',\n');
+    lines.push(`  { moduleId: '${m.id}', props: [`);
+    lines.push(props);
+    lines.push('  ] },');
+  }
+  lines.push('];');
+} else {
+  lines.push('export const SCHEMAS: ModuleSchema[] = [];');
+}
+lines.push('');
+lines.push('/** Схема свойств модуля либо null, если модуль её не описал. */');
+lines.push('export function schemaFor(moduleId: string): ModuleSchema | null {');
+lines.push('  return SCHEMAS.find((s) => s.moduleId === moduleId) ?? null;');
+lines.push('}');
+lines.push('');
+lines.push('/** Значения по умолчанию для только что вставленного блока. */');
+lines.push('export type PropValue = string | number | boolean;');
+lines.push('');
+lines.push('// Тип без null: значения по умолчанию, равные null, отбрасываются');
+lines.push('// и в дерево не попадают.');
+lines.push('export function propDefaults(moduleId: string): Record<string, PropValue> {');
+lines.push('  const schema = schemaFor(moduleId);');
+lines.push('  if (!schema) return {};');
+lines.push('  const out: Record<string, PropValue> = {};');
+lines.push('  for (const p of schema.props) {');
+lines.push('    const v = p.default;');
+lines.push('    if (v !== null) out[p.name] = v as PropValue;');
+lines.push('  }');
+lines.push('  return out;');
+lines.push('}');
+lines.push('');
+return lines.join('\n');
 }
 
 /* ---------------------------------------------------------------- */

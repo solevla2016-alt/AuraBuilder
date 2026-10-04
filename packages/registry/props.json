@@ -1,0 +1,164 @@
+{
+  "_comment": "Схемы свойств модулей. Генерируются из docs/MODULE-PROPS.md скриптом tools/props_to_registry.py. Правьте документ, не этот файл.",
+  "modules": [
+    {
+      "id": "section.hero",
+      "props": [
+        {
+          "name": "heading",
+          "type": "text",
+          "required": true,
+          "default": "Создавайте сайты без кода",
+          "limits": {},
+          "description": "Главный заголовок первого экрана"
+        },
+        {
+          "name": "subheading",
+          "type": "textarea",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Подзаголовок под заголовком"
+        },
+        {
+          "name": "buttonLabel",
+          "type": "text",
+          "required": false,
+          "default": "Опубликовать",
+          "limits": {},
+          "description": "Надпись на кнопке действия"
+        },
+        {
+          "name": "buttonLink",
+          "type": "text",
+          "required": false,
+          "default": "#",
+          "limits": {},
+          "description": "Адрес кнопки"
+        },
+        {
+          "name": "background",
+          "type": "select",
+          "required": true,
+          "default": "light",
+          "limits": {
+            "options": [
+              "light",
+              "accent",
+              "dark"
+            ]
+          },
+          "description": "Заливка секции"
+        },
+        {
+          "name": "align",
+          "type": "select",
+          "required": true,
+          "default": "left",
+          "limits": {
+            "options": [
+              "left",
+              "center",
+              "right"
+            ]
+          },
+          "description": "Выравнивание текста"
+        },
+        {
+          "name": "size",
+          "type": "select",
+          "required": true,
+          "default": "regular",
+          "limits": {
+            "options": [
+              "compact",
+              "regular",
+              "fullscreen"
+            ]
+          },
+          "description": "Высота первого экрана"
+        }
+      ]
+    },
+    {
+      "id": "text.heading",
+      "props": [
+        {
+          "name": "text",
+          "type": "text",
+          "required": true,
+          "default": "Заголовок",
+          "limits": {},
+          "description": "Текст заголовка"
+        },
+        {
+          "name": "level",
+          "type": "select",
+          "required": true,
+          "default": "h2",
+          "limits": {
+            "options": [
+              "h2",
+              "h3",
+              "h4"
+            ]
+          },
+          "description": "Уровень заголовка"
+        },
+        {
+          "name": "align",
+          "type": "select",
+          "required": true,
+          "default": "left",
+          "limits": {
+            "options": [
+              "left",
+              "center",
+              "right"
+            ]
+          },
+          "description": "Выравнивание"
+        }
+      ]
+    },
+    {
+      "id": "text.paragraph",
+      "props": [
+        {
+          "name": "text",
+          "type": "textarea",
+          "required": true,
+          "default": "Расскажите о вашем проекте",
+          "limits": {},
+          "description": "Текст абзаца"
+        },
+        {
+          "name": "align",
+          "type": "select",
+          "required": true,
+          "default": "left",
+          "limits": {
+            "options": [
+              "left",
+              "center",
+              "right"
+            ]
+          },
+          "description": "Выравнивание"
+        },
+        {
+          "name": "maxWidth",
+          "type": "number",
+          "required": false,
+          "default": 720,
+          "limits": {
+            "min": 240,
+            "max": 960,
+            "step": 40
+          },
+          "description": "Ограничение ширины строки, px"
+        }
+      ]
+    }
+  ]
+}

@@ -54,6 +54,7 @@ MODULES: tuple[Module, ...] = (
     Module('media.image', 'Изображение', 'content', 'Контентные модули', 'text', (3,)),
     Module('action.button', 'Кнопка', 'content', 'Контентные модули', 'text', (3,)),
     Module('seo.schema', 'Микроразметка', 'content', 'Контентные модули', 'text', (3,)),
+    Module('code.custom', 'Произвольный код', 'content', 'Контентные модули', 'text', (3,)),
     Module('text.list', 'Список', 'content', 'Контентные модули', 'text', (3,)),
     Module('action.link', 'Ссылка', 'content', 'Контентные модули', 'text', (3,)),
     Module('text.paragraph', 'Текст', 'content', 'Контентные модули', 'text', (3,)),
@@ -73,7 +74,6 @@ MODULES: tuple[Module, ...] = (
     Module('section.steps', 'Шаги', 'structure', 'Структурные секции', 'section', (5,)),
     Module('media.audio', 'Аудио', 'content', 'Контентные модули', 'text', (5,)),
     Module('text.code', 'Код', 'content', 'Контентные модули', 'text', (5,)),
-    Module('code.custom', 'Произвольный код', 'content', 'Контентные модули', 'text', (5,)),
     Module('social.links', 'Соцсети', 'content', 'Контентные модули', 'text', (5,)),
     Module('text.table', 'Таблица', 'content', 'Контентные модули', 'text', (5,)),
     Module('media.file', 'Файл', 'content', 'Контентные модули', 'text', (5,)),
@@ -112,6 +112,68 @@ MODULE_IDS: frozenset[str] = frozenset(MODULES_BY_ID)
 
 #: Виды блока на холсте: от них зависит заливка в редакторе.
 KINDS: frozenset[str] = frozenset({m.kind for m in MODULES})
+
+
+@dataclass(frozen=True)
+class Prop:
+    """Одно настраиваемое свойство модуля."""
+
+    name: str
+    type: str
+    required: bool
+    default: object | None
+    limits: dict
+    description: str
+
+
+@dataclass(frozen=True)
+class ModuleSchema:
+    """Схема свойств модуля."""
+
+    module_id: str
+    props: tuple[Prop, ...]
+
+    def defaults(self) -> dict:
+        """Значения по умолчанию для только что вставленного блока."""
+        return {p.name: p.default for p in self.props if p.default is not None}
+
+SCHEMAS: dict[str, ModuleSchema] = {
+    'section.hero': ModuleSchema(
+        'section.hero',
+        (
+        Prop('heading', 'text', True, "Создавайте сайты без кода", {}, 'Главный заголовок первого экрана'),
+        Prop('subheading', 'textarea', False, None, {}, 'Подзаголовок под заголовком'),
+        Prop('buttonLabel', 'text', False, "Опубликовать", {}, 'Надпись на кнопке действия'),
+        Prop('buttonLink', 'text', False, "#", {}, 'Адрес кнопки'),
+        Prop('background', 'select', True, "light", {"options":["light","accent","dark"]}, 'Заливка секции'),
+        Prop('align', 'select', True, "left", {"options":["left","center","right"]}, 'Выравнивание текста'),
+        Prop('size', 'select', True, "regular", {"options":["compact","regular","fullscreen"]}, 'Высота первого экрана')
+        ),
+    ),
+    'text.heading': ModuleSchema(
+        'text.heading',
+        (
+        Prop('text', 'text', True, "Заголовок", {}, 'Текст заголовка'),
+        Prop('level', 'select', True, "h2", {"options":["h2","h3","h4"]}, 'Уровень заголовка'),
+        Prop('align', 'select', True, "left", {"options":["left","center","right"]}, 'Выравнивание')
+        ),
+    ),
+    'text.paragraph': ModuleSchema(
+        'text.paragraph',
+        (
+        Prop('text', 'textarea', True, "Расскажите о вашем проекте", {}, 'Текст абзаца'),
+        Prop('align', 'select', True, "left", {"options":["left","center","right"]}, 'Выравнивание'),
+        Prop('maxWidth', 'number', False, 720, {"min":240,"max":960,"step":40}, 'Ограничение ширины строки, px')
+        ),
+    ),
+}
+
+SCHEMA_IDS: frozenset[str] = frozenset(SCHEMAS)
+
+
+def schema_for(module_id: str) -> ModuleSchema | None:
+    """Схема свойств модуля либо None, если модуль её не описал."""
+    return SCHEMAS.get(module_id)
 
 
 def modules_for_stage(stage: int) -> tuple[Module, ...]:

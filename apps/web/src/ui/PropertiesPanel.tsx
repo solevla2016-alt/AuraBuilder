@@ -18,7 +18,8 @@
 import { useEffect, useState } from 'react';
 import { Icon } from './icons';
 import type { Block } from './project';
-import { kindOf } from './moduleRegistry';
+import { kindOf, schemaFor } from './moduleRegistry';
+import type { PropDef } from './moduleRegistry';
 
 export interface BlockPatch {
   label?: string;
@@ -28,6 +29,8 @@ export interface BlockPatch {
   height?: number;
   align?: Align;
   content?: string;
+  /** Схема свойств модуля: приходит целиком, а не по полям. */
+  props?: Record<string, string | number | boolean>;
 }
 
 export type Align = 'left' | 'center' | 'right';
@@ -88,6 +91,96 @@ function NumberField({
   );
 }
 
+function SchemaField({
+  prop,
+  value,
+  onChange,
+}: {
+  prop: PropDef;
+  value: string | number | boolean | undefined;
+  onChange: (v: string | number | boolean) => void;
+}) {
+  const id = `prop-${prop.name}`;
+
+  if (prop.type === 'boolean') {
+    return (
+      <label className="prop prop--row" htmlFor={id}>
+        <input
+          id={id}
+          type="checkbox"
+          checked={value === true}
+          onChange={(e) => onChange(e.target.checked)}
+        />
+        <span className="prop__label">{prop.name}</span>
+      </label>
+    );
+  }
+
+  if (prop.type === 'select') {
+    const options = prop.limits.options ?? [];
+    return (
+      <label className="prop" htmlFor={id}>
+        <span className="prop__label">{prop.name}</span>
+        <select
+          id={id}
+          className="prop__input"
+          value={String(value ?? prop.default ?? options[0] ?? '')}
+          onChange={(e) => onChange(e.target.value)}
+        >
+          {options.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+
+  if (prop.type === 'textarea') {
+    return (
+      <label className="prop" htmlFor={id}>
+        <span className="prop__label">{prop.name}</span>
+        <textarea
+          id={id}
+          className="props__textarea"
+          rows={2}
+          maxLength={5000}
+          value={String(value ?? prop.default ?? '')}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={(e) => onChange(e.target.value)}
+        />
+      </label>
+    );
+  }
+
+  return (
+    <label className="prop" htmlFor={id}>
+      <span className="prop__label">{prop.name}</span>
+      <input
+        id={id}
+        className="prop__input"
+        type={prop.type === 'number' ? 'number' : 'text'}
+        min={prop.limits.min}
+        max={prop.limits.max}
+        step={prop.limits.step}
+        maxLength={prop.type === 'number' ? undefined : 200}
+        value={String(value ?? prop.default ?? '')}
+        onChange={(e) => {
+          // Пустое поле не должно превращаться в NaN: такое значение
+          // сервер отвергнет вместе со всем деревом.
+          if (prop.type === 'number') {
+            const n = Number(e.target.value);
+            if (Number.isFinite(n)) onChange(n);
+            return;
+          }
+          onChange(e.target.value);
+        }}
+      />
+    </label>
+  );
+}
+
 export function PropertiesPanel({
   block,
   content,
@@ -119,6 +212,11 @@ export function PropertiesPanel({
   // с реестром модулей.
   const isText = kindOf(block.module) === 'text';
 
+  // Схема свойств приходит из реестра: панель не знает модулей.
+  // Пока схема описана для трёх модулей MVP, у остальных её нет и
+  // показывается общий набор полей.
+  const schema = schemaFor(block.module);
+
   return (
     <div className="props">
       <header className="props__head">
@@ -148,9 +246,10 @@ export function PropertiesPanel({
           </p>
         )}
 
-        <label className="prop">
+        <label className="prop" htmlFor="block-label">
           <span className="prop__label">Название</span>
           <input
+            id="block-label"
             type="text"
             className="prop__input"
             value={block.label}
@@ -159,6 +258,20 @@ export function PropertiesPanel({
           />
         </label>
       </section>
+
+      {schema ? (
+        <section className="props__group">
+          <h3>Свойства модуля</h3>
+          {schema.props.map((prop) => (
+            <SchemaField
+              key={prop.name}
+              prop={prop}
+              value={block.props?.[prop.name]}
+              onChange={(v) => onPatch({ props: { ...(block.props ?? {}), [prop.name]: v } })}
+            />
+          ))}
+        </section>
+      ) : null}
 
       <section className="props__group">
         <h3>Положение и размер</h3>
