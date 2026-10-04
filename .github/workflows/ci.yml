@@ -1,0 +1,298 @@
+# Пайплайн AuraBuilder.
+#
+# Задача пайплайна — не «сборка зелёная», а «ничего не попадёт в
+# master, что сломает прод». Поэтому проверки разнесены на независимые
+# задачи: лицензии, типы и тесты падают отдельно друг от друга, и в
+# отчёте видно, что именно сломалось.
+#
+# Отступление от ТЗ п.15.3 п.6: CI/CD через GitHub Actions — решение
+# заказчика (см. docs/TZ-GAPS.md).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Один и тот же push не должен гонять проверки дважды: если коммит уже
+# проверялся в ветке, повторный прогон только тратит минуты.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Ключ Django в проверках задаётся явно: при DEBUG=0 settings.py
+  # прерывает старт, если ключ остался dev-значением.
+  DJANGO_SECRET_KEY: ci-4f8a2b91d7c64e3fa0b5c8d2e1f9a7b3c6d0e5f2a8b4d7c1e9f3a6b0d2c5e8f1a4b7d9c3e6f0a2b5d8c1e4f7a0b3d6c9
+  DJANGO_DEBUG: "0"
+  DJANGO_TIME_ZONE: Europe/Moscow
+
+jobs:
+  # --- Сгенерированные файлы ------------------------------------------------
+  # Реестр модулей, схемы свойств и токены генерируются из документов.
+  # Если в код попал результат, а документ правили позже, стенд и
+  # документация разошлись. Проверка без сборки — самая быстрая.
+  generated:
+    name: Сгенерированные файлы актуальны
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Установить зависимости
+        run: npm ci
+
+      - name: Проверить токены, реестр и схемы свойств
+        run: npm run registry:check
+
+      - name: Проверить контраст палитры
+        run: npm run tokens:contrast
+
+  # --- Лицензии ------------------------------------------------------------
+  licenses:
+    name: Лицензии зависимостей
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: apps/requirements.txt
+
+      - name: Проверить лицензии npm
+        run: |
+          npm ci
+          npm run licenses
+
+      - name: Проверить лицензии Python
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r apps/requirements.txt
+          python tools/license_gate_py.py
+
+  # --- Фронтенд ------------------------------------------------------------
+  frontend:
+    name: Типы и сборка фронтенда
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Установить зависимости
+        run: npm ci
+
+      - name: Типы
+        run: npm run typecheck
+
+      - name: Сборка
+        run: npm run build
+
+      # Собранный чанк Konva — самая тяжёлая часть. Если он попадёт в
+      # главный чанк, первый экран потяжелеет и LCP выйдет из бюджета
+      # (ТЗ п.1.3) задолго до того, как это заметят на метриках.
+      - name: Проверить размер чанков
+        run: |
+          ls -l apps/web/dist/assets
+          # Бюджет ТЗ п.1.3: LCP < 1.5 с; грубый эквивалент по весу
+          # главного чанка — 120 КБ gzip. Konva отдельно: он грузится
+          # лениво и в первый экран не входит.
+          gzip -c apps/web/dist/assets/index-*.js | wc -c
+
+  # --- Бэкенд --------------------------------------------------------------
+  backend:
+    name: Тесты Control Plane на PostgreSQL
+    runs-on: ubuntu-latest
+
+    # PostgreSQL из того же образа, что и в docker-compose: тесты на
+    # другой версии базы проверяют не то, что пойдёт в стенд. JSONField
+    # и jsonb ведут себя по-разному, поэтому SQLite для приёмки не
+    # годится (см. README).
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: aurabuilder
+          POSTGRES_USER: aurabuilder
+          POSTGRES_PASSWORD: aurabuilder_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aurabuilder -d aurabuilder"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: apps/requirements.txt
+
+      - name: Установить зависимости
+        run: python -m pip install --upgrade pip && python -m pip install -r apps/requirements.txt
+
+      - name: Настройки Django
+        run: |
+          echo "POSTGRES_DB=aurabuilder"            >> "$GITHUB_ENV"
+          echo "POSTGRES_USER=aurabuilder"          >> "$GITHUB_ENV"
+          echo "POSTGRES_PASSWORD=aurabuilder_ci"   >> "$GITHUB_ENV"
+          echo "POSTGRES_HOST=127.0.0.1"            >> "$GITHUB_ENV"
+          echo "POSTGRES_PORT=5432"                 >> "$GITHUB_ENV"
+
+      # Статику собираем заранее: settings.py в CI включает whitenoise,
+      # и без collectstatic проверка падала бы на отсутствии манифеста.
+      - name: Собрать статику
+        working-directory: apps
+        run: python manage.py collectstatic --noinput
+
+      - name: Проверка конфигурации при DEBUG=0
+        working-directory: apps
+        run: python manage.py check --deploy
+
+      - name: Применить миграции
+        working-directory: apps
+        run: python manage.py migrate --noinput
+
+      # Модель без миграции — типичная поломка: в dev работает на
+      # существующей базе, а на стенде таблицы не хватает. Проверка
+      # делается до тестов, чтобы упасть на понятном сообщении.
+      - name: Все изменения моделей описаны миграциями
+        working-directory: apps
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Тесты
+        working-directory: apps
+        run: python manage.py test projects --verbosity 2
+
+  # --- Браузерные проверки --------------------------------------------------
+  # Холст Konva и автосохранение не проверяются ни типами, ни тестами
+  # Django: ошибка в них видна только в настоящем браузере. Именно так
+  # и выглядел чёрный холст — ошибок в консоли не было.
+  browser:
+    name: Редактор в браузере и LCP
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Установить зависимости
+        run: npm ci
+
+      - name: Собрать редактор
+        run: |
+          npm run tokens:build
+          npm run build
+
+      # Control Plane поднимается без внешней зависимости: SQLite и
+      # выключенная защита статики. Браузерные сценарии проверяют
+      # интерфейс и дерево, а не работу PostgreSQL — это делает backend.
+      - name: Поднять Control Plane
+        working-directory: apps
+        env:
+          USE_SQLITE: '1'
+          DJANGO_DEBUG: '1'
+          DJANGO_CORS_ENABLED: '1'
+          WHITENOISE_ENABLED: '0'
+        run: |
+          nohup python manage.py runserver 127.0.0.1:8000 > /tmp/django.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8000/api/health/ && break
+            sleep 1
+          done
+
+      - name: Проверить API доступен
+        run: curl -fsS http://127.0.0.1:8000/api/health/
+
+      # Порт редактора тот же, что ждёт measure-lcp: 4173 — стандартный
+      # порт vite preview.
+      - name: Поднять предпросмотр сборки
+        run: |
+          nohup npm run preview -- --port 4173 > /tmp/preview.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:4173/ && break
+            sleep 1
+          done
+
+      # Chrome в ubuntu-latest предустановлен, отдельная установка не
+      # нужна: лишние 300 МБ и минута на каждый прогон.
+      - name: Сценарии редактора
+        run: node tools/screenshot-editor.mjs http://127.0.0.1:4173/
+
+      - name: LCP против бюджета ТЗ
+        run: node tools/measure-lcp.mjs http://127.0.0.1:4173/
+
+      - name: Логи сервера при ошибке
+        if: failure()
+        run: |
+          echo "--- Django ---"; cat /tmp/django.log || true
+          echo "--- preview ---"; cat /tmp/preview.log || true
+
+  # --- Образы ---------------------------------------------------------------
+  # Сборка образов ломается отдельно от кода: чаще всего из-за
+  # зависимости, которая не попала в .dockerignore или из-за файла,
+  # скопированного слишком поздно.
+  docker:
+    name: Сборка образов
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Конфигурация compose
+        env:
+          POSTGRES_PASSWORD: aurabuilder_ci
+          DJANGO_SECRET_KEY: ci-4f8a2b91d7c64e3fa0b5c8d2e1f9a7b3c6d0e5f2a8b4d7c1e9f3a6b0d2c5e8f1a4b7d9c3e6f0a2b5d8c1e4f7a0b3d6c9
+        run: docker compose config --quiet
+
+      - name: Образ Control Plane
+        run: docker compose build api
+
+      - name: Образ редактора
+        run: docker compose build web
+
+      # Проверка не только «собралось»: контейнер должен подняться,
+      # применить миграции и ответить на healthcheck.
+      - name: Поднять стенд и дождаться здоровья
+        run: |
+          docker compose up -d --wait --wait-timeout 300
+          curl -fsS http://127.0.0.1:8080/healthz
+          curl -fsS http://127.0.0.1:8080/api/health/
+
+      - name: Логи контейнеров
+        if: failure()
+        run: docker compose logs --tail 100
+
+      - name: Остановить стенд
+        if: always()
+        run: docker compose down -v

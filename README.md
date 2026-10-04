@@ -121,17 +121,70 @@ CREATE DATABASE aurabuilder OWNER aurabuilder;
 Но приёмочные тесты должны идти на PostgreSQL: JSONField в SQLite и
 PostgreSQL ведут себя по-разному на больших деревьях.
 
-### Проверки
+### Запуск в Docker
+
+Полный стенд одной командой — так проверяется то же, что поедет в
+стенд заказчика, а не только локальная сборка.
 
 ```bash
-npm run typecheck          # типы фронтенда
-npm run tokens:check       # токены не разошлись с docs/palette.json
-npm run tokens:contrast    # контраст 40 пар по WCAG
-npm run registry:check    # реестр модулей не разошёлся с каталогом
-npm run licenses           # лицензии npm-зависимостей
-node tools/measure-lcp.mjs # LCP против бюджета ТЗ п.1.3
-.venv\Scripts\python tools/license_gate_py.py   # лицензии Python
+copy .env.example .env      # Windows; Linux: cp
+# впишите в .env DJANGO_SECRET_KEY и POSTGRES_PASSWORD
+docker compose up --build --wait
+```
+
+Редактор: <http://localhost:8080>. Тот же адрес у API — фронт и
+Control Plane намеренно живут на одном домене: разные источники
+заставили бы браузер делать предзапросы CORS на каждый запрос, а
+cookies с сессией пришлось бы делать `SameSite=None`, что отключает
+защиту от CSRF.
+
+Что внутри:
+
+| Сервис | Образ | Роль |
+|--------|-------|------|
+| `db` | postgres:18-alpine | База. Точка монтирования — `/var/lib/postgresql`: в PostgreSQL 18 официальный образ положил данные внутрь подкаталога, и старый путь приводит к падению контейнера |
+| `valkey` | valkey/valkey:8-alpine | Брокер для Celery (этап 2). Сейчас не задействован кодом — Valkey вместо Redis, потому что лицензия Redis запрещена ТЗ п.7.1.6 |
+| `migrate` | aurabuilder-api:local | Разовая миграция. Отдельный сервис: при нескольких репликах API миграции накатывались бы одновременно |
+| `api` | aurabuilder-api:local | Django + gunicorn под непривилегированным пользователем, статика через whitenoise |
+| `web` | aurabuilder-web:local | nginx: раздача сборки, прокси `/api`, заголовки безопасности |
+
+```bash
+docker compose exec api python manage.py check
+docker compose logs -f api
+docker compose down -v        # -v удаляет и базу
+```
+
+Две вещи, о которых стоит знать заранее:
+
+* `DJANGO_TRUST_FORWARDED_PROTO=1` в compose. TLS терминирует прокси,
+  и без доверия к `X-Forwarded-Proto` Django считает соединение
+  незащищённым и редиректит каждый запрос на https — по кругу.
+* На локальном стенде `DJANGO_SECURE_SSL_REDIRECT=0`: сертификата нет,
+  и редирект просто ломает доступ. В продакшене значение 1.
+
+Сервис `api` публикует порт 8000 наружу для отладки. В продакшене
+так делать нельзя: заголовок `X-Forwarded-Proto` приходит от клиента,
+и при прямом доступе к Django его можно подделать.
+
+### Непрерывная сборка
+
+`.github/workflows/ci.yml`, шесть независимых задач: сгенерированные
+файлы, лицензии, типы и сборка фронтенда, тесты Django на PostgreSQL,
+браузерные сценарии с LCP, сборка и подъём образов. Пайплайн падает
+не «где-то», а с указанием задачи; логи контейнеров и серверов
+выводятся при ошибке.
+
+Запуск всех проверок локально — те же команды, что и в CI:
+
+```bash
+npm run registry:check      # токены, реестр модулей, схемы свойств
+npm run tokens:contrast      # контраст палитры
+npm run licenses             # лицензии npm
+.venv\Scripts\python tools\license_gate_py.py
+npm run typecheck && npm run build
 cd apps && ..\.venv\Scripts\python manage.py test projects
+node tools/screenshot-editor.mjs   # редактор в браузере
+node tools/measure-lcp.mjs          # LCP против бюджета
 ```
 
 ### Реестр модулей

@@ -53,7 +53,8 @@ const TOOLS: Tool[] = [
 /*  Состояние сохранения                                               */
 /* ------------------------------------------------------------------ */
 
-const PROJECT_ID = '00000000-0000-4000-8000-000000000001';
+/** Название проекта для стенда, когда база пустая. */
+const PROJECT_NAME = 'Интернет-магазин «Цветы»';
 
 /**
  * Этап выпуска, для которого показываются модули.
@@ -70,6 +71,9 @@ export function EditorCanvas() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Идентификатор открытого проекта приходит с сервера: он неизвестен
+  // заранее, пока база пуста, а без него сохранение уходит не туда.
+  const [projectId, setProjectId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Дерево живёт в истории: каждое действие — одна запись, Ctrl+Z
@@ -122,9 +126,10 @@ export function EditorCanvas() {
   useEffect(() => {
     let cancelled = false;
     api
-      .getProject(PROJECT_ID)
+      .openProject(PROJECT_NAME, defaultTree())
       .then((p) => {
         if (cancelled) return;
+        setProjectId(p.id);
         // reset, а не commit: то, что пришло с сервера, не должно
         // попадать в историю и отменяться по Ctrl+Z.
         history.reset(p.tree);
@@ -281,11 +286,8 @@ export function EditorCanvas() {
       throw new Error(`Дерево не прошло проверку: ${problem}`);
     }
 
-    const saved = await api.saveProject(
-      PROJECT_ID,
-      'Интернет-магазин «Цветы»',
-      tree,
-    );
+    if (projectId === null) throw new Error('Проект ещё не загружен');
+    const saved = await api.saveProject(projectId, PROJECT_NAME, tree);
     // Ответ сервера помечается сохранённым, но история не сбрасывается:
     // сброс здесь означал бы, что Ctrl+Z перестаёт работать через
     // секунду после каждой правки — отмена пропадала бы именно в тот

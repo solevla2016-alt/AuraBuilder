@@ -1,0 +1,64 @@
+# Control Plane (Django + gunicorn).
+#
+# Слои намеренно разделены: зависимости ставятся до копирования кода,
+# иначе любая правка в views.py пересобирала бы весь pip-слой. В
+# разработке это 40 секунд на каждую сборку, за месяц — потерянный час.
+#
+# Образ по умолчанию не запускает миграции: их выполняет отдельный
+# сервис migrate в docker-compose.yml. Иначе при трёх репликах API
+# миграции накатывались бы трижды одновременно, а при откате — трижды
+# же откатывались.
+
+FROM python:3.13-slim
+
+# psycopg-binary тянет libpq; curl нужен healthcheck'у, чтобы он был
+# настоящей проверкой HTTP, а не проверкой запуска процесса.
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y \
+        curl \
+        libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /app
+
+COPY apps/requirements.txt ./requirements.txt
+RUN pip install -r requirements.txt
+
+COPY apps/ ./
+
+# Приложение не должно работать от root: в контейнере root получает
+# права на всё в файловой системе, и одна ошибка в обработчике запроса
+# становится эскалацией.
+RUN useradd --system --create-home --uid 10001 aura \
+    && mkdir -p /app/staticfiles \
+    && chown -R aura:aura /app
+USER aura
+
+# Сборка статики на этапе сборки образа, а не в каждом контейнере при
+# старте: результат одинаков, но платим мы за это один раз при сборке.
+# DEBUG=0 и фиктивный ключ — только чтобы проверка продакшн-настроек
+# в settings.py прошла; в рантайме ключ приходит из окружения.
+RUN DJANGO_DEBUG=0 \
+    DJANGO_SECRET_KEY=build-only-not-a-real-key \
+    DJANGO_WHITENOISE_ENABLED=1 \
+    USE_SQLITE=1 \
+    python manage.py collectstatic --noinput
+
+EXPOSE 8000
+
+# --preload загружает приложение до обработки сигналов: при остановке
+# контейнера Docker даёт 10 секунд на graceful-завершение, и без
+# --preload часть запросов была бы обрывана.
+CMD ["gunicorn", "controlplane.wsgi:application", \
+     "--bind", "0.0.0.0:8000", \
+     "--workers", "3", \
+     "--threads", "2", \
+     "--timeout", "30", \
+     "--graceful-timeout", "10", \
+     "--access-logfile", "-", \
+     "--error-logfile", "-"]

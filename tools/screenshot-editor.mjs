@@ -22,16 +22,31 @@ import { decodePng, regionStats } from './png.mjs';
 const URL_TO_TEST = process.argv[2] ?? 'http://localhost:5173/';
 const OUT = process.argv[3] ?? 'editor.png';
 
+// Порядок важен: сначала системный браузер, которым пользуется
+// разработчик, потом Chrome, потом Edge. В CI (ubuntu-latest)
+// предустановлен google-chrome-stable, и он должен найтись первым.
 const CHROME_CANDIDATES = [
+  process.env.CHROME_PATH,
+  // Linux
+  '/usr/bin/google-chrome-stable',
+  '/usr/bin/google-chrome',
+  '/usr/bin/chromium-browser',
+  '/usr/bin/chromium',
+  // macOS
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/Applications/Chromium.app/Contents/MacOS/Chromium',
+  // Windows
   'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
   'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
   'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
   'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-];
+].filter(Boolean);
 
 function findChrome() {
   for (const p of CHROME_CANDIDATES) if (existsSync(p)) return p;
-  throw new Error('Chrome/Edge не найден');
+  throw new Error(
+    'Chrome/Edge не найден. Задайте путь в переменной CHROME_PATH.',
+  );
 }
 
 class CDP {

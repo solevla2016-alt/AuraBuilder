@@ -55,6 +55,46 @@ export interface ModuleCatalog {
   modules: ModuleDef[];
 }
 
+/**
+ * Проект, который открыт в редакторе.
+ *
+ * Раньше идентификатор был зашит в редактор. Это ломалось дважды: на
+ * пустой базе (свежий стенд, контейнер, другой разработчик) редактор
+ * показывал 404 и оставался пустым, а проверки зависели от того,
+ * что кто-то заранее создал проект руками. Теперь редактор берёт
+ * первый проект, а если проектов нет — создаёт его.
+ */
+let currentProjectId: string | null = null;
+
+async function openProject(name: string, tree: unknown): Promise<Project> {
+  if (currentProjectId !== null) {
+    try {
+      return await request<Project>(`/projects/${currentProjectId}/`);
+    } catch (e) {
+      // Проект могли удалить в соседней вкладке. Открываем заново,
+      // но один раз: если сервер вернул 404 и на повторе, значит дело
+      // не в идентификаторе, и молчаливый цикл запросов только скроет
+      // настоящую ошибку.
+      if (!(e instanceof ApiError) || e.status !== 404) throw e;
+      currentProjectId = null;
+    }
+  }
+
+  const list = await request<Project[]>('/projects/');
+  const existing = list[0];
+  if (existing) {
+    currentProjectId = existing.id;
+    return existing;
+  }
+
+  const created = await request<Project>('/projects/', {
+    method: 'POST',
+    body: JSON.stringify({ name, tree }),
+  });
+  currentProjectId = created.id;
+  return created;
+}
+
 export const api = {
   getProject: (id: string) => request<Project>(`/projects/${id}/`),
 
@@ -69,6 +109,9 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ name, tree }),
     }),
+
+  /** Первый проект, а при пустой базе — новый. */
+  openProject,
 
   /**
    * Каталог модулей. Без stage отдаётся весь реестр (65 модулей);

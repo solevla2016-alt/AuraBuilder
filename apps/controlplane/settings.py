@@ -70,6 +70,19 @@ if not DEBUG:
     SECURE_REFERRER_POLICY = 'same-origin'
     X_FRAME_OPTIONS = 'DENY'
 
+# Django почти всегда стоит за обратным прокси (nginx,ingress,балансировщик),
+# и TLS терминируется на нём. Без этого заголовка Django считает соединение
+# незащищённым и редиректит каждый запрос на https — то есть в ответ на
+# редирект прокси снова передаёт http, и клиент зацикливается.
+#
+# Флаг выключен по умолчанию намеренно: заголовок X-Forwarded-Proto
+# приходит от клиента, и если Django доступен напрямую (без прокси),
+# любой может подделать его и обойти редирект на https. Включать только
+# когда доступ к Django закрыт прокси — в docker-compose порт 8000 для
+# этого и не публикуется наружу.
+if env_bool('DJANGO_TRUST_FORWARDED_PROTO', False):
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 # --- Приложения ---------------------------------------------------------
 
 INSTALLED_APPS = [
@@ -170,6 +183,39 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# --- Раздача статики ---
+# В контейнере отдельный сервис статики не нужен: whitenoise отдаёт
+# /static из приложения со сжатием brotli и gzip. Отдельный nginx ради
+# файлов админки — лишняя точка отказа и лишняя настройка.
+#
+# В разработке (vite отдаёт фронт сам, файлов мало) пакет выключен
+# лишним требованием: WHITENOISE_ENABLED управляет этим явно, чтобы
+# поведение не зависело от DEBUG.
+
+WHITENOISE_ENABLED = env_bool('WHITENOISE_ENABLED', not DEBUG)
+
+if WHITENOISE_ENABLED:
+    INSTALLED_APPS.insert(
+        INSTALLED_APPS.index('django.contrib.staticfiles') + 1,
+        'whitenoise.runserver_nostatic',
+    )
+    MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
+    STORAGES = {
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {
+            'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+        },
+    }
+    # Хеш в имени файла позволяет отдавать статику навсегда: браузер
+    # не переспрашивает её после первого раза, и страница не ждёт сеть.
+    WHITENOISE_MAX_AGE = int(os.environ.get('WHITENOISE_MAX_AGE', '31536000'))
+    WHITENOISE_MIMETYPES = {
+        # Смысловое имя для отчётов и логов веб-сервера вместо woff2.
+        '.woff2': 'font/woff2',
+        '.json': 'application/json',
+        '.webmanifest': 'application/manifest+json',
+    }
 
 # --- CORS ---------------------------------------------------------------
 

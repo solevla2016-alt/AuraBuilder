@@ -1,0 +1,160 @@
+# Локальное и стендовое окружение (ТЗ п.6: Docker + Docker Compose для
+# разработки, Kubernetes — для продакшена).
+#
+# Отличия от продакшена, о которых стоит знать:
+#
+# * пароли в .env — для локальной машины, их нельзя переносить на сервер;
+# * один экземпляр каждого сервиса, без реплик и без ограничений ресурсов;
+# * ключ Django в .env — dev-значение, в продакшене settings.py его не
+#   примет (см. проверку DJANGO_SECRET_KEY).
+#
+# Запуск: docker compose up --build
+# Проверка: docker compose exec api python manage.py check
+
+name: aurabuilder
+
+services:
+  db:
+    # 18 — как на локальном стенде. Менять major здесь нельзя:
+    # миграции пишутся под проверенную версию.
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-aurabuilder}
+      POSTGRES_USER: ${POSTGRES_USER:-aurabuilder}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
+      # Кодировка базы: без неё русские названия товаров сохраняются
+      # не в UTF-8, и клиент 1С получает битый текст.
+      # Локаль C.UTF-8, а не C: с PostgreSQL 16+ локаль должна быть
+      # совместима с кодировкой, и связка UTF8 + C отклоняется.
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C.UTF-8'
+    volumes:
+      # В PostgreSQL 18 точка монтирования — /var/lib/postgresql, а не
+      # /var/lib/postgresql/data: официальный образ положил данные
+      # внутрь подкаталога, и монтирование старого пути приводит к
+      # сообщению о неиспользуемом volume и падению контейнера.
+      - db-data:/var/lib/postgresql
+    ports:
+      # Порт наружу нужен только для psql и резервных копий; в продакшене
+      # база наружу не публикуется (ТЗ п.7.6 — защита ПДн).
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      # pg_isready проверяет готовность принимать соединения, а не то,
+      # что процесс жив: без этого api успевал бы падать при старте,
+      # когда база ещё инициализируется.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  valkey:
+    # Valkey, а не Redis: лицензия Redis (RSALv2/SSPLv1) запрещена
+    # ТЗ п.7.1.6. Сервис пока не задействован кодом — Celery и кэш
+    # подключаются на этапе 2 вместе с первыми фоновыми задачами
+    # (экспорт, письма). Он в compose уже сейчас, чтобы стенд для
+    # этапа 2 не пришлось переделывать.
+    image: valkey/valkey:8-alpine
+    command:
+      - valkey-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - noeviction
+    volumes:
+      - valkey-data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # Миграции отдельным сервисом: иначе каждый запуск api накатывал бы
+  # миграции сам, и при двух репликах они бы наложились друг на друга.
+  migrate:
+    # Тот же образ, что у api: тег задан явно, иначе compose собирает
+    # для каждого сервиса с полем build свой образ — две одинаковые
+    # сборки и две разные версии кода в одном стенде.
+    image: aurabuilder-api:local
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    command: ["python", "manage.py", "migrate", "--noinput"]
+    environment: &django_env
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?задайте DJANGO_SECRET_KEY в .env}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-0}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
+      DJANGO_TIME_ZONE: ${DJANGO_TIME_ZONE:-Europe/Moscow}
+      DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-INFO}
+      WHITENOISE_ENABLED: "1"
+      # TLS на локальном стенде нет: редирект на https без него просто
+      # ломает доступ. В продакшене значение 1, а сертификат терминирует
+      # прокси перед контейнером.
+      DJANGO_SECURE_SSL_REDIRECT: ${DJANGO_SECURE_SSL_REDIRECT:-0}
+      # nginx проксирует и передаёт X-Forwarded-Proto; без доверия к
+      # этому заголовку Django считает соединение http.
+      DJANGO_TRUST_FORWARDED_PROTO: "1"
+      POSTGRES_DB: ${POSTGRES_DB:-aurabuilder}
+      POSTGRES_USER: ${POSTGRES_USER:-aurabuilder}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      VALKEY_URL: valkey://valkey:6379/0
+      EMAIL_HOST: ${EMAIL_HOST:-smtp.yandex.ru}
+      EMAIL_PORT: ${EMAIL_PORT:-465}
+      EMAIL_USE_SSL: ${EMAIL_USE_SSL:-1}
+      EMAIL_HOST_USER: ${EMAIL_HOST_USER:-}
+      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-}
+      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-no-reply@aurabuilder.ru}
+      DJANGO_EMAIL_BACKEND: ${DJANGO_EMAIL_BACKEND:-django.core.mail.backends.smtp.EmailBackend}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    image: aurabuilder-api:local
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    environment: *django_env
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        # Сервис должен завершиться успешно: если миграции упали,
+        # api со старой схемой опаснее, чем api, который не поднялся.
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-8000}:8000"
+    healthcheck:
+      # Проверяется настоящий HTTP-ответ, а не живость процесса:
+      # процесс gunicorn может быть жив при неверных настройках базы.
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/health/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  web:
+    image: aurabuilder-web:local
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  valkey-data:

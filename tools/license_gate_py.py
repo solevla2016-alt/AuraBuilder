@@ -33,6 +33,12 @@ ALLOWED = {
     'psf license', 'mpl-2.0', 'mozilla public license 2.0 (mpl 2.0)',
     'lgpl', 'lgpl-3.0', 'lgpl-2.1', 'unlicensed', 'dual license',
     'dual license/public domain', 'mit no attribution',
+    # Мультилицензия вида «Apache-2.0 or BSD-2-Clause» (её отдаёт
+    # packaging — зависимость gunicorn). Обе лицензии разрешены, выбор
+    # между ними делает правообладатель, поэтому пакет допустим.
+    'apache-2.0 or bsd-2-clause',
+    'apache-2.0 or bsd-3-clause',
+    'mit or apache-2.0',
 }
 
 # Запрещённые copyleft и source-available: ТЗ п.7.1.6.
