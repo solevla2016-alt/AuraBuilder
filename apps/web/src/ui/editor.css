@@ -750,3 +750,168 @@ select.prop__input option {
     transition: none;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/*  Экран входа и регистрации                                          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Форма стоит по центру и ограничена по ширине: без ограничения поля
+ * растягиваются на весь монитор, и на ноутбуке читать их неудобно.
+ * Золото здесь только у активной вкладки — хром редактора нейтрален,
+ * акцент означает действие, а не украшение.
+ */
+.auth {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-xl);
+  background: var(--appBg);
+}
+
+.auth__card {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  padding: var(--space-xl);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+}
+
+.auth__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.auth__brand h1 {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 600;
+}
+
+.auth__mark {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  background: var(--accentSurface);
+}
+
+.auth__tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-xs);
+  padding: var(--space-xs);
+  background: var(--panelSunken);
+  border-radius: var(--radius-md);
+}
+
+.auth__tab {
+  min-height: var(--min-target);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--textSecondary);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.auth__tab.is-active {
+  background: var(--panelRaised);
+  color: var(--textPrimary);
+  font-weight: 550;
+}
+
+.auth__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.auth__label {
+  font-size: var(--text-sm);
+  color: var(--textSecondary);
+}
+
+.auth__input {
+  min-height: var(--min-target);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--canvas);
+  color: var(--textPrimary);
+  font: inherit;
+  font-size: var(--text-base);
+}
+
+.auth__input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+
+.auth__hint {
+  font-size: var(--text-xs);
+  color: var(--textDisabled);
+}
+
+/*
+ * Согласие на обработку персональных данных набирается целиком: мелкий
+ * текст рядом с обязательной галочкой читают через раз, а 152-ФЗ
+ * требует, чтобы согласие было однозначным.
+ */
+.auth__consent {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-sm);
+  align-items: start;
+  padding: var(--space-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--textSecondary);
+  cursor: pointer;
+}
+
+.auth__consent input {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: var(--accentSurface);
+  cursor: pointer;
+}
+
+.auth__error {
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  /* Рамка вместо заливки: отдельного токена dangerSurface в палитре
+     нет, а подставлять вместо фона прозрачность (--layer-canvas-drop —
+     это число) значило бы получить невидимую подсветку ошибки. */
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--danger);
+  font-size: var(--text-sm);
+}
+
+.auth__submit {
+  min-height: var(--min-target);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--accentSurface);
+  color: var(--onAccentSurface);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auth__submit:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}

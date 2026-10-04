@@ -6,18 +6,19 @@
 иначе строка 'health' разбиралась бы как UUID и давала 400 вместо 200.
 
 Admin намеренно не подключён: он нужен для эксплуатации, а не для
-разработки, и тянет за собой лишние таблицы и зависимости. Вернётся
-на этапе 1 вместе с ролями и правами (ТЗ п.11.1).
+разработки, и тянет за собой лишние таблицы. Вернётся вместе с
+разграничением доступа к нему самому (ТЗ п.7.7.3, п.11.1).
 """
 
 from django.urls import include, path
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from projects.views import health, module_catalog
 
 
 @api_view(['GET'])
+@permission_classes([])
 def root(request):
     return Response({'service': 'aurabuilder-controlplane', 'status': 'ok'})
 
@@ -28,5 +29,8 @@ urlpatterns = [
     # он общий для всех проектов и редактор спрашивает его при старте.
     path('api/modules/', module_catalog, name='module-catalog'),
     path('api/health/', health, name='health'),
+    # Аутентификация и профиль. Объявлены до проектов: путь
+    # api/auth/login/ не должен попадать под <str:project_id>.
+    path('api/auth/', include('accounts.urls')),
     path('api/projects/', include('projects.urls')),
 ]

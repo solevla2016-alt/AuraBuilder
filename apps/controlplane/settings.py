@@ -17,6 +17,7 @@
 """
 
 import os
+from datetime import timedelta
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -94,6 +95,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'projects',
+    'accounts',
 ]
 
 MIDDLEWARE = [
@@ -155,14 +157,79 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # --- DRF ----------------------------------------------------------------
 
+# Права по умолчанию — только для чтения и только аутентифицированным.
+# ВсеAllow раньше позволял любому читать и переписывать чужой проект;
+# теперь закрытыми остаются и каталог модулей (он публичный), и всё
+# остальное.
 REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': ['rest_framework.renderers.JSONRenderer'],
     'DEFAULT_PARSER_CLASSES': ['rest_framework.parsers.JSONParser'],
     'UNAUTHENTICATED_USER': None,
-    # Права по ролям появятся на этапе 2 (ТЗ п.11.1). Сейчас стенд
-    # работает без авторизации, и это осознанное упрощение.
-    'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.AllowAny'],
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    # Ограничения частоты (ТЗ п.7.7). Считаются по IP в Valkey, а в
+    # разработке — в памяти процесса: при нескольких воркерах gunicorn
+    # счётчик делится между ними, и лимит становится в разы мягче.
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/hour',
+        'user': '1000/hour',
+    },
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+        # Вход и регистрация: окно в минутах DRF не выражает, поэтому
+        # лимит задаёт accounts.throttling.LoginRateThrottle.
+        'accounts.throttling.LoginRateThrottle',
+    ],
 }
+
+#: 5 попыток входа за 10 минут (ТЗ п.7.7). Значения вынесены в
+#: настройки, чтобы менять лимит можно было из окружения стенда, не
+#: правя код и не пересобирая образ.
+LOGIN_ATTEMPT_LIMIT = int(os.environ.get('LOGIN_ATTEMPT_LIMIT', '5'))
+LOGIN_ATTEMPT_WINDOW_MINUTES = int(
+    os.environ.get('LOGIN_ATTEMPT_WINDOW_MINUTES', '10')
+)
+
+# --- JWT (ТЗ п.7.7) -----------------------------------------------------
+
+SIMPLE_JWT = {
+    # 15 минут: access-токен живёт недолго, потому что при утечке его
+    # нельзя отозвать — только дождаться истечения.
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=14),
+    'ROTATE_REFRESH_TOKENS': True,
+    # Старый refresh после ротации перестаёт работать: повторное
+    # использование — признак кражи, и можно отозвать всё семейство.
+    'BLACKLIST_AFTER_ROTATION': True,
+    'UPDATE_LAST_LOGIN': False,
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': env(
+        'JWT_SIGNING_KEY',
+        # В разработке ключ совпадает с SECRET_KEY, в продакшене
+        # задаётся отдельно: иначе отзыв SECRET_KEY обесценил бы
+        # и выпущенные токены.
+        SECRET_KEY if not DEBUG else 'dev-only-jwt-key-change-me',
+    ),
+    'AUTH_HEADER_TYPES': ('Bearer',),
+}
+
+if 'rest_framework_simplejwt.token_blacklist' not in INSTALLED_APPS:
+    INSTALLED_APPS.append('rest_framework_simplejwt.token_blacklist')
+
+# --- Пароли (ТЗ п.7.3) -------------------------------------------------
+
+# Argon2id обязателен: PBKDF2 перебирается на GPU на порядки быстрее,
+# и требование п.7.3 здесь не про вкус, а про стойкость к перебору.
+PASSWORD_HASHERS = [
+    'django.contrib.auth.hashers.Argon2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2PasswordHasher',
+    'django.contrib.auth.hashers.ScryptPasswordHasher',
+]
 
 # --- Пароли -------------------------------------------------------------
 

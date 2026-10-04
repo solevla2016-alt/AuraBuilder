@@ -1,14 +1,40 @@
-"""Представления Control Plane для вертикального среза.
+"""Представления Control Plane: проекты, доступ, каталог модулей.
 
-Набор намеренно узкий: получить проект и сохранить дерево. Роли,
-права и командная работа появятся на этапе 2 (ТЗ п.11.1).
+Права проверяются по роли в проекте (ТЗ п.11.1), матрица — в
+accounts/permissions.py. Здесь важны две вещи:
+
+* Список проектов ограничен теми, к которым у пользователя есть
+  доступ. Раньше отдавались все проекты подряд — это и было причиной
+  перехода на роли.
+* Каталог модулей остаётся публичным: он не содержит пользовательских
+  данных, а редактор без входа всё равно должен показать палитру.
 """
+
+from __future__ import annotations
 
 import uuid
 
+from django.db.models import Q
 from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
+
+from accounts.models import AuditLog, Membership, Role
+from accounts.permissions import (
+    DELETE,
+    EDIT_CONTENT,
+    MANAGE_ACCESS,
+    VIEW,
+    ProjectAccess,
+    can,
+    readable_projects,
+)
+from accounts.serializers import (
+    AddMemberSerializer,
+    MembershipSerializer,
+    audit,
+    get_client_ip,
+)
 
 from .models import Project
 from .module_registry import CATEGORIES, MODULES, modules_for_stage
@@ -16,6 +42,7 @@ from .serializers import ProjectCreateSerializer, ProjectSerializer
 
 
 @api_view(['GET'])
+@permission_classes([])
 def health(request):
     """Проверка живости: редактор спрашивает её перед загрузкой проекта."""
     return Response({'status': 'ok'})
@@ -34,12 +61,14 @@ def _module_payload(module) -> dict:
 
 
 @api_view(['GET'])
+@permission_classes([])
 def module_catalog(request):
     """Каталог модулей редактора.
 
-    Фильтр ?stage=N отдаёт модули, доступные на этапе выпуска: палитра
-    в редакторе не должна показывать то, чего ещё нет в платформе.
-    Без фильтра возвращается весь реестр (65 модулей).
+    Публичный без входа: он не содержит пользовательских данных, а
+    палитра модулей нужна редактору раньше, чем токен. Фильтр ?stage=N
+    отдаёт модули, доступные на этапе выпуска: палитра не должна
+    показывать то, чего ещё нет в платформе.
     """
     raw_stage = request.query_params.get('stage')
     if raw_stage is None:
@@ -72,28 +101,30 @@ def module_catalog(request):
 
 @api_view(['GET', 'POST'])
 def project_list(request):
-    """Список проектов и создание нового.
+    """Список доступных проектов и создание нового.
 
-    GET  — список (на стенде ограничен первыми 50 записей).
-    POST — создание; при повторном UUID возвращает уже существующий
-    проект, чтобы фронт мог идемпотентно инициализировать стенд.
+    GET  — только те проекты, где пользователь владелец или участник.
+    POST — создание; владельцем становится тот, кто создал.
     """
     if request.method == 'GET':
-        items = Project.objects.all()[:50]
+        items = readable_projects(request.user).select_related('owner')[:50]
         return Response(ProjectSerializer(items, many=True).data)
 
     serializer = ProjectCreateSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
-    # Повторный вызов с тем же id не должен создавать дубль: редактор
-    # инициализирует стенд при каждом запуске.
+    # Повторный вызов с тем же id не должен создавать дубль: инициализация
+    # стенда может произойти дважды (перезагрузка страницы).
     requested_id = serializer.validated_data.get('id')
     if requested_id:
         existing = Project.objects.filter(pk=requested_id).first()
-        if existing:
+        # Существующий проект чужого пользователя не отдаётся: иначе
+        # запрос по чужому UUID возвращал бы чужое дерево.
+        if existing and can(request.user, existing, VIEW):
             return Response(ProjectSerializer(existing).data, status=status.HTTP_200_OK)
 
-    project = serializer.save()
+    project = serializer.save(owner=request.user)
+    audit(request, 'project.create', project)
     return Response(
         ProjectSerializer(project).data,
         status=status.HTTP_201_CREATED,
@@ -101,8 +132,139 @@ def project_list(request):
 
 
 @api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([ProjectAccess])
 def project_detail(request, project_id: str):
     """Чтение, изменение и удаление одного проекта."""
+    try:
+        project = Project.objects.filter(pk=uuid.UUID(project_id)).select_related('owner').first()
+    except (ValueError, AttributeError, TypeError):
+        return Response({'detail': 'некорректный UUID'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if project is None:
+        # Отвечаем 404, а не 403: иначе по коду ответа можно перебором
+        # узнать, какие проекты существуют.
+        return Response({'detail': 'проект не найден'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Проверка права внутри функции, а не через permission_classes:
+    # декоратор не может знать проект, а объектное разрешение требует
+    # get_object(), которого у функции нет.
+    #
+    # Отсутствие права на чтение отвечает 404, а не 403: иначе по коду
+    # ответа можно перебором узнать, какие проекты существуют. 403
+    # остаётся для случая «проект виден, но этого действия в роли нет».
+    action = {
+        'GET': VIEW,
+        'HEAD': VIEW,
+        'PUT': EDIT_CONTENT,
+        'PATCH': EDIT_CONTENT,
+        'DELETE': DELETE,
+    }[request.method]
+    if not can(request.user, project, VIEW):
+        return Response({'detail': 'проект не найден'}, status=status.HTTP_404_NOT_FOUND)
+    if not can(request.user, project, action):
+        return Response(
+            {'detail': 'Недостаточно прав для этого действия.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    if request.method == 'GET':
+        return Response(ProjectSerializer(project).data)
+
+    if request.method == 'DELETE':
+        audit(request, 'project.delete', project)
+        project.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    serializer = ProjectSerializer(project, data=request.data, partial=request.method == 'PATCH')
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    audit(request, 'project.update', project)
+    return Response(serializer.data)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([])
+def project_members(request, project_id: str):
+    """Участники проекта: список и выдача роли.
+
+    Управлять доступом может только владелец (ТЗ п.11.1: Owner —
+    управление ПДн и доступом). Роль Owner через этот эндпоинт не
+    выдаётся: владелец назначается при создании проекта.
+    """
+    try:
+        project = Project.objects.filter(pk=uuid.UUID(project_id)).select_related('owner').first()
+    except (ValueError, AttributeError, TypeError):
+        return Response({'detail': 'некорректный UUID'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if project is None:
+        return Response({'detail': 'проект не найден'}, status=status.HTTP_404_NOT_FOUND)
+
+    if not can(request.user, project, MANAGE_ACCESS):
+        return Response(
+            {'detail': 'Управлять доступом может только владелец.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    if request.method == 'GET':
+        members = Membership.objects.filter(project=project).select_related('user')
+        payload = [
+            {
+                'id': m.id,
+                'user': m.user_id,
+                'username': m.user.username,
+                'email': m.user.email,
+                'role': m.role,
+                'created_at': m.created_at,
+            }
+            for m in members
+        ]
+        # Владелец не запись об участнике, а поле проекта, поэтому в
+        # списке он появляется отдельно — иначе интерфейс покажет
+        # «у проекта нет владельца».
+        payload.insert(
+            0,
+            {
+                'id': None,
+                'user': project.owner_id,
+                'username': project.owner.username if project.owner else '',
+                'email': project.owner.email if project.owner else '',
+                'role': Role.OWNER,
+                'created_at': project.created_at,
+            },
+        )
+        return Response(payload)
+
+    serializer = AddMemberSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    user = serializer.validated_data['user']
+    role = serializer.validated_data['role']
+
+    if user.id == project.owner_id:
+        return Response(
+            {'detail': 'Владелец проекта не нуждается в записи участника.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    membership, created = Membership.objects.update_or_create(
+        project=project,
+        user=user,
+        defaults={'role': role},
+    )
+    audit(request, 'access.grant', project)
+    return Response(
+        MembershipSerializer(membership).data,
+        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+    )
+
+
+@api_view(['GET'])
+@permission_classes([])
+def audit_log(request, project_id: str):
+    """Журнал действий по проекту (ТЗ п.11.2): кто, когда, что, откуда.
+
+    Читать журнал может любой, у кого есть доступ к проекту: это его
+    собственная история изменений, а не служебные данные.
+    """
     try:
         project = Project.objects.filter(pk=uuid.UUID(project_id)).first()
     except (ValueError, AttributeError, TypeError):
@@ -111,14 +273,22 @@ def project_detail(request, project_id: str):
     if project is None:
         return Response({'detail': 'проект не найден'}, status=status.HTTP_404_NOT_FOUND)
 
-    if request.method == 'GET':
-        return Response(ProjectSerializer(project).data)
+    if not can(request.user, project, VIEW):
+        # 404, а не 403: 403 подтвердил бы, что проект существует, и по
+        # коду ответа можно было бы перебрать чужие проекты.
+        return Response({'detail': 'проект не найден'}, status=status.HTTP_404_NOT_FOUND)
 
-    if request.method == 'DELETE':
-        project.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-    serializer = ProjectSerializer(project, data=request.data, partial=request.method == 'PATCH')
-    serializer.is_valid(raise_exception=True)
-    serializer.save()
-    return Response(serializer.data)
+    entries = AuditLog.objects.filter(project=project).select_related('actor')[:100]
+    return Response(
+        [
+            {
+                'action': e.action,
+                'actor': e.actor.username if e.actor else None,
+                'blockId': e.block_id,
+                'ip': e.ip,
+                'userAgent': e.user_agent,
+                'createdAt': e.created_at,
+            }
+            for e in entries
+        ]
+    )

@@ -4,11 +4,15 @@
 и возвращаются без потерь, а невалидное дерево отвергается сервером.
 """
 
+from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from projects.models import Project, default_tree
 from projects.serializers import validate_tree
+
+User = get_user_model()
 
 
 class ValidateTreeTests(APITestCase):
@@ -150,7 +154,30 @@ class ValidateTreeTests(APITestCase):
 
 
 class ProjectApiTests(APITestCase):
-    """Создание, чтение и сохранение проекта через API."""
+    """Создание, чтение и сохранение проекта через API.
+
+    Каждый запрос выполняется от имени владельца: с этапа 2 (ТЗ п.11.1)
+    проект без входа недоступен, и проверка анонимного случая стала
+    отдельным тестом.
+    """
+
+    def setUp(self):
+        # Кеш сбрасывается до входа: иначе лимит входа, общий на весь
+        # процесс, исчерпывается предыдущими тестами.
+        cache.clear()
+        self.user = User.objects.create_user('tester', 'tester@example.com', 'verysecret123')
+        response = self.client.post(
+            '/api/auth/login/',
+            {'login': 'tester', 'password': 'verysecret123'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {response.data["access"]}')
+
+    def test_anonymous_cannot_create_project(self):
+        self.client.credentials()
+        response = self.client.post('/api/projects/', {'name': 'Без входа'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_health(self):
         response = self.client.get('/api/health/')
@@ -175,7 +202,7 @@ class ProjectApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_save_tree_roundtrip(self):
-        project = Project.objects.create(name='Проект')
+        project = Project.objects.create(name='Проект', owner=self.user)
 
         new_tree = {
             'width': 900,
@@ -202,7 +229,7 @@ class ProjectApiTests(APITestCase):
         self.assertEqual(project.tree, new_tree)
 
     def test_save_rejects_invalid_tree(self):
-        project = Project.objects.create(name='Проект')
+        project = Project.objects.create(name='Проект', owner=self.user)
         response = self.client.put(
             f'/api/projects/{project.pk}/',
             {'name': 'Проект', 'tree': {'width': 720, 'blocks': [{'id': 'x'}]}},
@@ -215,7 +242,7 @@ class ProjectApiTests(APITestCase):
         self.assertEqual(project.tree, default_tree())
 
     def test_partial_update_changes_only_name(self):
-        project = Project.objects.create(name='Старое')
+        project = Project.objects.create(name='Старое', owner=self.user)
         response = self.client.patch(
             f'/api/projects/{project.pk}/', {'name': 'Новое'}, format='json'
         )
@@ -228,14 +255,14 @@ class ProjectApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_list_returns_projects(self):
-        Project.objects.create(name='Первый')
-        Project.objects.create(name='Второй')
+        Project.objects.create(name='Первый', owner=self.user)
+        Project.objects.create(name='Второй', owner=self.user)
         response = self.client.get('/api/projects/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.json()), 2)
 
     def test_delete_project(self):
-        project = Project.objects.create(name='Проект')
+        project = Project.objects.create(name='Проект', owner=self.user)
         response = self.client.delete(f'/api/projects/{project.pk}/')
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(Project.objects.filter(pk=project.pk).exists())
@@ -257,14 +284,14 @@ class ProjectApiTests(APITestCase):
     def test_response_uses_camel_case_dates(self):
         # Клиент читает createdAt/updatedAt (apps/web/src/ui/project.ts).
         # Сервер отдаёт snake_case — редактор получал бы undefined.
-        project = Project.objects.create(name='Проект')
+        project = Project.objects.create(name='Проект', owner=self.user)
         body = self.client.get(f'/api/projects/{project.pk}/').json()
         self.assertIn('updatedAt', body)
         self.assertIn('createdAt', body)
         self.assertNotIn('updated_at', body)
 
     def test_updated_at_changes_on_save(self):
-        project = Project.objects.create(name='Проект')
+        project = Project.objects.create(name='Проект', owner=self.user)
         first = project.updated_at
         self.client.put(
             f'/api/projects/{project.pk}/',

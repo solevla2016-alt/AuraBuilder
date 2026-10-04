@@ -47,6 +47,17 @@ class Project(models.Model):
     id = models.UUIDField(primary_key=True, editable=False, default=uuid4)
     name = models.CharField('название', max_length=200)
     tree = models.JSONField('дерево страницы', default=default_tree)
+    # Владелец — часть проекта, а не только запись в таблице участников:
+    # если её хранить только там, проект останется без того, кто может его
+    # удалить. null=True оставлен ради уже существующих записей, они
+    # переводятся на следующей миграции.
+    owner = models.ForeignKey(
+        'auth.User',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='owned_projects',
+    )
     created_at = models.DateTimeField('создан', auto_now_add=True)
     updated_at = models.DateTimeField('изменён', auto_now=True)
 

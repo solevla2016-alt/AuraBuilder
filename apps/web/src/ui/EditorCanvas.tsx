@@ -66,7 +66,7 @@ const CURRENT_STAGE = 3;
 /*  Компонент                                                          */
 /* ------------------------------------------------------------------ */
 
-export function EditorCanvas() {
+export function EditorCanvas({ onSignOut }: { onSignOut?: () => void }) {
   const [tool, setTool] = useState('select');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -399,6 +399,25 @@ export function EditorCanvas() {
             баннере: подпись «сохранено 2 минуты назад» должна быть
             на виду постоянно, иначе страх потери работы возвращается.
           */}
+          {/*
+            Выход нужен не для удобства: без него нельзя переключиться
+            на другого пользователя, не закрыв браузер. Refresh-токен
+            при этом отзывается на сервере, а не просто забывается.
+          */}
+          {onSignOut ? (
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => {
+                void api.logout().finally(() => onSignOut());
+              }}
+              title="Выйти"
+              aria-label="Выйти"
+            >
+              <Icon name="settings" />
+              <span>Выйти</span>
+            </button>
+          ) : null}
           <span
             className={`save-state is-${autosave.state}`}
             role="status"

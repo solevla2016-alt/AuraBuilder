@@ -5,10 +5,14 @@
 категории, этап вне диапазона) и несовпадения с каталогом.
 """
 
+from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from projects.models import Project, default_tree
+
+User = get_user_model()
 from projects.module_registry import (
     CATEGORIES,
     KINDS,
@@ -203,8 +207,21 @@ class SchemaPropsRoundTripTests(APITestCase):
     имён полей или в самой записи в jsonb.
     """
 
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user('tester', 'tester@example.com', 'verysecret123')
+        response = self.client.post(
+            '/api/auth/login/',
+            {'login': 'tester', 'password': 'verysecret123'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {response.data["access"]}')
+
     def _save(self, props):
-        project = Project.objects.create(name='Проверка props', tree=default_tree())
+        project = Project.objects.create(
+            name='Проверка props', tree=default_tree(), owner=self.user
+        )
         response = self.client.put(
             f'/api/projects/{project.pk}/',
             {

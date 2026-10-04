@@ -222,4 +222,9 @@ class ProjectCreateSerializer(serializers.Serializer):
         # стенд создавался бы со случайным UUID вместо запрошенного.
         if 'id' in validated_data:
             kwargs['id'] = validated_data['id']
+        # Владелец приходит из представления (serializer.save(owner=...)),
+        # но список полей здесь фиксирован, и без этой строки проект
+        # остался бы без владельца: удалить его не смог бы никто.
+        if validated_data.get('owner') is not None:
+            kwargs['owner'] = validated_data['owner']
         return Project.objects.create(**kwargs)

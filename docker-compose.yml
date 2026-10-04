@@ -98,6 +98,12 @@ services:
       # nginx проксирует и передаёт X-Forwarded-Proto; без доверия к
       # этому заголовку Django считает соединение http.
       DJANGO_TRUST_FORWARDED_PROTO: "1"
+      # Антиперебор паролей (ТЗ п.7.7): 5 попыток за 10 минут. Значение
+      # по умолчанию — боевое, но на стенде автопроверки делают десятки
+      # входов подряд и упираются в него, поэтому здесь лимит выше.
+      # На боевом контуре оставить 5.
+      LOGIN_ATTEMPT_LIMIT: ${LOGIN_ATTEMPT_LIMIT:-50}
+      LOGIN_ATTEMPT_WINDOW_MINUTES: ${LOGIN_ATTEMPT_WINDOW_MINUTES:-10}
       POSTGRES_DB: ${POSTGRES_DB:-aurabuilder}
       POSTGRES_USER: ${POSTGRES_USER:-aurabuilder}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}

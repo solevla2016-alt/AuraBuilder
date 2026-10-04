@@ -39,6 +39,9 @@ ALLOWED = {
     'apache-2.0 or bsd-2-clause',
     'apache-2.0 or bsd-3-clause',
     'mit or apache-2.0',
+    # cffi и argon2-cffi-bindings отдают SPDX-идентификатор «MIT-0»
+    # (вариант MIT без условия сохранения авторства). Разрешён ТЗ.
+    'mit-0',
 }
 
 # Запрещённые copyleft и source-available: ТЗ п.7.1.6.

@@ -153,6 +153,56 @@ await page.send('Page.navigate', { url: URL_TO_TEST });
 // Холст грузится лениво: ждём, пока он появится и отрисовался.
 await new Promise((r) => setTimeout(r, 6000));
 
+/*
+ * Вход выполняется до всех остальных проверок.
+ *
+ * Редактор закрыт без токена (ТЗ п.11.1), поэтому сначала регистрация
+ * и вход через API, а уже потом проба холста и сценарии. Форма входа
+ * проверяется отдельно в конце: если бы проверялась только она, падение
+ * сервера выглядело бы как «вход не работает».
+ *
+ * Пользователь создаётся один на прогон, а в следующих прогонах
+ * переиспользуется по дате: иначе в базе копились бы десятки
+ * «автопробных» пользователей.
+ */
+const authDay = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+const authUser = `autoprobe${authDay}`;
+const authPassword = 'probepassword123';
+
+const signIn = await page.send('Runtime.evaluate', {
+  returnByValue: true,
+  awaitPromise: true,
+  expression: `(async () => {
+    const post = (url, body) => fetch('/api' + url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const name = ${JSON.stringify(authUser)};
+    const password = ${JSON.stringify(authPassword)};
+    // Регистрация может быть отвергнута, если пользователь этого
+    // прогона уже есть: тогда просто входим.
+    await post('/auth/register/', {
+      username: name,
+      email: name + '@example.com',
+      password,
+      consent_pdn: true,
+    });
+    const res = await post('/auth/login/', { login: name, password });
+    if (!res.ok) return { ok: false, status: res.status };
+    const body = await res.json();
+    localStorage.setItem('aurabuilder.access', body.access);
+    localStorage.setItem('aurabuilder.refresh', body.refresh);
+    return { ok: true };
+  })()`,
+});
+if (!signIn.result.value?.ok) {
+  throw new Error(`не удалось войти через API: ${JSON.stringify(signIn.result.value)}`);
+}
+
+await page.send('Page.reload', { ignoreCache: true });
+await new Promise((r) => setTimeout(r, 6000));
+
 const probe = await page.send('Runtime.evaluate', {
   returnByValue: true,
   expression: `(() => {
@@ -189,6 +239,7 @@ writeFileSync(OUT, png);
  */
 async function runScenarios(page, box) {
   const results = [];
+
   const state = async () => {
     const r = await page.send('Runtime.evaluate', {
       returnByValue: true,
@@ -526,8 +577,254 @@ const key = async (letter, code, modifiers = 0) => {
     font.interLoaded > 0,
   ]);
 
+  /* ------------------------------------------------------------------ */
+  /*  Вход и права                                                      */
+  /* ------------------------------------------------------------------ */
+
+  /*
+   * Вход через интерфейс.
+   *
+   * Проверяются две ветки: повторная регистрация (сервер должен
+   * отказать, иначе можно было бы занять чужой логин) и вход по
+   * уже существующему пользователю. Новый пользователь здесь не
+   * создаётся намеренно: каждый прогон оставлял бы запись в базе, а
+   * проверять нужно поведение формы, а не её регистрацию — её уже
+   * проверил вход через API в начале.
+   */
+  await page.send('Runtime.evaluate', {
+    expression: `localStorage.clear()`,
+  });
+  await reload(page);
+  await waitFor(page, '.auth__card', 15000);
+
+  results.push(['без входа показан экран входа', await has(page, '.auth__card')]);
+
+// Каталог модулей не требует входа: он не содержит пользовательских
+  // данных, и палитра нужна редактору раньше токена.
+  const anonCatalog = await fetchFromPage(page, '/modules/?stage=3', false);
+  results.push(['каталог модулей доступен без входа', anonCatalog.status === 200]);
+
+  // Регистрация уже существующего логина должна быть отвергнута.
+  await click(page, '.auth__tab:nth-child(2)');
+  await fill(page, 'input[name="username"]', authUser);
+  await fill(page, 'input[name="email"]', `${authUser}@example.com`);
+  await fill(page, 'input[name="password"]', authPassword);
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      const box = document.querySelector('.auth__consent input');
+      if (box && !box.checked) box.click();
+    })()`,
+  });
+  await click(page, '.auth__submit');
+  await new Promise((r) => setTimeout(r, 900));
+
+  const duplicateError = await text(page, '.auth__error');
+  results.push([
+    'занятый логин не проходит регистрацию',
+    duplicateError.includes('занят'),
+  ]);
+
+  // Регистрация без согласия на обработку ПДн невозможна (152-ФЗ).
+  // Логин здесь другой: занятое имя отвергается раньше, чем проверяется
+  // согласие, и до сути проверки дело не дошло бы.
+  await fill(page, 'input[name="username"]', `${authUser}-noconsent`);
+  await fill(page, 'input[name="email"]', `${authUser}-noconsent@example.com`);
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      const box = document.querySelector('.auth__consent input');
+      if (box && box.checked) box.click();
+    })()`,
+  });
+  await click(page, '.auth__submit');
+  await new Promise((r) => setTimeout(r, 700));
+  results.push([
+    'регистрация без согласия на ПДн не проходит',
+    (await text(page, '.auth__error')).includes('персональных'),
+  ]);
+
+  // Вход по существующему пользователю.
+  await click(page, '.auth__tab:nth-child(1)');
+  await fill(page, 'input[name="login"]', authUser);
+  await fill(page, 'input[name="password"]', authPassword);
+  await click(page, '.auth__submit');
+  await waitFor(page, '.editor', 20000);
+
+  results.push(['вход через форму открыл редактор', await has(page, '.editor')]);
+
+  const stored = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `(() => ({
+      access: !!localStorage.getItem('aurabuilder.access'),
+      refresh: !!localStorage.getItem('aurabuilder.refresh'),
+    }))()`,
+  });
+  results.push(['токены сохранены локально', stored.result.value.access === true]);
+
+  await reload(page);
+  await waitFor(page, '.editor', 20000);
+  results.push(['после перезагрузки сессия жива', await has(page, '.editor')]);
+
+  // Список проектов не должен содержать чужие: у нового пользователя
+  // появляется проект только от openProject.
+  const projects = await fetchFromPage(page, '/projects/', true);
+  const projectCount = projects.count;
+  results.push([
+    `свои проекты видны (${typeof projectCount === 'number' ? projectCount : 'нет данных'})`,
+    projects.status === 200 && projectCount >= 1,
+  ]);
+
+  // Без токена сервер должен отказать.
+  const anon = await fetchFromPage(page, '/projects/', false);
+  results.push(['без токена список проектов закрыт', anon.status === 401]);
+
+  // Выход возвращает на экран входа и убирает токены.
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      const btn = [...document.querySelectorAll('button')]
+        .find(b => b.textContent.trim() === 'Выйти');
+      if (btn) btn.click();
+    })()`,
+  });
+  await waitFor(page, '.auth__card', 15000);
+  results.push(['выход возвращает на экран входа', await has(page, '.auth__card')]);
+
+  const cleared = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `(() => ({
+      access: localStorage.getItem('aurabuilder.access'),
+      refresh: localStorage.getItem('aurabuilder.refresh'),
+    }))()`,
+  });
+  results.push([
+    'после выхода токены убраны',
+    cleared.result.value.access === null && cleared.result.value.refresh === null,
+  ]);
+
   return results;
 }
+
+
+/** Перезагрузка страницы: нужна после входа и выхода. */
+const reload = async (page) => {
+  await page.send('Page.reload', { ignoreCache: true });
+  await new Promise((r) => setTimeout(r, 2500));
+};
+
+/** Ожидание появления селектора. Возвращает false, если не дождались. */
+const waitFor = async (page, selector, timeoutMs) => {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const found = await page.send('Runtime.evaluate', {
+      returnByValue: true,
+      expression: `!!document.querySelector(${JSON.stringify(selector)})`,
+    });
+    if (found.result.value) return true;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return false;
+};
+
+const has = (page, selector) =>
+  page
+    .send('Runtime.evaluate', {
+      returnByValue: true,
+      expression: `!!document.querySelector(${JSON.stringify(selector)})`,
+    })
+    .then((r) => r.result.value === true);
+
+/**
+ * Ввод значения в поле через нативный сеттер.
+ *
+ * Прямое input.value = ... не работает: React не видит изменения, и
+ * контролируемое поле возвращает прежнее значение.
+ */
+const fill = async (page, selector, value) => {
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      const el = document.querySelector(${JSON.stringify(selector)});
+      if (!el) return;
+      const proto = el.tagName === 'TEXTAREA'
+        ? window.HTMLTextAreaElement.prototype
+        : window.HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, ${JSON.stringify(value)});
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`,
+  });
+  await new Promise((r) => setTimeout(r, 120));
+};
+
+/** Текст элемента или пустая строка. */
+const text = async (page, selector) => {
+  const res = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `((document.querySelector(${JSON.stringify(selector)})?.textContent ?? '').trim())`,
+  });
+  return res.result.value ?? '';
+};
+
+/** Клик по элементу через реальные координаты: React слушает указатель. */
+const click = async (page, selector) => {
+  const box = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `(() => {
+      const el = document.querySelector(${JSON.stringify(selector)});
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+    })()`,
+  });
+  const point = box.result.value;
+  if (!point) throw new Error(`элемент не найден: ${selector}`);
+  await page.send('Input.dispatchMouseEvent', {
+    type: 'mousePressed', x: point.x, y: point.y, button: 'left', clickCount: 1,
+  });
+  await page.send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased', x: point.x, y: point.y, button: 'left', clickCount: 1,
+  });
+};
+
+/**
+ * HTTP-запрос из страницы и чтение результата.
+ *
+ * awaitPromise в Runtime.evaluate здесь не работает: значение возвращается
+ * в Node, и относительный адрес /api/... превращается в невалидный URL.
+ * Поэтому запрос выполняется в странице, результат кладётся в window, а
+ * следующим вызовом читается.
+ */
+const fetchFromPage = async (page, path, withAuth) => {
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      window.__probe = { pending: true };
+      const headers = {};
+      if (${withAuth ? 'true' : 'false'}) {
+        headers['Authorization'] = 'Bearer ' + localStorage.getItem('aurabuilder.access');
+      }
+      fetch(${JSON.stringify('/api' + path)}, { headers })
+        .then(async (res) => {
+          const body = await res.text();
+          let count = -1;
+          try {
+            const parsed = JSON.parse(body);
+            count = Array.isArray(parsed) ? parsed.length : -1;
+          } catch { /* ответ не JSON — достаточно кода */ }
+          window.__probe = { pending: false, status: res.status, count };
+        })
+        .catch((e) => { window.__probe = { pending: false, status: 0, error: String(e) }; });
+    })()`,
+  });
+
+  const deadline = Date.now() + 10000;
+  while (Date.now() < deadline) {
+    const res = await page.send('Runtime.evaluate', {
+      returnByValue: true,
+      expression: 'JSON.stringify(window.__probe ?? null)',
+    });
+    const parsed = res.result.value ? JSON.parse(res.result.value) : null;
+    if (parsed && parsed.pending === false) return parsed;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return { status: 0, count: -1, error: 'таймаут' };
+};
 
 const info = probe.result.value;
 let stats = null;

@@ -25,3 +25,12 @@ django-cors-headers==4.9.0
 # точка отказа. Лицензии MIT, проверяются tools/license_gate_py.py.
 gunicorn==23.0.0
 whitenoise==6.11.0
+
+# Аутентификация (ТЗ п.7.7): JWT с короткоживущим access-токеном и
+# refresh с ротацией. simplejwt реализует это без самописной криптографии.
+djangorestframework-simplejwt==5.5.1
+
+# Argon2id для хэширования паролей — требование ТЗ п.7.3, а не склонность:
+# PBKDF2 быстрее подбирается на GPU. Без этого пакета Django не знает
+# про Argon2Hasher, даже если он есть в stdlib-совместимом виде.
+argon2-cffi==25.1.0
