@@ -218,46 +218,18 @@ export interface RegisterPayload {
 }
 
 /**
- * Проект, который открыт в редакторе.
+ * Проекты пользователя.
  *
- * Раньше идентификатор был зашит в редактор. Это ломалось дважды: на
- * пустой базе (свежий стенд, контейнер, другой разработчик) редактор
- * показывал 404 и оставался пустым, а проверки зависели от того,
- * что кто-то заранее создал проект руками. Теперь редактор берёт
- * первый проект, а если проектов нет — создаёт его.
+ * Раньше идентификатор был зашит в редактор, и он открывал первый
+ * найденный проект. Теперь проектом управляет список: он создаётся,
+ * переименовывается и удаляется явно, а редактор получает готовый
+ * идентификатор. Иначе удалённый проект открывался бы снова, а чужой
+ * мог бы попасть в редактор по остаточному состоянию.
  */
-let currentProjectId: string | null = null;
-
-async function openProject(name: string, tree: unknown): Promise<Project> {
-  if (currentProjectId !== null) {
-    try {
-      return await request<Project>(`/projects/${currentProjectId}/`);
-    } catch (e) {
-      // Проект могли удалить в соседней вкладке. Открываем заново,
-      // но один раз: если сервер вернул 404 и на повторе, значит дело
-      // не в идентификаторе, и молчаливый цикл запросов только скроет
-      // настоящую ошибку.
-      if (!(e instanceof ApiError) || e.status !== 404) throw e;
-      currentProjectId = null;
-    }
-  }
-
-  const list = await request<Project[]>('/projects/');
-  const existing = list[0];
-  if (existing) {
-    currentProjectId = existing.id;
-    return existing;
-  }
-
-  const created = await request<Project>('/projects/', {
-    method: 'POST',
-    body: JSON.stringify({ name, tree }),
-  });
-  currentProjectId = created.id;
-  return created;
-}
-
 export const api = {
+  /** Проекты, доступные текущему пользователю. */
+  listProjects: () => request<Project[]>('/projects/'),
+
   getProject: (id: string) => request<Project>(`/projects/${id}/`),
 
   saveProject: (id: string, name: string, tree: unknown) =>
@@ -266,14 +238,25 @@ export const api = {
       body: JSON.stringify({ name, tree }),
     }),
 
-  createProject: (name: string, tree: unknown) =>
+  createProject: (name: string, tree?: unknown) =>
     request<Project>('/projects/', {
       method: 'POST',
-      body: JSON.stringify({ name, tree }),
+      body: JSON.stringify(tree === undefined ? { name } : { name, tree }),
     }),
 
-  /** Первый проект, а при пустой базе — новый. */
-  openProject,
+  /** Переименование. Дерево не передаётся намеренно: PATCH меняет одно поле. */
+  renameProject: (id: string, name: string) =>
+    request<Project>(`/projects/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }),
+
+  deleteProject: (id: string) =>
+    request<void>(`/projects/${id}/`, { method: 'DELETE' }),
+
+  /** Права текущего пользователя в проекте. */
+  members: (id: string) =>
+    request<{ role: string; username: string }[]>(`/projects/${id}/members/`),
 
   /**
    * Вход по логину или email. Возвращает профиль вместе с токенами,

@@ -16,7 +16,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { Icon, type IconName } from './icons';
 import { api, ApiError } from './api';
-import { defaultTree, newBlockId, validateTree, type Block, type PageTree } from './project';
+import { defaultTree, newBlockId, validateTree, type Block, type PageTree, type Project } from './project';
 import { MODULE_CATEGORIES, MODULES, kindOf, propDefaults } from './moduleRegistry';
 import type { ModuleDef } from './moduleRegistry';
 import { ModulePalette } from './ModulePalette';
@@ -53,9 +53,6 @@ const TOOLS: Tool[] = [
 /*  Состояние сохранения                                               */
 /* ------------------------------------------------------------------ */
 
-/** Название проекта для стенда, когда база пустая. */
-const PROJECT_NAME = 'Интернет-магазин «Цветы»';
-
 /**
  * Этап выпуска, для которого показываются модули.
  * На стенде это MVP — этап 3 из ТЗ п.12.
@@ -66,7 +63,16 @@ const CURRENT_STAGE = 3;
 /*  Компонент                                                          */
 /* ------------------------------------------------------------------ */
 
-export function EditorCanvas({ onSignOut }: { onSignOut?: () => void }) {
+export function EditorCanvas({
+  project,
+  onBack,
+  onSignOut,
+}: {
+  /** Проект открыт из списка: идентификатор и название известны заранее. */
+  project: Project;
+  onBack: () => void;
+  onSignOut: () => void;
+}) {
   const [tool, setTool] = useState('select');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -126,7 +132,7 @@ export function EditorCanvas({ onSignOut }: { onSignOut?: () => void }) {
   useEffect(() => {
     let cancelled = false;
     api
-      .openProject(PROJECT_NAME, defaultTree())
+      .getProject(project.id)
       .then((p) => {
         if (cancelled) return;
         setProjectId(p.id);
@@ -287,7 +293,7 @@ export function EditorCanvas({ onSignOut }: { onSignOut?: () => void }) {
     }
 
     if (projectId === null) throw new Error('Проект ещё не загружен');
-    const saved = await api.saveProject(projectId, PROJECT_NAME, tree);
+    const saved = await api.saveProject(projectId, project.name, tree);
     // Ответ сервера помечается сохранённым, но история не сбрасывается:
     // сброс здесь означал бы, что Ctrl+Z перестаёт работать через
     // секунду после каждой правки — отмена пропадала бы именно в тот
@@ -404,20 +410,30 @@ export function EditorCanvas({ onSignOut }: { onSignOut?: () => void }) {
             на другого пользователя, не закрыв браузер. Refresh-токен
             при этом отзывается на сервере, а не просто забывается.
           */}
-          {onSignOut ? (
-            <button
-              type="button"
-              className="btn btn--ghost"
-              onClick={() => {
-                void api.logout().finally(() => onSignOut());
-              }}
-              title="Выйти"
-              aria-label="Выйти"
-            >
-              <Icon name="settings" />
-              <span>Выйти</span>
-            </button>
-          ) : null}
+          {/* Кнопка возврата в спи��к проектов: без неё из редактора
+              не выйти, кроме выхода из аккаунта, а это разные вещи. */}
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={onBack}
+            title="К списку проектов"
+            aria-label="К списку проектов"
+          >
+            <Icon name="back" />
+            <span>Проекты</span>
+          </button>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => {
+              void api.logout().finally(() => onSignOut());
+            }}
+            title="Выйти"
+            aria-label="Выйти"
+          >
+            <Icon name="settings" />
+            <span>Выйти</span>
+          </button>
           <span
             className={`save-state is-${autosave.state}`}
             role="status"

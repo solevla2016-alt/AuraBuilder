@@ -18,12 +18,21 @@
  */
 
 import { useState } from 'react';
-import { ApiError, api } from './api';
+import { ApiError, api, type LoginResult, type UserProfile } from './api';
 import { clearTokens, hasSession } from './api';
 
 type Mode = 'login' | 'register';
 
-export function AuthScreen({ onSignedIn }: { onSignedIn: () => void }) {
+export function AuthScreen({
+  onSignedIn,
+}: {
+  /**
+   * Передаётся профиль, а не пустой сигнал: иначе приложению пришлось
+   * бы сразу после входа повторно спрашивать /api/auth/me/, и лишний
+   * запрос отдавал бы возможность выиграть гонку с отзывом токена.
+   */
+  onSignedIn: (user: UserProfile) => void;
+}) {
   const [mode, setMode] = useState<Mode>('login');
   const [login, setLogin] = useState('');
   const [username, setUsername] = useState('');
@@ -40,8 +49,8 @@ export function AuthScreen({ onSignedIn }: { onSignedIn: () => void }) {
     setBusy(true);
     try {
       if (mode === 'login') {
-        await api.login(login.trim(), password);
-        onSignedIn();
+        const result: LoginResult = await api.login(login.trim(), password);
+        onSignedIn(result.user);
       } else {
         await api.register({
           username: username.trim(),
@@ -52,8 +61,8 @@ export function AuthScreen({ onSignedIn }: { onSignedIn: () => void }) {
         // Сразу вход: подтверждение email появится вместе с этапом 8,
         // а сейчас регистрация была бы тупиком — зарегистрировался
         // и не смог войти.
-        await api.login(username.trim(), password);
-        onSignedIn();
+        const result = await api.login(username.trim(), password);
+        onSignedIn(result.user);
       }
     } catch (e) {
       setError(errorText(e));

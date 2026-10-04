@@ -915,3 +915,248 @@ select.prop__input option {
   opacity: 0.6;
   cursor: progress;
 }
+
+/* ------------------------------------------------------------------ */
+/*  Список проектов (Dashboard V1, сетка)                              */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Сетка вместо таблицы: проектов единицы, а название читают целиком.
+ * Минимальная ширина карточки 260px держит её читаемой и на 1024px, и
+ * на 1440px: без этого на ноутбуке получались бы три узких колонки.
+ */
+.dash {
+  min-height: 100vh;
+  padding: var(--space-xl);
+  background: var(--appBg);
+  color: var(--textPrimary);
+}
+
+.dash__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  max-width: 1200px;
+  margin: 0 auto var(--space-lg);
+}
+
+.dash__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.dash__mark {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: var(--accentSurface);
+}
+
+.dash__title {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 600;
+}
+
+.dash__user {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--textSecondary);
+}
+
+.dash__toolbar {
+  max-width: 1200px;
+  margin: 0 auto var(--space-lg);
+}
+
+.dash__create {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.dash__input {
+  flex: 1 1 260px;
+  min-height: var(--min-target);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--canvas);
+  color: var(--textPrimary);
+  font: inherit;
+}
+
+.dash__input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.dash__grid {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-md);
+}
+
+.dash__card {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+/* Вся карточка открывает проект, а кнопки действий — отдельные:
+   наводить курсор точно на название неудобно, а делать карточку
+   ссылкой мешает вложенным кнопкам. */
+.dash__open {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dash__open:hover {
+  background: var(--panelRaised);
+}
+
+.dash__card-name {
+  font-size: var(--text-lg);
+  font-weight: 550;
+  /* Название длиннее двух строк обрезается: карточки в сетке должны
+     оставаться одной высоты, а простыня текста её ломает. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.dash__card-meta,
+.dash__card-blocks {
+  font-size: var(--text-xs);
+  color: var(--textSecondary);
+}
+
+.dash__card-actions {
+  display: flex;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  border-top: 1px solid var(--border);
+}
+
+/* Поле переименования занимает всю полосу действий карточки: вторая
+   строка с полем и кнопкой выглядела бы как отдельный блок. */
+.dash__rename {
+  display: flex;
+  gap: var(--space-xs);
+  width: 100%;
+}
+
+.dash__rename-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 32px;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--canvas);
+  color: var(--textPrimary);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.dash__rename-input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.dash__empty {
+  max-width: 520px;
+  margin: var(--space-2xl) auto;
+  padding: var(--space-xl);
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.dash__empty h2 {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--text-lg);
+}
+
+.dash__empty p {
+  margin: 0 0 var(--space-lg);
+  color: var(--textSecondary);
+  line-height: 1.5;
+}
+
+.dash__hint {
+  max-width: 1200px;
+  margin: 0 auto;
+  color: var(--textSecondary);
+}
+
+.dash__error {
+  max-width: 1200px;
+  margin: 0 auto var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-md);
+  color: var(--danger);
+  font-size: var(--text-sm);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Диалог подтверждения удаления                                      */
+/* ------------------------------------------------------------------ */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-lg);
+  /* Затемнение без отдельного токена: полупрозрачный чёрный достаточно
+     контрастен в обеих темах и не зависит от палитры. */
+  background: rgba(12, 14, 16, 0.5);
+}
+
+.modal__card {
+  width: 100%;
+  max-width: 420px;
+  padding: var(--space-xl);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+}
+
+.modal__title {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--text-lg);
+}
+
+.modal__text {
+  margin: 0 0 var(--space-lg);
+  color: var(--textSecondary);
+  line-height: 1.5;
+}
+
+.modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}

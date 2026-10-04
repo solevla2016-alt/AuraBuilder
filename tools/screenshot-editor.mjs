@@ -149,6 +149,172 @@ await page.send('Emulation.setDeviceMetricsOverride', {
   mobile: false,
 });
 
+/*
+ * Вспомогательные функции для CDP. Объявлены до первой проверки,
+ * потому что const не поднимается как функция: обращение к помощнику
+ * выше по тексту давало бы «Cannot access before initialization».
+ */
+
+/** Перезагрузка страницы: нужна после входа и выхода. */
+const reload = async (page) => {
+  await page.send('Page.reload', { ignoreCache: true });
+  await new Promise((r) => setTimeout(r, 2500));
+};
+
+/** Ожидание появления селектора. Возвращает false, если не дождались. */
+const waitFor = async (page, selector, timeoutMs) => {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const found = await page.send('Runtime.evaluate', {
+      returnByValue: true,
+      expression: `!!document.querySelector(${JSON.stringify(selector)})`,
+    });
+    if (found.result.value) return true;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return false;
+};
+
+const has = (page, selector) =>
+  page
+    .send('Runtime.evaluate', {
+      returnByValue: true,
+      expression: `!!document.querySelector(${JSON.stringify(selector)})`,
+    })
+    .then((r) => r.result.value === true);
+
+/**
+ * Ввод значения в поле через нативный сеттер.
+ *
+ * Прямое input.value = ... не работает: React не видит изменения, и
+ * контролируемое поле возвращает прежнее значение.
+ */
+const fill = async (page, selector, value) => {
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      const el = document.querySelector(${JSON.stringify(selector)});
+      if (!el) return;
+      const proto = el.tagName === 'TEXTAREA'
+        ? window.HTMLTextAreaElement.prototype
+        : window.HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, ${JSON.stringify(value)});
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`,
+  });
+  await new Promise((r) => setTimeout(r, 120));
+};
+
+/** Текст элемента или пустая строка. */
+const text = async (page, selector) => {
+  const res = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `((document.querySelector(${JSON.stringify(selector)})?.textContent ?? '').trim())`,
+  });
+  return res.result.value ?? '';
+};
+
+/** Клик по элементу через реальные координаты: React слушает указатель. */
+const click = async (page, selector) => {
+  const box = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `(() => {
+      const el = document.querySelector(${JSON.stringify(selector)});
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+    })()`,
+  });
+  const point = box.result.value;
+  if (!point) throw new Error(`элемент не найден: ${selector}`);
+  await page.send('Input.dispatchMouseEvent', {
+    type: 'mousePressed', x: point.x, y: point.y, button: 'left', clickCount: 1,
+  });
+  await page.send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased', x: point.x, y: point.y, button: 'left', clickCount: 1,
+  });
+};
+
+/**
+ * HTTP-запрос из страницы и чтение результата.
+ *
+ * awaitPromise в Runtime.evaluate здесь не работает: значение возвращается
+ * в Node, и относительный адрес /api/... превращается в невалидный URL.
+ * Поэтому запрос выполняется в странице, результат кладётся в window, а
+ * следующим вызовом читается.
+ */
+const fetchFromPage = async (page, path, withAuth) => {
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      window.__probe = { pending: true };
+      const headers = {};
+      if (${withAuth ? 'true' : 'false'}) {
+        headers['Authorization'] = 'Bearer ' + localStorage.getItem('aurabuilder.access');
+      }
+      fetch(${JSON.stringify('/api' + path)}, { headers })
+        .then(async (res) => {
+          const body = await res.text();
+          let count = -1;
+          try {
+            const parsed = JSON.parse(body);
+            count = Array.isArray(parsed) ? parsed.length : -1;
+          } catch { /* ответ не JSON — достаточно кода */ }
+          window.__probe = { pending: false, status: res.status, count };
+        })
+        .catch((e) => { window.__probe = { pending: false, status: 0, error: String(e) }; });
+    })()`,
+  });
+
+  const deadline = Date.now() + 10000;
+  while (Date.now() < deadline) {
+    const res = await page.send('Runtime.evaluate', {
+      returnByValue: true,
+      expression: 'JSON.stringify(window.__probe ?? null)',
+    });
+    const parsed = res.result.value ? JSON.parse(res.result.value) : null;
+    if (parsed && parsed.pending === false) return parsed;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return { status: 0, count: -1, error: 'таймаут' };
+};
+
+/**
+ * Асинхронное выражение в странице с надёжным ожиданием.
+ *
+ * awaitPromise у Runtime.evaluate здесь не работает: CDP возвращает
+ * незакрытый промис, и в Node он выглядит как пустой объект. Поэтому
+ * результат кладётся в window.__result и читается следующим вызовом.
+ */
+const evalAsync = async (page, body) => {
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      window.__result = { pending: true };
+      Promise.resolve().then(async () => {
+        const value = await (async () => {
+          ${body}
+        })();
+        window.__result = { pending: false, value };
+      }).catch((e) => {
+        window.__result = { pending: false, error: String(e) };
+      });
+    })()`,
+  });
+
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    const res = await page.send('Runtime.evaluate', {
+      returnByValue: true,
+      expression: 'JSON.stringify(window.__result ?? null)',
+    });
+    const parsed = res.result.value ? JSON.parse(res.result.value) : null;
+    if (parsed && parsed.pending === false) {
+      if (parsed.error) throw new Error(`ошибка в странице: ${parsed.error}`);
+      return parsed.value;
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  throw new Error('выражение в странице не завершилось');
+};
+
 await page.send('Page.navigate', { url: URL_TO_TEST });
 // Холст грузится лениво: ждём, пока он появится и отрисовался.
 await new Promise((r) => setTimeout(r, 6000));
@@ -169,10 +335,7 @@ const authDay = new Date().toISOString().slice(0, 10).replaceAll('-', '');
 const authUser = `autoprobe${authDay}`;
 const authPassword = 'probepassword123';
 
-const signIn = await page.send('Runtime.evaluate', {
-  returnByValue: true,
-  awaitPromise: true,
-  expression: `(async () => {
+const signIn = await evalAsync(page, `
     const post = (url, body) => fetch('/api' + url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -194,14 +357,30 @@ const signIn = await page.send('Runtime.evaluate', {
     localStorage.setItem('aurabuilder.access', body.access);
     localStorage.setItem('aurabuilder.refresh', body.refresh);
     return { ok: true };
-  })()`,
-});
-if (!signIn.result.value?.ok) {
-  throw new Error(`не удалось войти через API: ${JSON.stringify(signIn.result.value)}`);
-}
+  `);
 
 await page.send('Page.reload', { ignoreCache: true });
 await new Promise((r) => setTimeout(r, 6000));
+
+// Список проектов — точка входа после входа. Редактор открывается
+// только явным выбором, поэтому до пробы холста нужно нажать на первую
+// карточку: пустой список означает, что редактор вообще не отрисуется.
+const dashReady = await waitFor(page, '.dash__grid, .dash__empty', 20000);
+if (!dashReady) throw new Error('после входа не открылся список проектов');
+
+if (await has(page, '.dash__empty')) {
+  await click(page, '.dash__empty .btn--primary');
+  await fill(page, '.dash__input', 'Проект автопроверки');
+  await click(page, '.dash__create .btn--primary');
+} else {
+  await click(page, '.dash__card .dash__open');
+}
+// Ждём не контейнер, а сам canvas Konva: модуль с холстом грузится
+// лениво, и контейнер появляется на несколько сотен миллисекунд раньше.
+if (!(await waitFor(page, '.canvas canvas', 25000))) {
+  throw new Error('редактор не открылся после выбора проекта');
+}
+await new Promise((r) => setTimeout(r, 1500));
 
 const probe = await page.send('Runtime.evaluate', {
   returnByValue: true,
@@ -239,6 +418,17 @@ writeFileSync(OUT, png);
  */
 async function runScenarios(page, box) {
   const results = [];
+  /*
+   * Отметка шага включается переменной PROBE_TRACE и нужна только при
+   * разборе зависания: по последней напечатанной метке видно, на
+   * каком действии браузер перестал отвечать. В обычном прогоне вывод
+   * остаётся чистым.
+   */
+  let step = 0;
+  const mark = (label) => {
+    step += 1;
+    if (process.env['PROBE_TRACE']) console.log(`шаг ${step}: ${label}`);
+  };
 
   const state = async () => {
     const r = await page.send('Runtime.evaluate', {
@@ -649,7 +839,12 @@ const key = async (letter, code, modifiers = 0) => {
   await click(page, '.auth__submit');
   await waitFor(page, '.editor', 20000);
 
-  results.push(['вход через форму открыл редактор', await has(page, '.editor')]);
+  // После входа открывается список проектов: редактор запускается
+  // только явным выбором проекта (Dashboard V1).
+  results.push([
+    'вход через форму открыл список проектов',
+    await has(page, '.dash__toolbar'),
+  ]);
 
   const stored = await page.send('Runtime.evaluate', {
     returnByValue: true,
@@ -661,8 +856,11 @@ const key = async (letter, code, modifiers = 0) => {
   results.push(['токены сохранены локально', stored.result.value.access === true]);
 
   await reload(page);
-  await waitFor(page, '.editor', 20000);
-  results.push(['после перезагрузки сессия жива', await has(page, '.editor')]);
+  await waitFor(page, '.dash__toolbar', 20000);
+  results.push([
+    'после перезагрузки сессия жива',
+    await has(page, '.dash__toolbar'),
+  ]);
 
   // Список проектов не должен содержать чужие: у нового пользователя
   // появляется проект только от openProject.
@@ -688,143 +886,233 @@ const key = async (letter, code, modifiers = 0) => {
   await waitFor(page, '.auth__card', 15000);
   results.push(['выход возвращает на экран входа', await has(page, '.auth__card')]);
 
-  const cleared = await page.send('Runtime.evaluate', {
+  /*
+   * Выход запрос на сервере асинхронный, поэтому токены исчезают не
+   * сразу после щелчка: экран входа появляется раньше, чем localStorage
+   * очищается. Опрос даёт несколько секунд — иначе проверка ловила
+   * гонку, а не ошибку.
+   */
+  let clearedValue = { access: 'нет данных', refresh: 'нет данных' };
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const probe = await page.send('Runtime.evaluate', {
+      returnByValue: true,
+      expression: `(() => ({
+        access: localStorage.getItem('aurabuilder.access'),
+        refresh: localStorage.getItem('aurabuilder.refresh'),
+      }))()`,
+    });
+    clearedValue = probe.result.value ?? {};
+    if (clearedValue.access === null && clearedValue.refresh === null) break;
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  results.push([
+    `после выхода токены убраны (${JSON.stringify(clearedValue)})`,
+    clearedValue.access === null && clearedValue.refresh === null,
+  ]);
+
+
+  /* ------------------------------------------------------------------ */
+  /*  Список проектов                                                    */
+  /* ------------------------------------------------------------------ */
+
+  /*
+   * Список проверяется после входа и до редактора: он теперь точка
+   * входа, и ошибка в нём выглядела бы как «холст не грузится».
+   *
+   * Создаётся проект с именем из времени прогона: проверка удаления
+   * обязана быть разрушающей, а на постоянном имени прогон удалил бы
+   * проект, который следующий тест использует.
+   */
+  const dashName = `Автопроверка ${Date.now().toString(36)}`;
+
+  // Предыдущий блок закончился выходом, поэтому токенов нет и
+  // приложение показывает экран входа. Входим заново тем же
+  // пользователем: сценарии списка должны идти после успешного входа.
+  const again = await evalAsync(page, `
+    const res = await fetch('/api/auth/login/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        login: ${JSON.stringify(authUser)},
+        password: ${JSON.stringify(authPassword)},
+      }),
+    });
+    if (!res.ok) return { ok: false, status: res.status };
+    const body = await res.json();
+    localStorage.setItem('aurabuilder.access', body.access);
+    localStorage.setItem('aurabuilder.refresh', body.refresh);
+    return { ok: true };
+  `);
+  if (!again?.ok) {
+    throw new Error('повторный вход не удался: ' + JSON.stringify(again));
+  }
+
+  // Список получается перезагрузкой, а не кнопкой возврата: экран
+  // приложения не хранится в URL, поэтому после reload открывается
+  // именно список — это проверяется надёжнее, чем клик по кнопке.
+  mark('возврат к списку проектов');
+  await reload(page);
+  if (!(await waitFor(page, '.dash__toolbar', 15000))) {
+    throw new Error('список проектов не открылся после перезагрузки');
+  }
+
+  mark('открытие формы создания');
+  await click(page, '.dash__toolbar .btn--primary');
+  await fill(page, '.dash__input', dashName);
+  await click(page, '.dash__create .btn--primary');
+  await new Promise((r) => setTimeout(r, 1200));
+
+  // Форма могла не отправиться: кнопка «Создать» остаётся выключенной,
+  // если поле пустое. Проверяем до перехода дальше, иначе следующая
+  // ошибка указывала бы совсем не на то место.
+  const afterCreate = await page.send('Runtime.evaluate', {
     returnByValue: true,
-    expression: `(() => ({
-      access: localStorage.getItem('aurabuilder.access'),
-      refresh: localStorage.getItem('aurabuilder.refresh'),
-    }))()`,
+    expression: `JSON.stringify({
+      input: document.querySelector('.dash__input')?.value ?? null,
+      disabled: document.querySelector('.dash__create .btn--primary')?.disabled ?? null,
+      inEditor: !!document.querySelector('.canvas'),
+      error: document.querySelector('.dash__error')?.textContent ?? null,
+    })`,
   });
   results.push([
-    'после выхода токены убраны',
-    cleared.result.value.access === null && cleared.result.value.refresh === null,
+    `создание проекта отправило форму (${afterCreate.result.value})`,
+    afterCreate.result.value.includes('"inEditor":true'),
   ]);
+
+  results.push([
+    'создание проекта открыло редактор',
+    await has(page, '.canvas'),
+  ]);
+
+  mark('возврат из редактора по кнопке');
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      const btn = [...document.querySelectorAll('button')]
+        .find(b => b.getAttribute('aria-label') === 'К списку проектов');
+      if (btn) btn.click();
+    })()`,
+  });
+  await waitFor(page, '.dash__grid', 15000);
+
+  const cardExists = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `(() => {
+      const cards = [...document.querySelectorAll('.dash__card-name')];
+      return cards.map(c => c.textContent);
+    })()`,
+  });
+  const names = cardExists.result.value ?? [];
+  results.push([
+    'новый проект появился в списке',
+    names.includes(dashName),
+  ]);
+
+  mark('проверка списка после создания');
+  // Переименование: поле в карточке, без системного диалога.
+  const newName = `${dashName} (переименован)`;
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      const card = [...document.querySelectorAll('.dash__card')]
+        .find(c => c.querySelector('.dash__card-name')?.textContent === ${JSON.stringify(dashName)});
+      const btn = card && [...card.querySelectorAll('button')]
+        .find(b => b.title === 'Переименовать');
+      if (btn) btn.click();
+    })()`,
+  });
+  await waitFor(page, '.dash__rename-input', 10000);
+  await fill(page, '.dash__rename-input', newName);
+  await click(page, '.dash__rename .btn--primary');
+  await new Promise((r) => setTimeout(r, 900));
+
+  const namesAfterRename = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `[...document.querySelectorAll('.dash__card-name')].map(c => c.textContent)`,
+  });
+  results.push([
+    'переименование сохранилось на сервере',
+    (namesAfterRename.result.value ?? []).includes(newName),
+  ]);
+
+  // Удаление: диалог подтверждения.
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      const card = [...document.querySelectorAll('.dash__card')]
+        .find(c => c.querySelector('.dash__card-name')?.textContent === ${JSON.stringify(newName)});
+      const btn = card && [...card.querySelectorAll('button')]
+        .find(b => b.title === 'Удалить');
+      if (btn) btn.click();
+    })()`,
+  });
+  await waitFor(page, '.modal__card', 10000);
+  const modalTitle = await text(page, '.modal__title');
+  results.push(['удаление спрашивает подтверждение', modalTitle.includes('Удалить')]);
+
+  if (!(await has(page, '.modal__actions .btn--primary'))) {
+    // Диалог не появился: показываем, что на экране, иначе ошибка
+    // указывала бы только на селектор кнопки.
+    const state = await page.send('Runtime.evaluate', {
+      returnByValue: true,
+      expression: `JSON.stringify({
+        hasModal: !!document.querySelector('.modal'),
+        cards: [...document.querySelectorAll('.dash__card-name')].map(c => c.textContent),
+      })`,
+    });
+    throw new Error('диалог удаления не открылся; состояние: ' + state.result.value);
+  }
+  mark('подтверждение удаления');
+  await click(page, '.modal__actions .btn--primary');
+  await new Promise((r) => setTimeout(r, 900));
+
+  const afterDelete = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `(() => {
+      const cards = [...document.querySelectorAll('.dash__card-name')];
+      return cards.map(c => c.textContent);
+    })()`,
+  });
+  results.push([
+    'удалённый проект исчез из списка',
+    !(afterDelete.result.value ?? []).includes(newName),
+  ]);
+
+  mark('проверка пустого состояния');
+  // Пустое состояние объясняет следующий шаг и содержит кнопку.
+  // Проверяется только когда список действительно пуст: у пользователя
+  // к этому моменту есть созданный ранее проект, и требовать пустоты
+  // означало бы запретить собственные проекты.
+  const isEmpty = await has(page, '.dash__empty');
+  if (isEmpty) {
+    const emptyState = await page.send('Runtime.evaluate', {
+      returnByValue: true,
+      expression: `(() => {
+        const empty = document.querySelector('.dash__empty');
+        return {
+          has: !!empty,
+          hasButton: !!empty?.querySelector('.btn--primary'),
+        };
+      })()`,
+    });
+    results.push([
+      'пустое состояние объясняет следующий шаг',
+      emptyState.result.value.has === true && emptyState.result.value.hasButton === true,
+    ]);
+  } else {
+    results.push(['список не пуст — пустое состояние не показывается', true]);
+  }
+
+  // Возвращаемся в редактор: сценарии холста идут дальше. Кнопка
+  // «Новый проект» есть в обоих состояниях списка, а форма создания
+  // открывается в панели инструментов.
+  await click(page, '.dash__toolbar .btn--primary');
+  await fill(page, '.dash__input', dashName);
+  await click(page, '.dash__create .btn--primary');
+  if (!(await waitFor(page, '.canvas canvas', 25000))) {
+    throw new Error('редактор не открылся после создания проекта');
+  }
 
   return results;
 }
 
-
-/** Перезагрузка страницы: нужна после входа и выхода. */
-const reload = async (page) => {
-  await page.send('Page.reload', { ignoreCache: true });
-  await new Promise((r) => setTimeout(r, 2500));
-};
-
-/** Ожидание появления селектора. Возвращает false, если не дождались. */
-const waitFor = async (page, selector, timeoutMs) => {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const found = await page.send('Runtime.evaluate', {
-      returnByValue: true,
-      expression: `!!document.querySelector(${JSON.stringify(selector)})`,
-    });
-    if (found.result.value) return true;
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  return false;
-};
-
-const has = (page, selector) =>
-  page
-    .send('Runtime.evaluate', {
-      returnByValue: true,
-      expression: `!!document.querySelector(${JSON.stringify(selector)})`,
-    })
-    .then((r) => r.result.value === true);
-
-/**
- * Ввод значения в поле через нативный сеттер.
- *
- * Прямое input.value = ... не работает: React не видит изменения, и
- * контролируемое поле возвращает прежнее значение.
- */
-const fill = async (page, selector, value) => {
-  await page.send('Runtime.evaluate', {
-    expression: `(() => {
-      const el = document.querySelector(${JSON.stringify(selector)});
-      if (!el) return;
-      const proto = el.tagName === 'TEXTAREA'
-        ? window.HTMLTextAreaElement.prototype
-        : window.HTMLInputElement.prototype;
-      Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, ${JSON.stringify(value)});
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-    })()`,
-  });
-  await new Promise((r) => setTimeout(r, 120));
-};
-
-/** Текст элемента или пустая строка. */
-const text = async (page, selector) => {
-  const res = await page.send('Runtime.evaluate', {
-    returnByValue: true,
-    expression: `((document.querySelector(${JSON.stringify(selector)})?.textContent ?? '').trim())`,
-  });
-  return res.result.value ?? '';
-};
-
-/** Клик по элементу через реальные координаты: React слушает указатель. */
-const click = async (page, selector) => {
-  const box = await page.send('Runtime.evaluate', {
-    returnByValue: true,
-    expression: `(() => {
-      const el = document.querySelector(${JSON.stringify(selector)});
-      if (!el) return null;
-      const r = el.getBoundingClientRect();
-      return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
-    })()`,
-  });
-  const point = box.result.value;
-  if (!point) throw new Error(`элемент не найден: ${selector}`);
-  await page.send('Input.dispatchMouseEvent', {
-    type: 'mousePressed', x: point.x, y: point.y, button: 'left', clickCount: 1,
-  });
-  await page.send('Input.dispatchMouseEvent', {
-    type: 'mouseReleased', x: point.x, y: point.y, button: 'left', clickCount: 1,
-  });
-};
-
-/**
- * HTTP-запрос из страницы и чтение результата.
- *
- * awaitPromise в Runtime.evaluate здесь не работает: значение возвращается
- * в Node, и относительный адрес /api/... превращается в невалидный URL.
- * Поэтому запрос выполняется в странице, результат кладётся в window, а
- * следующим вызовом читается.
- */
-const fetchFromPage = async (page, path, withAuth) => {
-  await page.send('Runtime.evaluate', {
-    expression: `(() => {
-      window.__probe = { pending: true };
-      const headers = {};
-      if (${withAuth ? 'true' : 'false'}) {
-        headers['Authorization'] = 'Bearer ' + localStorage.getItem('aurabuilder.access');
-      }
-      fetch(${JSON.stringify('/api' + path)}, { headers })
-        .then(async (res) => {
-          const body = await res.text();
-          let count = -1;
-          try {
-            const parsed = JSON.parse(body);
-            count = Array.isArray(parsed) ? parsed.length : -1;
-          } catch { /* ответ не JSON — достаточно кода */ }
-          window.__probe = { pending: false, status: res.status, count };
-        })
-        .catch((e) => { window.__probe = { pending: false, status: 0, error: String(e) }; });
-    })()`,
-  });
-
-  const deadline = Date.now() + 10000;
-  while (Date.now() < deadline) {
-    const res = await page.send('Runtime.evaluate', {
-      returnByValue: true,
-      expression: 'JSON.stringify(window.__probe ?? null)',
-    });
-    const parsed = res.result.value ? JSON.parse(res.result.value) : null;
-    if (parsed && parsed.pending === false) return parsed;
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  return { status: 0, count: -1, error: 'таймаут' };
-};
 
 const info = probe.result.value;
 let stats = null;
