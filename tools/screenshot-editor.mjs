@@ -1116,8 +1116,12 @@ const key = async (letter, code, modifiers = 0) => {
 
 const info = probe.result.value;
 let stats = null;
+// Расшифрованный PNG нужен и здесь: проверка макета модуля берёт
+// пиксели из области первого блока. Раньше переменная жила внутри
+// блока ниже и была здесь недоступна.
+let image = null;
 if (info.found) {
-  const image = decodePng(png);
+  image = decodePng(png);
   stats = regionStats(image, info.box);
 }
 
@@ -1137,11 +1141,33 @@ if (errors.length) {
   }
 }
 
+/*
+ * Проверка типографики модулей.
+ *
+ * Раньше каждый модуль рисовался однотонным прямоугольником с
+ * подписью, и холст выглядел исправным: проверки «холст не чёрный» и
+ * «есть разные цвета» проходили. Модули без содержимого отличаются от
+ * макета числом оттенков: у однотонной заливки их два (фон и рамка),
+ * у секции с заголовком, подзаголовком и кнопкой — десятки.
+ */
+const heroStats = info.found
+  ? regionStats(image, {
+      x: Math.round(info.box.x + 40),
+      y: Math.round(info.box.y + 40),
+      width: 640,
+      height: 200,
+    })
+  : null;
+
 const checks = [
   ['холст найден', info.found],
   ['на холсте есть блоки', info.blocks > 0],
   ['холст не чёрный', stats ? stats.blackShare < 0.5 : false],
   ['на холсте видны разные цвета', stats ? stats.distinct >= 2 : false],
+  [
+    `внутри секции есть макет, а не заливка (${heroStats ? heroStats.distinct : 0} оттенков)`,
+    heroStats ? heroStats.distinct >= 6 : false,
+  ],
 ];
 
 // Сценарии выполняются до закрытия сокета: они шлют команды в браузер.

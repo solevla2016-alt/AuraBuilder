@@ -20,6 +20,7 @@ import { Layer, Rect, Stage, Text, Transformer } from 'react-konva';
 import type Konva from 'konva';
 import type { Block } from './project';
 import { kindOf } from './moduleRegistry';
+import { modulePreview } from './moduleViews';
 import { useCanvasTokens } from './useCanvasTokens';
 
 export interface CanvasProps {
@@ -31,6 +32,9 @@ export interface CanvasProps {
 }
 
 const PAGE_WIDTH = 720;
+
+/** Отступ подписи идентификатора от края блока. */
+const PAD_FOR_LABEL = 14;
 const PAGE_HEIGHT = 900;
 
 export default function Canvas({ blocks, selectedId, tool, onSelect, onMove }: CanvasProps) {
@@ -43,9 +47,12 @@ export default function Canvas({ blocks, selectedId, tool, onSelect, onMove }: C
   // вид блока — производная величина, и в данных ей место не нужно.
   const fillByKind = useMemo(
     () => ({
-      section: tokens.accentSurfaceSubtle,
-      text: tokens.panel,
-      media: tokens.panelSunken,
+      // Подложка блока намеренно нейтральная: раньше секция красилась
+      // золотистым фоном, и собственное содержимое модуля на нём
+      // переставало читаться.
+      section: tokens.panel,
+      text: tokens.canvas,
+      media: tokens.canvas,
     }),
     [tokens],
   );
@@ -113,55 +120,30 @@ export default function Canvas({ blocks, selectedId, tool, onSelect, onMove }: C
           />
         ))}
 
-        {blocks.map((b) => (
-          <Text
-            key={`${b.id}-label`}
-            x={b.x + 14}
-            y={b.y + 14}
-            text={b.label}
-            fontSize={13}
-            fontFamily="Inter, sans-serif"
-            fill={tokens.textSecondary}
-            listening={false}
-          />
-        ))}
+        {/* Содержимое модулей. Отрисовывается после прямоугольников и
+            с listening=false: кликом по содержимому должен выбираться
+            блок целиком, а не отдельная буква внутри заголовка. */}
+        {blocks.map((b) => modulePreview(b, tokens))}
 
-        {blocks.map((b) =>
-          b.content?.trim() ? (
-            <Text
-              key={`${b.id}-content`}
-              x={b.x + 14}
-              y={b.y + 34}
-              width={b.width - 28}
-              // Высота текста ограничена блоком: без этого содержимое
-              // вылезало бы за нижнюю границу короткого блока.
-              height={Math.max(0, b.height - 44)}
-              text={b.content}
-              fontSize={13}
-              fontFamily="Inter, sans-serif"
-              fill={tokens.textPrimary}
-              ellipsis
-              wrap="word"
-              listening={false}
-            />
-          ) : null,
-        )}
-
-        {blocks.map((b) => (
-          <Text
-            key={`${b.id}-module`}
-            x={b.x + 14}
-            y={b.y + 34}
-            text={b.module}
-            // Когда есть содержимое, идентификатор модуля уступает ему
-            // место: подпись нужна только для отладки.
-            visible={!b.content?.trim() || b.height > 92}
-            fontSize={11}
-            fontFamily="'JetBrains Mono', monospace"
-            fill={tokens.textDisabled}
-            listening={false}
-          />
-        ))}
+        {/* Идентификатор модуля остаётся на холсте только у выбранного
+            блока: постоянная подпись превращала бы редактор в простыню
+            технических подписей. */}
+        {selectedId === null
+          ? null
+          : blocks
+              .filter((b) => b.id === selectedId)
+              .map((b) => (
+                <Text
+                  key={`${b.id}-module`}
+                  x={b.x + PAD_FOR_LABEL}
+                  y={b.y + b.height - 20}
+                  text={b.module}
+                  fontSize={11}
+                  fontFamily="'JetBrains Mono', monospace"
+                  fill={tokens.textDisabled}
+                  listening={false}
+                />
+              ))}
 
         <Transformer
           ref={trRef}
