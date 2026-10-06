@@ -21,6 +21,7 @@ import { MODULE_CATEGORIES, MODULES, kindOf, propDefaults } from './moduleRegist
 import type { ModuleDef } from './moduleRegistry';
 import { ModulePalette } from './ModulePalette';
 import { PropertiesPanel, type Align, type BlockPatch } from './PropertiesPanel';
+import { dataApi, type DataRecord } from './data';
 import { useHistory } from './useHistory';
 import { useAutosave } from './useAutosave';
 import './editor.css';
@@ -66,11 +67,13 @@ const CURRENT_STAGE = 3;
 export function EditorCanvas({
   project,
   onBack,
+  onOpenData,
   onSignOut,
 }: {
   /** Проект открыт из списка: идентификатор и название известны заранее. */
   project: Project;
   onBack: () => void;
+  onOpenData: () => void;
   onSignOut: () => void;
 }) {
   const [tool, setTool] = useState('select');
@@ -95,6 +98,15 @@ export function EditorCanvas({
     height: number;
     content: string;
   } | null>(null);
+
+  /*
+   * Записи узлов данных.
+   *
+   * Подгружаются только для тех источников, на которые ссылаются блоки
+   * дерева: тянуть все источники проекта значило бы открывать вкладку
+   * с пятьюдесятью записями ради одного блока коллекции.
+   */
+  const [records, setRecords] = useState<Record<string, DataRecord[]>>({});
 
   // Каталог модулей: сначала локальный реестр, чтобы палитра появилась
   // мгновенно, затем ответ Control Plane — он авторитетен.
@@ -158,6 +170,46 @@ export function EditorCanvas({
     // истории в зависимости означало бы перезапуск запроса при отмене.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /*
+   * Записи узлов данных.
+   *
+   * Подгружаются только для тех источников, на которые ссылаются блоки
+   * дерева: тянуть все источники проекта значило бы открывать вкладку
+   * с сотней записей ради одного блока коллекции.
+   */
+  useEffect(() => {
+    const ids = new Set<string>();
+    for (const b of tree.blocks) {
+      const source = b.props?.source;
+      if (typeof source === 'string' && source !== '') ids.add(source);
+    }
+    if (ids.size === 0) {
+      setRecords({});
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const entries = await Promise.all(
+        [...ids].map(async (id) => {
+          try {
+            const page = await dataApi.listRecords(id, 24);
+            return [id, page.records] as const;
+          } catch {
+            // Недоступный источник не должен ронять холст: блок
+            // покажет каркас, как будто записей нет.
+            return [id, [] as DataRecord[]] as const;
+          }
+        }),
+      );
+      if (!cancelled) setRecords(Object.fromEntries(entries));
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tree]);
 
   const handleMove = useCallback(
     (id: string, x: number, y: number) => {
@@ -410,7 +462,20 @@ export function EditorCanvas({
             на другого пользователя, не закрыв браузер. Refresh-токен
             при этом отзывается на сервере, а не просто забывается.
           */}
-          {/* Кнопка возврата в спи��к проектов: без неё из редактора
+          {/* Узлы данных проекта: шесть модулей data.* из MVP (ТЗ п.12)
+              привязываются к источникам, и без экрана их нечем
+              наполнить. */}
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={onOpenData}
+            title="Данные проекта"
+            aria-label="Данные проекта"
+          >
+            <Icon name="data" />
+            <span>Данные</span>
+          </button>
+          {/* Кнопка возврата в список проектов: без неё из редактора
               не выйти, кроме выхода из аккаунта, а это разные вещи. */}
           <button
             type="button"
@@ -484,6 +549,7 @@ export function EditorCanvas({
           <Suspense fallback={<div className="canvas__loading" role="status">Загрузка холста…</div>}>
             <Canvas
               blocks={tree.blocks}
+              records={records}
               selectedId={selectedId}
               tool={tool}
               onSelect={setSelectedId}
@@ -501,6 +567,7 @@ export function EditorCanvas({
         >
           <PropertiesPanel
             block={selected}
+            projectId={project.id}
             content={selected?.content ?? ''}
             onPatch={applyPatch}
             onDuplicate={duplicateSelected}

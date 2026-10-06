@@ -25,6 +25,7 @@
 import type { ReactNode } from 'react';
 import { Group, Line, Rect, Text } from 'react-konva';
 import type { Block } from './project';
+import { cellText, type DataRecord } from './data';
 import type { CanvasTokens } from './useCanvasTokens';
 
 const FONT = 'Inter, sans-serif';
@@ -112,7 +113,11 @@ function mediaPlaceholder(
   );
 }
 
-/** Сетка колонок: основа секций feature, cards, footer. */
+
+
+/**
+ * Сетка колонок: основа секций feature, cards, footer и узлов данных.
+ */
 function columns(block: Block, count: number, gap = 16) {
   const width = (block.width - PAD * 2 - gap * (count - 1)) / count;
   return Array.from({ length: count }, (_, i) => ({
@@ -123,46 +128,128 @@ function columns(block: Block, count: number, gap = 16) {
   }));
 }
 
-/** Модули данных этапа 3: каркас под будущие узлы данных. */
+/**
+ * Ключи полей записи для подписи карточки.
+ *
+ * Холст не знает схему источника — её знает панель свойств, — поэтому
+ * для блока data.field берётся явно указанный ключ, а для коллекции
+ * поля читаются из первой записи: этого хватает для заголовка и двух
+ * значений под ним.
+ */
+function recordFields(block: Block, rows: DataRecord[]): string[] {
+  const declared = block.props?.field;
+  if (typeof declared === 'string' && declared !== '') return [declared];
+  const first = rows[0]?.data;
+  return first ? Object.keys(first).slice(0, 3) : [];
+}
+
+/**
+ * Модули данных этапа 3.
+ *
+ * Показывают реальные записи выбранного источника. Если источник не
+ * выбран или пуст, рисуется каркас с честной подписью: молча показать
+ * пустые строки значило бы выглядеть так, будто данных нет из-за
+ * ошибки, а не потому, что их ещё не ввели.
+ */
 function dataPlaceholder(
   block: Block,
   tokens: CanvasTokens,
   label: string,
   count: number,
+  rows: DataRecord[],
 ): ReactNode {
-  const cols = columns(block, count, 12);
+  if (rows.length === 0) return dataEmpty(block, tokens, label);
+
+  const visible = rows.slice(0, Math.max(1, count));
+  const cols = columns(block, Math.min(visible.length, count), 12);
+  const fields = recordFields(block, rows);
+  // Колонок может оказаться меньше строк, если блок узкий: тогда
+  // последняя колонка используется повторно, а не пропадает запись.
+  // Если колонок нет вовсе (узкий блок), показываем каркас: делить на
+  // ноль и рисовать NaN-координаты хуже, чем показать пустую сетку.
+  const last = cols[cols.length - 1];
+  if (!last) return dataEmpty(block, tokens, label);
+
   return (
     <Group listening={false}>
-      {cols.map((c) => (
-        <Group key={`${block.id}-${c.x}`}>
-          <Rect
-            x={c.x}
-            y={c.y}
-            width={c.width}
-            height={Math.max(48, c.height - 28)}
-            fill={tokens.panel}
-            stroke={tokens.border}
-            strokeWidth={1}
-            cornerRadius={8}
-          />
-          <Line
-            points={[c.x + 12, c.y + 18, c.x + c.width - 12, c.y + 18]}
-            stroke={tokens.guideLine}
-            strokeWidth={4}
-            lineCap="round"
-          />
-          <Line
-            points={[c.x + 12, c.y + 32, c.x + c.width - 34, c.y + 32]}
-            stroke={tokens.guideLine}
-            strokeWidth={4}
-            lineCap="round"
-          />
-        </Group>
-      ))}
+      {visible.map((row, i) => {
+        const c = cols[i] ?? last;
+        const title = cellText(row.data[fields[0] ?? '']);
+        return (
+          <Group key={row.id}>
+            <Rect
+              x={c.x}
+              y={c.y}
+              width={c.width}
+              height={Math.max(48, c.height - 28)}
+              fill={tokens.panel}
+              stroke={tokens.border}
+              strokeWidth={1}
+              cornerRadius={8}
+            />
+            <Text
+              x={c.x + 12}
+              y={c.y + 14}
+              width={c.width - 24}
+              height={Math.max(0, c.height - 46)}
+              text={title || 'Запись'}
+              fontSize={13}
+              fontStyle="bold"
+              fontFamily={FONT}
+              fill={tokens.textPrimary}
+              ellipsis
+            />
+            {fields.slice(1, 3).map((field, j) => (
+              <Text
+                key={field}
+                x={c.x + 12}
+                y={c.y + 38 + j * 16}
+                width={c.width - 24}
+                text={cellText(row.data[field])}
+                fontSize={12}
+                fontFamily={FONT}
+                fill={tokens.textSecondary}
+                ellipsis
+              />
+            ))}
+          </Group>
+        );
+      })}
+    </Group>
+  );
+}
+
+/** Каркас пустого узла данных: понятно, что данных ещё нет. */
+function dataEmpty(block: Block, tokens: CanvasTokens, label: string): ReactNode {
+  return (
+    <Group listening={false}>
+      <Rect
+        x={block.x + PAD}
+        y={block.y + PAD}
+        width={block.width - PAD * 2}
+        height={block.height - PAD * 2}
+        fill={tokens.panelSunken}
+        stroke={tokens.border}
+        strokeWidth={1}
+        strokeDashArray={[6, 4]}
+        cornerRadius={8}
+      />
       <Text
         x={block.x + PAD}
-        y={block.y + block.height - 22}
-        text={`${label} — узел данных появится на этапе 5`}
+        y={block.y + block.height / 2 - 10}
+        width={block.width - PAD * 2}
+        align="center"
+        text={label}
+        fontSize={12}
+        fontFamily={FONT}
+        fill={tokens.textSecondary}
+      />
+      <Text
+        x={block.x + PAD}
+        y={block.y + block.height / 2 + 8}
+        width={block.width - PAD * 2}
+        align="center"
+        text="выберите источник и добавьте записи в разделе «Данные»"
         fontSize={11}
         fontFamily={FONT}
         fill={tokens.textDisabled}
@@ -171,7 +258,11 @@ function dataPlaceholder(
   );
 }
 
-export function modulePreview(block: Block, tokens: CanvasTokens): ReactNode {
+export function modulePreview(
+  block: Block,
+  tokens: CanvasTokens,
+  records: DataRecord[] = [],
+): ReactNode {
   const h = block.height;
   const titleSize = fontFor(h, 0.13, 14, 30);
   const bodySize = fontFor(h, 0.06, 11, 15);
@@ -765,12 +856,16 @@ export function modulePreview(block: Block, tokens: CanvasTokens): ReactNode {
       );
     }
 
-    case 'data.collection':
-      return dataPlaceholder(block, tokens, 'Коллекция записей', 3);
-    case 'data.list':
-      return dataPlaceholder(block, tokens, 'Список записей', 4);
+    case 'data.collection': {
+      const limit = Number(block.props?.limit ?? 6) || 6;
+      return dataPlaceholder(block, tokens, 'Коллекция записей', limit, records);
+    }
+    case 'data.list': {
+      const limit = Number(block.props?.limit ?? 10) || 10;
+      return dataPlaceholder(block, tokens, 'Список записей', limit, records);
+    }
     case 'data.single':
-      return dataPlaceholder(block, tokens, 'Одна запись', 1);
+      return dataPlaceholder(block, tokens, 'Одна запись', 1, records);
     case 'data.field': {
       return (
         <Group listening={false}>

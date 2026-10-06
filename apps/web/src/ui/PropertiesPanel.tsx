@@ -17,6 +17,7 @@
 
 import { useEffect, useState } from 'react';
 import { Icon } from './icons';
+import { dataApi, type DataSource } from './data';
 import type { Block } from './project';
 import { kindOf, schemaFor } from './moduleRegistry';
 import type { PropDef } from './moduleRegistry';
@@ -36,6 +37,8 @@ export interface BlockPatch {
 export type Align = 'left' | 'center' | 'right';
 
 export interface PropertiesPanelProps {
+  /** Проект нужен для списка источников данных. */
+  projectId?: string;
   block: Block | null;
   /** Содержимое блока: хранится рядом с блоком, в дереве пока нет. */
   content: string;
@@ -181,8 +184,74 @@ function SchemaField({
   );
 }
 
+/**
+ * Источники данных проекта для поля source.
+ *
+ * Список грузится один раз на проект. Когда источников нет или сервер
+ * недоступен, поле остаётся с единственным вариантом «не выбран»:
+ * молча подставлять первый источник значило бы привязать блок к
+ * чужим данным без спроса.
+ */
+function useSources(projectId: string | undefined): DataSource[] {
+  const [sources, setSources] = useState<DataSource[]>([]);
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    void dataApi
+      .listSources(projectId)
+      .then((list) => {
+        if (!cancelled) setSources(list);
+      })
+      .catch(() => {
+        // Недоступный список не должен ломать панель: остальные
+        // свойства модуля продолжают работать.
+        if (!cancelled) setSources([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+  return sources;
+}
+
+function SourcePicker({
+  value,
+  sources,
+  onChange,
+}: {
+  value: string;
+  sources: DataSource[];
+  onChange: (v: string) => void;
+}) {
+  const selected = sources.find((s) => s.id === value);
+  return (
+    <label className="prop" htmlFor="prop-source">
+      <span className="prop__label">Источник данных</span>
+      <select
+        id="prop-source"
+        className="prop__input"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">— не выбран —</option>
+        {sources.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.name} ({s.recordCount})
+          </option>
+        ))}
+      </select>
+      {selected ? (
+        <span className="prop__hint">
+          {selected.recordCount} записей, полей: {selected.fields.length}
+        </span>
+      ) : null}
+    </label>
+  );
+}
+
 export function PropertiesPanel({
   block,
+  projectId,
   content,
   onPatch,
   onDuplicate,
@@ -211,6 +280,8 @@ export function PropertiesPanel({
   // плоские блоки. Хранить его в данных блока нельзя, он разошёлся бы
   // с реестром модулей.
   const isText = kindOf(block.module) === 'text';
+
+  const sources = useSources(projectId);
 
   // Схема свойств приходит из реестра: панель не знает модулей.
   // Пока схема описана для трёх модулей MVP, у остальных её нет и
@@ -262,14 +333,29 @@ export function PropertiesPanel({
       {schema ? (
         <section className="props__group">
           <h3>Свойства модуля</h3>
-          {schema.props.map((prop) => (
-            <SchemaField
-              key={prop.name}
-              prop={prop}
-              value={block.props?.[prop.name]}
-              onChange={(v) => onPatch({ props: { ...(block.props ?? {}), [prop.name]: v } })}
-            />
-          ))}
+          {schema.props.map((prop) =>
+            prop.name === 'source' ? (
+              <SourcePicker
+                key={prop.name}
+                value={
+                  typeof block.props?.[prop.name] === 'string'
+                    ? (block.props[prop.name] as string)
+                    : ''
+                }
+                sources={sources}
+                onChange={(v) => onPatch({ props: { ...(block.props ?? {}), source: v } })}
+              />
+            ) : (
+              <SchemaField
+                key={prop.name}
+                prop={prop}
+                value={block.props?.[prop.name]}
+                onChange={(v) =>
+                  onPatch({ props: { ...(block.props ?? {}), [prop.name]: v } })
+                }
+              />
+            ),
+          )}
         </section>
       ) : null}
 

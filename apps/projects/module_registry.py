@@ -147,7 +147,7 @@ SCHEMAS: dict[str, ModuleSchema] = {
         Prop('buttonLink', 'text', False, "#", {}, 'Адрес кнопки'),
         Prop('background', 'select', True, "light", {"options":["light","accent","dark"]}, 'Заливка секции'),
         Prop('align', 'select', True, "left", {"options":["left","center","right"]}, 'Выравнивание текста'),
-        Prop('size', 'select', True, "regular", {"options":["compact","regular","fullscreen"]}, 'Высота первого экрана')
+        Prop('size', 'select', True, "regular", {"options":["compact","regular","fullscreen"]}, 'Высота первого экрана'),
         ),
     ),
     'text.heading': ModuleSchema(
@@ -155,7 +155,7 @@ SCHEMAS: dict[str, ModuleSchema] = {
         (
         Prop('text', 'text', True, "Заголовок", {}, 'Текст заголовка'),
         Prop('level', 'select', True, "h2", {"options":["h2","h3","h4"]}, 'Уровень заголовка'),
-        Prop('align', 'select', True, "left", {"options":["left","center","right"]}, 'Выравнивание')
+        Prop('align', 'select', True, "left", {"options":["left","center","right"]}, 'Выравнивание'),
         ),
     ),
     'text.paragraph': ModuleSchema(
@@ -163,7 +163,83 @@ SCHEMAS: dict[str, ModuleSchema] = {
         (
         Prop('text', 'textarea', True, "Расскажите о вашем проекте", {}, 'Текст абзаца'),
         Prop('align', 'select', True, "left", {"options":["left","center","right"]}, 'Выравнивание'),
-        Prop('maxWidth', 'number', False, 720, {"min":240,"max":960,"step":40}, 'Ограничение ширины строки, px')
+        Prop('maxWidth', 'number', False, 720, {"min":240,"max":960,"step":40}, 'Ограничение ширины строки, px'),
+        ),
+    ),
+    'section.split': ModuleSchema(
+        'section.split',
+        (
+        Prop('heading', 'text', False, "Левая колонка", {}, 'Заголовок левой колонки'),
+        ),
+    ),
+    'section.cards': ModuleSchema(
+        'section.cards',
+        (
+        Prop('heading', 'text', False, "Подборка", {}, 'Заголовок секции карточек'),
+        Prop('columns', 'number', False, 3, {}, 'Сколько карточек показывать'),
+        ),
+    ),
+    'section.cta': ModuleSchema(
+        'section.cta',
+        (
+        Prop('heading', 'text', False, "Остались вопросы?", {}, 'Заголовок призыва к действию'),
+        Prop('buttonLabel', 'text', False, "Связаться", {}, 'Подпись кнопки'),
+        ),
+    ),
+    'action.button': ModuleSchema(
+        'action.button',
+        (
+        Prop('label', 'text', True, "Кнопка", {}, 'Текст на кнопке'),
+        Prop('link', 'text', False, "#", {}, 'Адрес перехода'),
+        ),
+    ),
+    'action.link': ModuleSchema(
+        'action.link',
+        (
+        Prop('label', 'text', True, "Ссылка", {}, 'Текст ссылки'),
+        Prop('link', 'text', False, "#", {}, 'Адрес перехода'),
+        ),
+    ),
+    'data.collection': ModuleSchema(
+        'data.collection',
+        (
+        Prop('source', 'text', False, None, {}, 'Идентификатор источника данных; пусто — источник не выбран'),
+        Prop('limit', 'number', False, 6, {}, 'Сколько записей показывать'),
+        ),
+    ),
+    'data.single': ModuleSchema(
+        'data.single',
+        (
+        Prop('source', 'text', False, None, {}, 'Идентификатор источника данных; пусто — источник не выбран'),
+        ),
+    ),
+    'data.field': ModuleSchema(
+        'data.field',
+        (
+        Prop('source', 'text', False, None, {}, 'Идентификатор источника данных; пусто — источник не выбран'),
+        Prop('field', 'text', True, "title", {}, 'Ключ поля записи'),
+        Prop('label', 'text', False, "Поле", {}, 'Подпись слева от значения'),
+        ),
+    ),
+    'data.list': ModuleSchema(
+        'data.list',
+        (
+        Prop('source', 'text', False, None, {}, 'Идентификатор источника данных; пусто — источник не выбран'),
+        Prop('limit', 'number', False, 10, {}, 'Сколько строк показывать'),
+        ),
+    ),
+    'data.search': ModuleSchema(
+        'data.search',
+        (
+        Prop('source', 'text', False, None, {}, 'Идентификатор источника данных; пусто — источник не выбран'),
+        Prop('placeholder', 'text', False, "Поиск по узлу данных", {}, 'Подсказка в поле'),
+        ),
+    ),
+    'data.pagination': ModuleSchema(
+        'data.pagination',
+        (
+        Prop('source', 'text', False, None, {}, 'Идентификатор источника данных; пусто — источник не выбран'),
+        Prop('limit', 'number', False, 10, {}, 'Записей на страницу'),
         ),
     ),
 }

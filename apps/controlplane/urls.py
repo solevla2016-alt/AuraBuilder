@@ -33,4 +33,7 @@ urlpatterns = [
     # api/auth/login/ не должен попадать под <str:project_id>.
     path('api/auth/', include('accounts.urls')),
     path('api/projects/', include('projects.urls')),
+    # Узлы данных: часть источников адресуется через проект, часть —
+    # напрямую, поэтому маршруты объявлены отдельным включением.
+    path('api/', include('data_sources.urls')),
 ]

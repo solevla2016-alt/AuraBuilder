@@ -169,6 +169,49 @@ export const SCHEMAS: ModuleSchema[] = [
     { name: 'align', type: 'select', required: true, default: "left", limits: {"options":["left","center","right"]}, description: 'Выравнивание' },
     { name: 'maxWidth', type: 'number', required: false, default: 720, limits: {"min":240,"max":960,"step":40}, description: 'Ограничение ширины строки, px' }
   ] },
+  { moduleId: 'section.split', props: [
+    { name: 'heading', type: 'text', required: false, default: "Левая колонка", limits: {}, description: 'Заголовок левой колонки' }
+  ] },
+  { moduleId: 'section.cards', props: [
+    { name: 'heading', type: 'text', required: false, default: "Подборка", limits: {}, description: 'Заголовок секции карточек' },
+    { name: 'columns', type: 'number', required: false, default: 3, limits: {}, description: 'Сколько карточек показывать' }
+  ] },
+  { moduleId: 'section.cta', props: [
+    { name: 'heading', type: 'text', required: false, default: "Остались вопросы?", limits: {}, description: 'Заголовок призыва к действию' },
+    { name: 'buttonLabel', type: 'text', required: false, default: "Связаться", limits: {}, description: 'Подпись кнопки' }
+  ] },
+  { moduleId: 'action.button', props: [
+    { name: 'label', type: 'text', required: true, default: "Кнопка", limits: {}, description: 'Текст на кнопке' },
+    { name: 'link', type: 'text', required: false, default: "#", limits: {}, description: 'Адрес перехода' }
+  ] },
+  { moduleId: 'action.link', props: [
+    { name: 'label', type: 'text', required: true, default: "Ссылка", limits: {}, description: 'Текст ссылки' },
+    { name: 'link', type: 'text', required: false, default: "#", limits: {}, description: 'Адрес перехода' }
+  ] },
+  { moduleId: 'data.collection', props: [
+    { name: 'source', type: 'text', required: false, default: null, limits: {}, description: 'Идентификатор источника данных; пусто — источник не выбран' },
+    { name: 'limit', type: 'number', required: false, default: 6, limits: {}, description: 'Сколько записей показывать' }
+  ] },
+  { moduleId: 'data.single', props: [
+    { name: 'source', type: 'text', required: false, default: null, limits: {}, description: 'Идентификатор источника данных; пусто — источник не выбран' }
+  ] },
+  { moduleId: 'data.field', props: [
+    { name: 'source', type: 'text', required: false, default: null, limits: {}, description: 'Идентификатор источника данных; пусто — источник не выбран' },
+    { name: 'field', type: 'text', required: true, default: "title", limits: {}, description: 'Ключ поля записи' },
+    { name: 'label', type: 'text', required: false, default: "Поле", limits: {}, description: 'Подпись слева от значения' }
+  ] },
+  { moduleId: 'data.list', props: [
+    { name: 'source', type: 'text', required: false, default: null, limits: {}, description: 'Идентификатор источника данных; пусто — источник не выбран' },
+    { name: 'limit', type: 'number', required: false, default: 10, limits: {}, description: 'Сколько строк показывать' }
+  ] },
+  { moduleId: 'data.search', props: [
+    { name: 'source', type: 'text', required: false, default: null, limits: {}, description: 'Идентификатор источника данных; пусто — источник не выбран' },
+    { name: 'placeholder', type: 'text', required: false, default: "Поиск по узлу данных", limits: {}, description: 'Подсказка в поле' }
+  ] },
+  { moduleId: 'data.pagination', props: [
+    { name: 'source', type: 'text', required: false, default: null, limits: {}, description: 'Идентификатор источника данных; пусто — источник не выбран' },
+    { name: 'limit', type: 'number', required: false, default: 10, limits: {}, description: 'Записей на страницу' }
+  ] },
 ];
 
 /** Схема свойств модуля либо null, если модуль её не описал. */

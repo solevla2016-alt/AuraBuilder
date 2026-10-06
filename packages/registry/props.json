@@ -159,6 +159,229 @@
           "description": "Ограничение ширины строки, px"
         }
       ]
+    },
+    {
+      "id": "section.split",
+      "props": [
+        {
+          "name": "heading",
+          "type": "text",
+          "required": false,
+          "default": "Левая колонка",
+          "limits": {},
+          "description": "Заголовок левой колонки"
+        }
+      ]
+    },
+    {
+      "id": "section.cards",
+      "props": [
+        {
+          "name": "heading",
+          "type": "text",
+          "required": false,
+          "default": "Подборка",
+          "limits": {},
+          "description": "Заголовок секции карточек"
+        },
+        {
+          "name": "columns",
+          "type": "number",
+          "required": false,
+          "default": 3,
+          "limits": {},
+          "description": "Сколько карточек показывать"
+        }
+      ]
+    },
+    {
+      "id": "section.cta",
+      "props": [
+        {
+          "name": "heading",
+          "type": "text",
+          "required": false,
+          "default": "Остались вопросы?",
+          "limits": {},
+          "description": "Заголовок призыва к действию"
+        },
+        {
+          "name": "buttonLabel",
+          "type": "text",
+          "required": false,
+          "default": "Связаться",
+          "limits": {},
+          "description": "Подпись кнопки"
+        }
+      ]
+    },
+    {
+      "id": "action.button",
+      "props": [
+        {
+          "name": "label",
+          "type": "text",
+          "required": true,
+          "default": "Кнопка",
+          "limits": {},
+          "description": "Текст на кнопке"
+        },
+        {
+          "name": "link",
+          "type": "text",
+          "required": false,
+          "default": "#",
+          "limits": {},
+          "description": "Адрес перехода"
+        }
+      ]
+    },
+    {
+      "id": "action.link",
+      "props": [
+        {
+          "name": "label",
+          "type": "text",
+          "required": true,
+          "default": "Ссылка",
+          "limits": {},
+          "description": "Текст ссылки"
+        },
+        {
+          "name": "link",
+          "type": "text",
+          "required": false,
+          "default": "#",
+          "limits": {},
+          "description": "Адрес перехода"
+        }
+      ]
+    },
+    {
+      "id": "data.collection",
+      "props": [
+        {
+          "name": "source",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Идентификатор источника данных; пусто — источник не выбран"
+        },
+        {
+          "name": "limit",
+          "type": "number",
+          "required": false,
+          "default": 6,
+          "limits": {},
+          "description": "Сколько записей показывать"
+        }
+      ]
+    },
+    {
+      "id": "data.single",
+      "props": [
+        {
+          "name": "source",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Идентификатор источника данных; пусто — источник не выбран"
+        }
+      ]
+    },
+    {
+      "id": "data.field",
+      "props": [
+        {
+          "name": "source",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Идентификатор источника данных; пусто — источник не выбран"
+        },
+        {
+          "name": "field",
+          "type": "text",
+          "required": true,
+          "default": "title",
+          "limits": {},
+          "description": "Ключ поля записи"
+        },
+        {
+          "name": "label",
+          "type": "text",
+          "required": false,
+          "default": "Поле",
+          "limits": {},
+          "description": "Подпись слева от значения"
+        }
+      ]
+    },
+    {
+      "id": "data.list",
+      "props": [
+        {
+          "name": "source",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Идентификатор источника данных; пусто — источник не выбран"
+        },
+        {
+          "name": "limit",
+          "type": "number",
+          "required": false,
+          "default": 10,
+          "limits": {},
+          "description": "Сколько строк показывать"
+        }
+      ]
+    },
+    {
+      "id": "data.search",
+      "props": [
+        {
+          "name": "source",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Идентификатор источника данных; пусто — источник не выбран"
+        },
+        {
+          "name": "placeholder",
+          "type": "text",
+          "required": false,
+          "default": "Поиск по узлу данных",
+          "limits": {},
+          "description": "Подсказка в поле"
+        }
+      ]
+    },
+    {
+      "id": "data.pagination",
+      "props": [
+        {
+          "name": "source",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Идентификатор источника данных; пусто — источник не выбран"
+        },
+        {
+          "name": "limit",
+          "type": "number",
+          "required": false,
+          "default": 10,
+          "limits": {},
+          "description": "Записей на страницу"
+        }
+      ]
     }
   ]
 }

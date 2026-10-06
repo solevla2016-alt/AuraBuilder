@@ -3,6 +3,7 @@ import { useTheme } from './ui/useTheme';
 import { EditorCanvas } from './ui/EditorCanvas';
 import { AuthScreen, requiresAuth } from './ui/AuthScreen';
 import { ProjectListScreen } from './ui/ProjectListScreen';
+import { DataScreen } from './ui/DataScreen';
 import { Icon } from './ui/icons';
 import { api, clearTokens, onSessionExpired, type UserProfile } from './ui/api';
 import type { Project } from './ui/project';
@@ -18,7 +19,8 @@ import type { Project } from './ui/project';
  */
 type Screen =
   | { name: 'dashboard' }
-  | { name: 'editor'; project: Project };
+  | { name: 'editor'; project: Project }
+  | { name: 'data'; project: Project };
 
 export function App() {
   const { theme, toggle } = useTheme();
@@ -82,10 +84,16 @@ export function App() {
           onOpen={(project) => setScreen({ name: 'editor', project })}
           onSignOut={signOut}
         />
+      ) : screen.name === 'data' ? (
+        <DataScreen
+          projectId={screen.project.id}
+          onBack={() => setScreen({ name: 'editor', project: screen.project })}
+        />
       ) : (
         <EditorCanvas
           project={screen.project}
           onBack={() => setScreen({ name: 'dashboard' })}
+          onOpenData={() => setScreen({ name: 'data', project: screen.project })}
           onSignOut={signOut}
         />
       )}

@@ -106,9 +106,19 @@ class SchemaTests(APITestCase):
         base.update(block)
         return {'width': 720, 'blocks': [base]}
 
-    def test_three_schemas_defined(self):
-        self.assertEqual(len(SCHEMAS), 3)
-        self.assertEqual(SCHEMA_IDS, frozenset({'section.hero', 'text.heading', 'text.paragraph'}))
+    def test_schemas_cover_expected_modules(self):
+        # Схемы описывают модули с нестандартными настройками. Список
+        # фиксируется явно: молчаливое расширение означало бы, что
+        # панель начала бы рисовать поля, которых нет в документе.
+        expected = {
+            'section.hero', 'text.heading', 'text.paragraph',
+            'section.split', 'section.cards', 'section.cta',
+            'action.button', 'action.link',
+            'data.collection', 'data.single', 'data.field',
+            'data.list', 'data.search', 'data.pagination',
+        }
+        self.assertEqual(set(SCHEMAS), expected)
+        self.assertEqual(SCHEMA_IDS, frozenset(expected))
 
     def test_schema_props_have_types_from_allowed_set(self):
         from projects.serializers import ALLOWED_PROP_TYPES

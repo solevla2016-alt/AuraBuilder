@@ -129,30 +129,34 @@ lines.push('');
 
 if (propsByModule.size) {
   lines.push('SCHEMAS: dict[str, ModuleSchema] = {');
-  for (const m of propsRegistry.modules) {
-    const entries = m.props
-      .map((p) => {
-        const limits = JSON.stringify(p.limits ?? {});
-        const def =
-          p.default === null || p.default === undefined
-            ? 'None'
-            : typeof p.default === 'number' || typeof p.default === 'boolean'
-              ? String(p.default)
-              : JSON.stringify(p.default);
-        const cls = 'Prop';
-        return (
-          `        ${cls}('${p.name}', '${p.type}', ` +
-          `${p.required ? 'True' : 'False'}, ${def}, ${limits}, '${p.description}')`
-        );
-      })
-      .join(',\n');
-    lines.push(`    '${m.id}': ModuleSchema(`);
-    lines.push(`        '${m.id}',`);
-    lines.push('        (');
-    lines.push(entries);
-    lines.push('        ),');
-    lines.push('    ),');
-  }
+    for (const m of propsRegistry.modules) {
+      const props = m.props
+        .map((p) => {
+          const limits = JSON.stringify(p.limits ?? {});
+          const def =
+            p.default === null || p.default === undefined
+              ? 'None'
+              : typeof p.default === 'number' || typeof p.default === 'boolean'
+                ? String(p.default)
+                : JSON.stringify(p.default);
+          const cls = 'Prop';
+          return (
+            `        ${cls}('${p.name}', '${p.type}', ` +
+            `${p.required ? 'True' : 'False'}, ${def}, ${limits}, '${p.description}')`
+          );
+        })
+        // Запятая после каждого свойства обязательна: у схемы с одним
+        // свойством скобки без запятой дают не кортеж, а сам Prop, и
+        // обращение schema.props к такому значению падает с
+        // «'Prop' object is not iterable».
+        .join(',\n') + ',';
+      lines.push(`    '${m.id}': ModuleSchema(`);
+      lines.push(`        '${m.id}',`);
+      lines.push('        (');
+      lines.push(props);
+      lines.push('        ),');
+      lines.push('    ),');
+    }
   lines.push('}');
   lines.push('');
   lines.push('SCHEMA_IDS: frozenset[str] = frozenset(SCHEMAS)');

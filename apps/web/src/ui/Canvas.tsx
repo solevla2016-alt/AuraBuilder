@@ -19,12 +19,19 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Layer, Rect, Stage, Text, Transformer } from 'react-konva';
 import type Konva from 'konva';
 import type { Block } from './project';
+import type { DataRecord } from './data';
 import { kindOf } from './moduleRegistry';
 import { modulePreview } from './moduleViews';
 import { useCanvasTokens } from './useCanvasTokens';
 
 export interface CanvasProps {
   blocks: Block[];
+  /**
+   * Записи источников данных по id источника. Холст рисует их вместо
+   * пустого каркаса: блок коллекции без записей выглядит поломкой,
+   * хотя на самом деле просто ещё не наполнен.
+   */
+  records?: Record<string, DataRecord[]>;
   selectedId: string | null;
   tool: string;
   onSelect: (id: string | null) => void;
@@ -37,7 +44,14 @@ const PAGE_WIDTH = 720;
 const PAD_FOR_LABEL = 14;
 const PAGE_HEIGHT = 900;
 
-export default function Canvas({ blocks, selectedId, tool, onSelect, onMove }: CanvasProps) {
+export default function Canvas({
+  blocks,
+  records = {},
+  selectedId,
+  tool,
+  onSelect,
+  onMove,
+}: CanvasProps) {
   const stageRef = useRef<Konva.Stage>(null);
   const trRef = useRef<Konva.Transformer>(null);
   const [ready, setReady] = useState(false);
@@ -123,7 +137,7 @@ export default function Canvas({ blocks, selectedId, tool, onSelect, onMove }: C
         {/* Содержимое модулей. Отрисовывается после прямоугольников и
             с listening=false: кликом по содержимому должен выбираться
             блок целиком, а не отдельная буква внутри заголовка. */}
-        {blocks.map((b) => modulePreview(b, tokens))}
+        {blocks.map((b) => modulePreview(b, tokens, records[b.props?.source as string] ?? []))}
 
         {/* Идентификатор модуля остаётся на холсте только у выбранного
             блока: постоянная подпись превращала бы редактор в простыню

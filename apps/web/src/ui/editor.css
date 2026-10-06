@@ -1160,3 +1160,221 @@ select.prop__input option {
   justify-content: flex-end;
   gap: var(--space-sm);
 }
+
+/* ------------------------------------------------------------------ */
+/*  Узлы данных                                                        */
+/* ------------------------------------------------------------------ */
+
+.data {
+  min-height: 100vh;
+  padding: var(--space-xl);
+  background: var(--appBg);
+  color: var(--textPrimary);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.data__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.data__title {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 600;
+}
+
+/* Список источников — колонка рядом с таблицей записей. На узком
+   экране он уходит наверх, но порядок источников и записей остаётся
+   одинаковым: список управляет содержимым справа. */
+.data__layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: var(--space-lg);
+  align-items: start;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.data__source-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.data__source {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-height: var(--min-target);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.data__source.is-active {
+  border-color: var(--selectionBorder);
+  background: var(--panelRaised);
+}
+
+.data__source-name {
+  font-size: var(--text-sm);
+  font-weight: 550;
+}
+
+.data__source-meta {
+  font-size: var(--text-xs);
+  color: var(--textSecondary);
+}
+
+.data__panel {
+  padding: var(--space-lg);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.data__panel-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.data__fields {
+  margin: 0;
+  padding: var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.data__fields legend {
+  padding: 0 var(--space-xs);
+  font-size: var(--text-xs);
+  color: var(--textSecondary);
+}
+
+.data__field {
+  display: grid;
+  grid-template-columns: 1fr 160px auto auto;
+  gap: var(--space-sm);
+  align-items: center;
+}
+
+.data__required {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--text-xs);
+  color: var(--textSecondary);
+  white-space: nowrap;
+}
+
+.data__required input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accentSurface);
+}
+
+.data__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.data__table th,
+.data__table td {
+  padding: var(--space-sm);
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.data__table th {
+  font-weight: 600;
+  color: var(--textSecondary);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.data__new-record {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-sm);
+  align-items: end;
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--border);
+}
+
+.data__actions {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.data__empty {
+  max-width: 520px;
+  margin: var(--space-2xl) auto;
+  padding: var(--space-xl);
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.data__empty h2 {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--text-lg);
+}
+
+.data__empty p {
+  margin: 0 0 var(--space-lg);
+  color: var(--textSecondary);
+  line-height: 1.5;
+}
+
+.data__hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--textSecondary);
+}
+
+.data__hint code {
+  font-family: var(--font-mono);
+}
+
+.data__error {
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-md);
+  color: var(--danger);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 1024px) {
+  .data__layout {
+    grid-template-columns: 1fr;
+  }
+}

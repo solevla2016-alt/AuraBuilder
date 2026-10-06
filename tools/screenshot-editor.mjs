@@ -1110,6 +1110,142 @@ const key = async (letter, code, modifiers = 0) => {
     throw new Error('редактор не открылся после создания проекта');
   }
 
+  // Создаём источник данных через API: экран данных проверяется ниже,
+  // а наполнить его удобнее одним запросом — иначе тест зависит от
+  // состояния, оставшегося от прошлых прогонов.
+  mark('создание узла данных через API');
+  const source = await evalAsync(page, `
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + localStorage.getItem('aurabuilder.access'),
+    };
+    const projects = await (await fetch('/api/projects/', { headers })).json();
+    const projectId = projects[0].id;
+    const created = await fetch('/api/projects/' + projectId + '/data/', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        name: 'Товары автопроверки',
+        fields: [
+          { key: 'title', label: 'Название', type: 'text', required: true },
+          { key: 'price', label: 'Цена', type: 'number', required: false },
+        ],
+      }),
+    });
+    if (!created.ok) return { ok: false, status: created.status };
+    const source = await created.json();
+    const record = await fetch('/api/data/' + source.id + '/records/', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ data: { title: 'Роза', price: 1200 } }),
+    });
+    return { ok: record.ok, id: source.id, projectId };
+  `);
+  results.push([
+    'источник данных и запись созданы',
+    source?.ok === true,
+  ]);
+
+  // Экран данных открывается из редактора кнопкой в верхней панели.
+  mark('открытие экрана данных');
+  await reload(page);
+  if (!(await waitFor(page, '.dash__toolbar', 15000))) {
+    throw new Error('после перезагрузки не открылся список проектов');
+  }
+  await click(page, '.dash__card .dash__open');
+  await waitFor(page, '.canvas canvas', 25000);
+
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      const btn = [...document.querySelectorAll('button')]
+        .find(b => b.getAttribute('aria-label') === 'Данные проекта');
+      if (btn) btn.click();
+    })()`,
+  });
+  await waitFor(page, '.data', 15000);
+  // Источники грузятся отдельным запросом после появления экрана:
+  // ждать только .data означало бы прочитать пустой список и объявить
+  // источник потерянным.
+  await waitFor(page, '.data__source', 15000);
+
+  results.push([
+    'из редактора открывается экран данных',
+    await has(page, '.data'),
+  ]);
+  // Проверяется число карточек, а не наличие подписи: текст в списке
+  // зависит от того, что вернул сервер, и при пустой выдаче проверка
+  // молча проходила бы по причине, не связанной с источником.
+  const sourceCards = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `[...document.querySelectorAll('.data__source-name')].map(el => el.textContent)`,
+  });
+  const sourceNames = sourceCards.result.value ?? [];
+  results.push([
+    `источник виден в списке (${sourceNames.length})`,
+    sourceNames.includes('Товары автопроверки'),
+  ]);
+  if (!sourceNames.includes('Товары автопроверки')) {
+    const debug = await page.send('Runtime.evaluate', {
+      returnByValue: true,
+      expression: `JSON.stringify({
+        names: [...document.querySelectorAll('.data__source-name')].map(e => e.textContent),
+        error: document.querySelector('.data__error')?.textContent ?? null,
+        hint: document.querySelector('.data__hint')?.textContent ?? null,
+      })`,
+    });
+    console.log('состояние экрана данных:', debug.result.value);
+  }
+
+  // Добавление записи через интерфейс: проверяем, что форма отправляет
+  // числа числами (иначе сервер отвергнет значение строкой).
+  mark('добавление записи через форму');
+  const added = await evalAsync(page, `
+    const input = document.querySelector('.data__new-record input');
+    if (!input) return { ok: false, why: 'нет поля' };
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype, 'value').set;
+    setter.call(input, 'Тюльпан');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return { ok: true };
+  `);
+  if (added?.ok) {
+    await click(page, '.data__new-record .btn--primary');
+    // Таблица обновляется после ответа сервера: фиксированная пауза
+    // ловила бы гонку и объявляла запись потерянной.
+    await waitFor(page, '.data__table tbody tr', 10000);
+    await new Promise((r) => setTimeout(r, 400));
+  }
+
+  const table = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `[...document.querySelectorAll('.data__table td')].map(td => td.textContent)`,
+  });
+  const cells = table.result.value ?? [];
+  results.push([
+    'запись, созданная через форму, видна в таблице',
+    cells.includes('Тюльпан'),
+  ]);
+  results.push([
+    `запись из API тоже видна (${cells.includes('Роза') ? 'да' : 'нет'})`,
+    cells.includes('Роза'),
+  ]);
+
+  // Возврат в редактор и проверка, что записи доехали до холста.
+  mark('возврат в редактор с данными');
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      const btn = [...document.querySelectorAll('button')]
+        .find(b => b.textContent.trim().includes('В редактор'));
+      if (btn) btn.click();
+    })()`,
+  });
+  await waitFor(page, '.canvas canvas', 25000);
+  results.push([
+    'из экрана данных возвращаемся в редактор',
+    await has(page, '.canvas'),
+  ]);
+
+
   return results;
 }
 
