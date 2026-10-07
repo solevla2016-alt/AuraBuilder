@@ -97,14 +97,20 @@ export function DataScreen({ projectId, onBack }: Props) {
     if (!name || busy) return;
     setBusy(true);
     try {
-      const fields: DataField[] = newFields
-        .map((f) => ({
-          key: fieldKeyFrom(f.label),
-          label: f.label.trim(),
-          type: f.type,
-          required: f.required,
-        }))
-        .filter((f) => f.label.trim() !== '' && f.key !== '');
+      const fields: DataField[] = [];
+      for (const f of newFields) {
+        const label = f.label.trim();
+        if (label === '') continue;
+        const key = fieldKeyFrom(label);
+        // Название из одних знаков препинания ключа не даёт. Молча
+        // выбросить такое поле означало бы, что пользователь увидел бы
+        // готовый источник и позже обнаружил отсутствие колонки.
+        if (key === '') {
+          setError(`Из названия «${label}» не получился ключ поля.`);
+          return;
+        }
+        fields.push({ key, label, type: f.type, required: f.required });
+      }
 
       const source = await dataApi.createSource(projectId, { name, fields });
       setNewName('');

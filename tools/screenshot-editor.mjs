@@ -1230,6 +1230,53 @@ const key = async (letter, code, modifiers = 0) => {
     cells.includes('Роза'),
   ]);
 
+  // Создание источника через форму с русскими названиями полей.
+  // Путь важен отдельно от проверки через API: ключ поля выводит
+  // клиент, и до починки «Название» превращалось в кириллический
+  // ключ, который сервер отвергал с 400. Через API такую ошибку
+  // не увидеть — там ключ приходит готовым.
+  mark('создание источника через форму');
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      const btn = [...document.querySelectorAll('button')]
+        .find(b => b.textContent.trim().includes('Новый источник'));
+      if (btn) btn.click();
+    })()`,
+  });
+  await waitFor(page, '.data__panel', 15000);
+  await fill(page, '.data__panel .prop__input', 'Отзывы клиентов');
+  await fill(page, '.data__fields .data__field .prop__input', 'Имя клиента');
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      const field = document.querySelector('.data__fields .data__field');
+      const cb = field?.querySelector('input[type="checkbox"]');
+      if (cb && !cb.checked) cb.click();
+    })()`,
+  });
+  await click(page, '.data__actions .btn--primary');
+  const formSource = await waitFor(page, '.data__source-name', 15000);
+  await new Promise((r) => setTimeout(r, 600));
+
+  const created = await evalAsync(page, `
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + localStorage.getItem('aurabuilder.access'),
+    };
+    const projects = await (await fetch('/api/projects/', { headers })).json();
+    const body = await (await fetch('/api/projects/' + projects[0].id + '/data/', { headers })).json();
+    return body.map(s => ({ name: s.name, keys: s.fields.map(f => f.key) }));
+  `);
+  const formSourceBody = created ?? [];
+  const reviews = formSourceBody.find((s) => s.name === 'Отзывы клиентов');
+  results.push([
+    'источник из формы создан',
+    Boolean(formSource) && Boolean(reviews),
+  ]);
+  results.push([
+    `русское название поля дало латинский ключ (${reviews ? reviews.keys.join(',') : '—'})`,
+    Boolean(reviews) && reviews.keys.includes('imya_klienta'),
+  ]);
+
   // Возврат в редактор и проверка, что записи доехали до холста.
   mark('возврат в редактор с данными');
   await page.send('Runtime.evaluate', {

@@ -101,6 +101,16 @@ class SourceTests(DataApiTestCase):
         response = self.create_source(name='Товары')
         self.assertEqual(response.data['key'], 'tovary')
 
+    def test_cyrillic_field_key_rejected(self):
+        # Клиент переводит кириллицу в ключе сам: подсказка в форме
+        # показывает «nazvanie» сразу. Сервер остаётся строгим, потому
+        # что ключ поля попадает в экспорт и в имена переменных, и
+        # молча принять «название» значило бы разойтись с экспортом.
+        response = self.create_source(
+            fields=[{'key': 'название', 'label': 'Название', 'type': 'text'}]
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_list_includes_record_count(self):
         source_id = self.create_source().data['id']
         self.client.post(
@@ -263,6 +273,51 @@ class DataAccessTests(DataApiTestCase):
         self._login(self.viewer)
         response = self.client.get(f'/api/data/{source_id}/records/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_editor_can_change_source_but_not_delete_it(self):
+        # Редактор правит контент, но удаление источника уносит записи
+        # и ломает блоки, которые на него ссылаются: по ТЗ п.11.1 это
+        # делает владелец. Проверка держит границу между «можно
+        # редактировать» и «можно уничтожить».
+        editor = User.objects.create_user('editor', 'e@example.com', 'verysecret123')
+        Membership.objects.create(project=self.project, user=editor, role=Role.EDITOR)
+        source_id = self.create_source().data['id']
+
+        self._login(editor)
+        patched = self.client.patch(
+            f'/api/data/{source_id}/', {'name': 'Товары сада'}, format='json'
+        )
+        self.assertEqual(patched.status_code, status.HTTP_200_OK)
+
+        deleted = self.client.delete(f'/api/data/{source_id}/')
+        self.assertEqual(deleted.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(DataSource.objects.filter(pk=source_id).exists())
+
+    def test_owner_deletes_source(self):
+        # Владелец проекта остаётся Owner даже без записи в участниках:
+        # удаление источника должно работать и в этом случае.
+        self.project.owner = self.user
+        self.project.save()
+        source_id = self.create_source().data['id']
+        response = self.client.delete(f'/api/data/{source_id}/')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_editor_can_delete_record(self):
+        # Запись — это контент, а не источник: редактор вправе её
+        # убрать. Разница с источником проверяется выше.
+        editor = User.objects.create_user('editor', 'e@example.com', 'verysecret123')
+        Membership.objects.create(project=self.project, user=editor, role=Role.EDITOR)
+        source_id = self.create_source().data['id']
+        record_id = self.client.post(
+            f'/api/data/{source_id}/records/',
+            {'data': {'title': 'Роза'}},
+            format='json',
+        ).data['id']
+
+        self._login(editor)
+        response = self.client.delete(f'/api/data/records/{record_id}/')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(DataRecord.objects.count(), 0)
 
     def test_outsider_gets_404(self):
         self._login(self.outsider)

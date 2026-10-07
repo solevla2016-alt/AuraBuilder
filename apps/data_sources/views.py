@@ -18,7 +18,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from accounts.permissions import EDIT_CONTENT, VIEW, can
+from accounts.permissions import DELETE, EDIT_CONTENT, VIEW, can
 from accounts.permissions import IsAuthenticatedUser
 from accounts.serializers import audit
 from projects.models import Project
@@ -102,7 +102,14 @@ def source_detail(request, source_id: str):
         return _not_found()
     if not can(request.user, source.project, VIEW):
         return _not_found()
-    if request.method != 'GET' and not can(request.user, source.project, EDIT_CONTENT):
+    # Правка описания источника — обычная работа с контентом, а удаление
+    # затрагивает и записи, и блоки, которые на него ссылаются: по
+    # ТЗ п.11.1 удалять проект и то, что его наполняет, может владелец.
+    if request.method == 'DELETE' and not can(request.user, source.project, DELETE):
+        return _forbidden()
+    if request.method not in ('GET', 'DELETE') and not can(
+        request.user, source.project, EDIT_CONTENT
+    ):
         return _forbidden()
 
     if request.method == 'GET':

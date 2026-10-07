@@ -293,10 +293,14 @@ class ProjectApiTests(APITestCase):
     def test_updated_at_changes_on_save(self):
         project = Project.objects.create(name='Проект', owner=self.user)
         first = project.updated_at
-        self.client.put(
+        # Статус проверяется явно: при отказе (например, по лимиту
+        # частоты) updated_at не менялся бы, и падение выглядело бы как
+        # «время не обновилось», хотя запрос просто не выполнился.
+        response = self.client.put(
             f'/api/projects/{project.pk}/',
             {'name': 'Переименован', 'tree': default_tree()},
             format='json',
         )
+        self.assertEqual(response.status_code, 200, response.data)
         project.refresh_from_db()
         self.assertNotEqual(project.updated_at, first)
