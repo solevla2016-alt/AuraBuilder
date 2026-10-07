@@ -1,7 +1,7 @@
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
-import { generateTokensCss } from '../../packages/tokens/css.mjs';
+import { generateTokensCss, paletteValues } from '../../packages/tokens/css.mjs';
 
 /**
  * Токены отдаются виртуальным модулем, а не файлом из packages/.
@@ -16,18 +16,29 @@ function tokensPlugin(): Plugin {
   // Расширение .css обязательно: без него сборщик пытается разобрать
   // содержимое как JavaScript и падает на первом же «:root {».
   const RESOLVED = `\0${VIRTUAL_ID}.css`;
+  // Значения палитры по темам нужны JavaScript'у: библиотека компонентов
+  // проверяет контраст выбранных цветов, а страницу можно переключить в
+  // тёмную тему в любой момент. Из CSS в браузере достаются только
+  // переменные текущей темы, а проверять надо обе: сервер отвергает
+  // сочетание, которое нечитаемо хоть в одной.
+  const PALETTE_ID = 'virtual:aurabuilder-palette';
+  const PALETTE_RESOLVED = `\0${PALETTE_ID}`;
 
   return {
     name: 'aurabuilder-tokens',
     resolveId(id) {
       if (id === VIRTUAL_ID || id === '@tokens') return RESOLVED;
+      if (id === PALETTE_ID) return PALETTE_RESOLVED;
       return null;
     },
     load(id) {
-      if (id !== RESOLVED) return null;
       // Следим за palette.json: правка палитры перезагружает страницу
-      this.addWatchFile(fileURLToPath(new URL('../../docs/palette.json', import.meta.url)));
-      return generateTokensCss();
+      if (id === RESOLVED || id === PALETTE_RESOLVED) {
+        this.addWatchFile(fileURLToPath(new URL('../../docs/palette.json', import.meta.url)));
+      }
+      if (id === RESOLVED) return generateTokensCss();
+      if (id === PALETTE_RESOLVED) return `export default ${JSON.stringify(paletteValues())};`;
+      return null;
     },
   };
 }

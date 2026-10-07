@@ -23,6 +23,7 @@ import type { DataRecord } from './data';
 import { kindOf } from './moduleRegistry';
 import { modulePreview } from './moduleViews';
 import { useCanvasTokens } from './useCanvasTokens';
+import { resolveStyle, type ComponentStyle, type ResolvedStyle } from './components';
 
 export interface CanvasProps {
   blocks: Block[];
@@ -32,10 +33,16 @@ export interface CanvasProps {
    * хотя на самом деле просто ещё не наполнен.
    */
   records?: Record<string, DataRecord[]>;
+  /**
+   * Библиотека компонентов (ТЗ п.3.1). Стиль задаётся один раз на вид
+   * компонента и применяется ко всем блокам этого вида — здесь он и
+   * превращается в заливку, скругление и рамку.
+   */
+  styles?: Record<string, ComponentStyle> | null;
   selectedId: string | null;
   tool: string;
   onSelect: (id: string | null) => void;
-  onMove: (id: string, x: number, y: number) => void;
+  onMove: (id: string, y: number, x: number) => void;
 }
 
 const PAGE_WIDTH = 720;
@@ -47,6 +54,7 @@ const PAGE_HEIGHT = 900;
 export default function Canvas({
   blocks,
   records = {},
+  styles = null,
   selectedId,
   tool,
   onSelect,
@@ -57,19 +65,28 @@ export default function Canvas({
   const [ready, setReady] = useState(false);
   const tokens = useCanvasTokens();
 
-  // Заливка выводится из модуля через реестр, а не хранится в блоке:
-  // вид блока — производная величина, и в данных ей место не нужно.
-  const fillByKind = useMemo(
-    () => ({
-      // Подложка блока намеренно нейтральная: раньше секция красилась
-      // золотистым фоном, и собственное содержимое модуля на нём
-      // переставало читаться.
-      section: tokens.panel,
-      text: tokens.canvas,
-      media: tokens.canvas,
-    }),
-    [tokens],
-  );
+  /*
+   * Закладка блока и содержимое модуля.
+   *
+   * Раньше заливка выводилась из вида блока через реестр, и вид
+   * подложки жёстко зашит в Canvas. Теперь заливка, скругление и
+   * рамка приходят из библиотеки компонентов: один и тот же вид
+   * компонента на всех страницах выглядит одинаково (ТЗ п.3.1).
+   * Значения по умолчанию совпадают с прежними, поэтому проект,
+   * в котором библиотеку не трогали, рисуется как раньше.
+   */
+  const styleByKind = useMemo(() => {
+    const build = (
+      kind: 'section' | 'text' | 'media',
+      fallbackFill: string,
+      fallbackText: string,
+    ): ResolvedStyle => resolveStyle(kind, styles as never, fallbackFill, fallbackText);
+    return {
+      section: build('section', tokens.panel, tokens.textPrimary),
+      text: build('text', tokens.canvas, tokens.textPrimary),
+      media: build('media', tokens.canvas, tokens.textSecondary),
+    };
+  }, [styles, tokens]);
 
   // Первый кадр рисуем после появления узла Stage: до этого ref пуст,
   // и Transformer не находит выделение.
@@ -115,29 +132,37 @@ export default function Canvas({
           shadowOffsetY={4}
         />
 
-        {blocks.map((b) => (
-          <Rect
-            key={b.id}
-            id={b.id}
-            x={b.x}
-            y={b.y}
-            width={b.width}
-            height={b.height}
-            fill={fillByKind[kindOf(b.module)]}
-            stroke={selectedId === b.id ? tokens.selectionBorder : tokens.border}
-            strokeWidth={selectedId === b.id ? 2 : 1}
-            cornerRadius={8}
-            draggable={tool === 'select'}
-            onClick={() => onSelect(b.id === selectedId ? null : b.id)}
-            onTap={() => onSelect(b.id === selectedId ? null : b.id)}
-            onDragEnd={(e) => onMove(b.id, e.target.x(), e.target.y())}
-          />
-        ))}
+        {blocks.map((b) => {
+          const style = styleByKind[kindOf(b.module)];
+          const isSelected = selectedId === b.id;
+          return (
+            <Rect
+              key={b.id}
+              id={b.id}
+              x={b.x}
+              y={b.y}
+              width={b.width}
+              height={b.height}
+              fill={style.fill}
+              stroke={isSelected ? tokens.selectionBorder : tokens.border}
+              // Выделение всегда в 2 пикселя: иначе на блоке с нулевой
+              // рамкой его не было бы видно совсем.
+              strokeWidth={isSelected ? 2 : style.border}
+              cornerRadius={style.radius}
+              draggable={tool === 'select'}
+              onClick={() => onSelect(b.id === selectedId ? null : b.id)}
+              onTap={() => onSelect(b.id === selectedId ? null : b.id)}
+              onDragEnd={(e) => onMove(b.id, e.target.x(), e.target.y())}
+            />
+          );
+        })}
 
         {/* Содержимое модулей. Отрисовывается после прямоугольников и
             с listening=false: кликом по содержимому должен выбираться
             блок целиком, а не отдельная буква внутри заголовка. */}
-        {blocks.map((b) => modulePreview(b, tokens, records[b.props?.source as string] ?? []))}
+        {blocks.map((b) =>
+          modulePreview(b, tokens, records[b.props?.source as string] ?? [], styleByKind),
+        )}
 
         {/* Идентификатор модуля остаётся на холсте только у выбранного
             блока: постоянная подпись превращала бы редактор в простыню

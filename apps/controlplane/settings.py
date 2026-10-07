@@ -97,6 +97,7 @@ INSTALLED_APPS = [
     'projects',
     'accounts',
     'data_sources',
+    'component_library',
 ]
 
 MIDDLEWARE = [

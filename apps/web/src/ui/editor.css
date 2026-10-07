@@ -1378,3 +1378,100 @@ select.prop__input option {
     grid-template-columns: 1fr;
   }
 }
+
+/* --------------------------------------------------------------------------
+   Библиотека компонентов (ТЗ п.3.1)
+   Слева — виды компонентов, справа — настройки выбранного. Разметка
+   повторяет экран узлов данных: пользователь переключает между двумя
+   списками и правой панелью, и делать это в двух разныхLayout было бы
+   лишним.
+   -------------------------------------------------------------------------- */
+
+.comps__layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) 1fr;
+  gap: var(--space-lg);
+  align-items: start;
+  padding: var(--space-lg);
+  min-height: 0;
+}
+
+.comps__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.comps__item {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  grid-template-rows: auto auto;
+  gap: 2px var(--space-sm);
+  align-items: center;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  text-align: left;
+  cursor: pointer;
+  min-height: var(--min-target);
+}
+
+.comps__item:hover {
+  border-color: var(--borderStrong);
+}
+
+.comps__item.is-active {
+  border-color: var(--accentSurface);
+  background: var(--accentSurfaceSubtle);
+}
+
+.comps__swatch {
+  grid-row: 1 / 3;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.comps__item-name {
+  font-weight: 500;
+}
+
+.comps__item-meta {
+  font-size: var(--text-xs);
+  color: var(--textSecondary);
+}
+
+.comps__preview {
+  margin: var(--space-md) 0;
+}
+
+.comps__sample {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  border-style: solid;
+  border-color: var(--border);
+  min-height: 96px;
+}
+
+.comps__sample b {
+  font-size: var(--text-md);
+  font-weight: inherit;
+}
+
+.comps__sample span {
+  font-size: var(--text-sm);
+}
+
+.comps__fields {
+  display: grid;
+  gap: var(--space-md);
+}
+
+@media (width <= 720px) {
+  .comps__layout {
+    grid-template-columns: 1fr;
+  }
+}

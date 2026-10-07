@@ -22,6 +22,7 @@ import type { ModuleDef } from './moduleRegistry';
 import { ModulePalette } from './ModulePalette';
 import { PropertiesPanel, type Align, type BlockPatch } from './PropertiesPanel';
 import { dataApi, type DataRecord } from './data';
+import { componentsApi, type ComponentStyle } from './components';
 import { useHistory } from './useHistory';
 import { useAutosave } from './useAutosave';
 import './editor.css';
@@ -68,12 +69,14 @@ export function EditorCanvas({
   project,
   onBack,
   onOpenData,
+  onOpenComponents,
   onSignOut,
 }: {
   /** Проект открыт из списка: идентификатор и название известны заранее. */
   project: Project;
   onBack: () => void;
   onOpenData: () => void;
+  onOpenComponents: () => void;
   onSignOut: () => void;
 }) {
   const [tool, setTool] = useState('select');
@@ -84,6 +87,34 @@ export function EditorCanvas({
   // заранее, пока база пуста, а без него сохранение уходит не туда.
   const [projectId, setProjectId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  /*
+   * Библиотека компонентов (ТЗ п.3.1).
+   *
+   * Стили нужны холсту при каждом рендере, а не только при открытии
+   * библиотеки: правка стиля обязана менять все блоки этого вида сразу,
+   * без перезагрузки страницы. Поэтому они грузятся вместе с проектом
+   * и обновляются из самой библиотеки.
+   */
+  const [styles, setStyles] = useState<Record<string, ComponentStyle> | null>(null);
+  const loadStyles = useCallback(async () => {
+    try {
+      const body = await componentsApi.list(project.id);
+      setStyles({
+        section: body.styles.find((s) => s.kind === 'section') as ComponentStyle,
+        text: body.styles.find((s) => s.kind === 'text') as ComponentStyle,
+        media: body.styles.find((s) => s.kind === 'media') as ComponentStyle,
+      });
+    } catch {
+      // Недоступная библиотека не должна мешать редактированию:
+      // холст рисует значения по умолчанию.
+      setStyles(null);
+    }
+  }, [project.id]);
+
+  useEffect(() => {
+    void loadStyles();
+  }, [loadStyles]);
 
   // Дерево живёт в истории: каждое действие — одна запись, Ctrl+Z
   // откатывает действие целиком, а не доли пикселя.
@@ -475,6 +506,18 @@ export function EditorCanvas({
             <Icon name="data" />
             <span>Данные</span>
           </button>
+          {/* Библиотека компонентов (ТЗ п.3.1): стиль задаётся один раз
+              и применяется ко всем блокам этого вида. */}
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={onOpenComponents}
+            title="Библиотека компонентов"
+            aria-label="Библиотека компонентов"
+          >
+            <Icon name="layers" />
+            <span>Компоненты</span>
+          </button>
           {/* Кнопка возврата в список проектов: без неё из редактора
               не выйти, кроме выхода из аккаунта, а это разные вещи. */}
           <button
@@ -545,11 +588,16 @@ export function EditorCanvas({
           // заглянуть внутрь Konva.
           data-blocks={tree.blocks.length}
           data-selected={selectedId ?? ''}
+          // Идентификатор проекта в разметке: без него проверка
+          // сохранённых стилей гадала бы, какой из проектов открыт,
+          // а их у пользователя может быть несколько.
+          data-project={project.id}
         >
           <Suspense fallback={<div className="canvas__loading" role="status">Загрузка холста…</div>}>
             <Canvas
               blocks={tree.blocks}
               records={records}
+              styles={styles}
               selectedId={selectedId}
               tool={tool}
               onSelect={setSelectedId}

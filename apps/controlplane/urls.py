@@ -36,4 +36,5 @@ urlpatterns = [
     # Узлы данных: часть источников адресуется через проект, часть —
     # напрямую, поэтому маршруты объявлены отдельным включением.
     path('api/', include('data_sources.urls')),
+    path('api/', include('component_library.urls')),
 ]

@@ -24,6 +24,12 @@ COPY packages ./packages
 COPY apps/web/ ./apps/web/
 COPY docs/palette.json ./docs/palette.json
 
+# tokens:build кладёт рядом с CSS ещё и Python-модуль со значениями
+# палитры: им пользуется Control Plane для проверки контраста. В образ
+# фронтенда каталога apps/projects нет, поэтому он создаётся заранее —
+# иначе генератор упал бы с ENOENT на ровно этом шаге.
+RUN mkdir -p apps/projects
+
 RUN npm run tokens:build \
     && npm run build --workspace @aurabuilder/web
 

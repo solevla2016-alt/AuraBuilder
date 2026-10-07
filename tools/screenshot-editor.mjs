@@ -190,17 +190,28 @@ const has = (page, selector) =>
  *
  * Прямое input.value = ... не работает: React не видит изменения, и
  * контролируемое поле возвращает прежнее значение.
+ *
+ * Событие посылается и input, и change: у <input> React слушает
+ * input, а у <select> — change. Одним событием выбор в списке молча
+ * не применялся бы, и кнопка сохранения осталась бы выключенной.
  */
 const fill = async (page, selector, value) => {
   await page.send('Runtime.evaluate', {
     expression: `(() => {
       const el = document.querySelector(${JSON.stringify(selector)});
-      if (!el) return;
-      const proto = el.tagName === 'TEXTAREA'
-        ? window.HTMLTextAreaElement.prototype
+      if (!el) return 'нет элемента';
+      // Сеттер берётся у того класса, которому принадлежит значение:
+      // у <select> это HTMLSelectElement, и вызов сеттера input дал бы
+      // запись в поле, которого у списка нет, — значение не изменилось бы
+      // молча.
+      const proto =
+        el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype
+        : el.tagName === 'SELECT' ? window.HTMLSelectElement.prototype
         : window.HTMLInputElement.prototype;
       Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, ${JSON.stringify(value)});
       el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      return el.value === ${JSON.stringify(value)} ? 'ok' : 'значение не принято: ' + el.value;
     })()`,
   });
   await new Promise((r) => setTimeout(r, 120));
@@ -215,19 +226,28 @@ const text = async (page, selector) => {
   return res.result.value ?? '';
 };
 
-/** Клик по элементу через реальные координаты: React слушает указатель. */
+/**
+ * Клик по элементу через реальные координаты: React слушает указатель.
+ *
+ * Элемент сначала подводится в поле зрения. Список проектов растёт с
+ * каждым прогоном, и карточка в нижней строке оказывалась за пределами
+ * окна: координаты уходили в пустоту, а сценарий падал на «элемент не
+ * найден», хотя он на экране был.
+ */
 const click = async (page, selector) => {
   const box = await page.send('Runtime.evaluate', {
     returnByValue: true,
     expression: `(() => {
       const el = document.querySelector(${JSON.stringify(selector)});
       if (!el) return null;
+      el.scrollIntoView({ block: 'center', inline: 'center' });
       const r = el.getBoundingClientRect();
       return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
     })()`,
   });
   const point = box.result.value;
   if (!point) throw new Error(`элемент не найден: ${selector}`);
+  await new Promise((r) => setTimeout(r, 150));
   await page.send('Input.dispatchMouseEvent', {
     type: 'mousePressed', x: point.x, y: point.y, button: 'left', clickCount: 1,
   });
@@ -421,13 +441,31 @@ await new Promise((r) => setTimeout(r, 6000));
 // только явным выбором, поэтому до пробы холста нужно нажать на первую
 // карточку: пустой список означает, что редактор вообще не отрисуется.
 const dashReady = await waitFor(page, '.dash__grid, .dash__empty', 20000);
-if (!dashReady) throw new Error('после входа не открылся список проектов');
+if (!dashReady) {
+  // Диагностика в сообщении: «не открылся список» само по себе
+  // не говорит, был это экран входа, ошибка загрузки или пустой
+  // список без нужного класса.
+  const dump = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `JSON.stringify({
+      path: location.pathname,
+      classes: [...document.querySelectorAll('[class]')].slice(0, 12).map(e => e.className),
+      text: (document.body.innerText || '').slice(0, 160),
+      tokens: Boolean(localStorage.getItem('aurabuilder.access')),
+    })`,
+  });
+  throw new Error(`после входа не открылся список проектов: ${dump.result.value}`);
+}
 
 if (await has(page, '.dash__empty')) {
   await click(page, '.dash__empty .btn--primary');
   await fill(page, '.dash__input', 'Проект автопроверки');
   await click(page, '.dash__create .btn--primary');
 } else {
+  // Карточка ждётся отдельно: список перерисовывается после входа, и
+  // клик по ещё не отрисованной кнопке уходил в пустоту — сценарий
+  // падал на «редактор не открылся» вместо проверки холста.
+  await waitFor(page, '.dash__card .dash__open', 15000);
   await click(page, '.dash__card .dash__open');
 }
 // Ждём не контейнер, а сам canvas Konva: модуль с холстом грузится
@@ -1093,16 +1131,31 @@ const key = async (letter, code, modifiers = 0) => {
   const newName = `${dashName} (переименован)`;
   await page.send('Runtime.evaluate', {
     expression: `(() => {
-      const card = [...document.querySelectorAll('.dash__card')]
-        .find(c => c.querySelector('.dash__card-name')?.textContent === ${JSON.stringify(dashName)});
+      const card = document.querySelector(
+        '.dash__card[data-name=' + JSON.stringify(${JSON.stringify(dashName)}) + ']',
+      );
       const btn = card && [...card.querySelectorAll('button')]
         .find(b => b.title === 'Переименовать');
       if (btn) btn.click();
+      return Boolean(btn);
     })()`,
   });
-  await waitFor(page, '.dash__rename-input', 10000);
-  await fill(page, '.dash__rename-input', newName);
-  await click(page, '.dash__rename .btn--primary');
+  // Форма ищется внутри карточки: при нескольких проектах общий поиск
+  // по классу попадал в чужую карточку, и проверка переименования
+  // падала без видимой причины.
+  const cardSelector = `.dash__card[data-name="${dashName}"]`;
+  if (!(await waitFor(page, `${cardSelector} .dash__rename-input`, 10000))) {
+    throw new Error('форма переименования не появилась');
+  }
+  await fill(page, `${cardSelector} .dash__rename-input`, newName);
+  // Отправка формы кнопкой, а не кликом по координатам: карточка может
+  // оказаться за пределами окна, и координата ушла бы в пустоту.
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      const btn = document.querySelector(${JSON.stringify(`${cardSelector} .dash__rename .btn--primary`)});
+      if (btn) btn.click();
+    })()`,
+  });
   await new Promise((r) => setTimeout(r, 900));
 
   const namesAfterRename = await page.send('Runtime.evaluate', {
@@ -1117,11 +1170,13 @@ const key = async (letter, code, modifiers = 0) => {
   // Удаление: диалог подтверждения.
   await page.send('Runtime.evaluate', {
     expression: `(() => {
-      const card = [...document.querySelectorAll('.dash__card')]
-        .find(c => c.querySelector('.dash__card-name')?.textContent === ${JSON.stringify(newName)});
+      const card = document.querySelector(
+        '.dash__card[data-name=' + JSON.stringify(${JSON.stringify(newName)}) + ']',
+      );
       const btn = card && [...card.querySelectorAll('button')]
         .find(b => b.title === 'Удалить');
       if (btn) btn.click();
+      return Boolean(btn);
     })()`,
   });
   await waitFor(page, '.modal__card', 10000);
@@ -1373,6 +1428,141 @@ const key = async (letter, code, modifiers = 0) => {
     await has(page, '.canvas'),
   ]);
 
+  /*
+   * Библиотека компонентов (ТЗ п.3.1).
+   *
+   * Проверяется главное обещание: один раз изменили стиль — все
+   * секции на холсте поехали за ним. Поэтому сравнивается не наличие
+   * полей формы, а пиксели подложки блока до и после сохранения:
+   * форма может нарисоваться, а холст остаться прежним.
+   */
+  mark('библиотека компонентов');
+  const compsBox = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `(() => {
+      // Замер идёт по самому canvas Konva, а не по контейнеру: у
+      // контейнера есть отступы, и точка съезжала с первого блока на
+      // фон страницы — смена стиля секции была не видна.
+      const el = document.querySelector('.canvas canvas') ?? document.querySelector('.canvas');
+      const r = el.getBoundingClientRect();
+      const holder = document.querySelector('.canvas');
+      return {
+        x: Math.round(r.x),
+        y: Math.round(r.y),
+        project: holder?.dataset.project,
+      };
+    })()`,
+  });
+  const shotBefore = await page.send('Page.captureScreenshot', { format: 'png' });
+  const beforeStats = regionStats(
+    decodePng(Buffer.from(shotBefore.data, 'base64')),
+    { x: compsBox.result.value.x + 300, y: compsBox.result.value.y + 110, width: 200, height: 40 },
+  );
+
+  await click(page, '[aria-label="Библиотека компонентов"]');
+  await waitFor(page, '.comps__layout', 15000);
+  results.push(['библиотека компонентов открывается', await has(page, '.comps__layout')]);
+  results.push([
+    'в библиотеке три вида компонентов',
+    (await page.send('Runtime.evaluate', {
+      returnByValue: true,
+      expression: `document.querySelectorAll('.comps__item').length`,
+    })).result.value === 3,
+  ]);
+
+  // Фон секции уводим в акцентную поверхность: она заметно отличается
+  // от нейтральной панели, поэтому промах по пикселям не спутать с
+  // перерисовкой того же цвета.
+  await fill(page, '#comps-background', 'accentSurface');
+  // Ожидание появления подсказки, а не пауза: перерисовка после ввода
+  // занимает доли секунды, и фиксированное ожидание ловило гонку.
+  await waitFor(page, '.comps__warn', 3000);
+  await new Promise((r) => setTimeout(r, 200));
+  const unreadable = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `(() => ({
+      warning: document.querySelector('.comps__warn')?.textContent ?? '',
+      disabled: document.querySelector('.data__actions .btn--primary')?.disabled ?? false,
+      background: document.querySelector('#comps-background')?.value ?? '',
+      text: document.querySelector('#comps-text')?.value ?? '',
+      sample: document.querySelector('.comps__sample')
+        ? getComputedStyle(document.querySelector('.comps__sample')).backgroundColor
+        : '',
+    }))()`,
+  });
+  const unreadableState = unreadable.result.value ?? { warning: '', disabled: false };
+  results.push([
+    `нечитаемое сочетание помечено в интерфейсе (${unreadableState.background}/${unreadableState.text}, ${unreadableState.sample})`,
+    unreadableState.warning.includes('онтраст') && unreadableState.disabled === true,
+  ]);
+
+  await fill(page, '#comps-text', 'onAccentSurface');
+  await new Promise((r) => setTimeout(r, 300));
+  await click(page, '.data__actions .btn--primary');
+  await new Promise((r) => setTimeout(r, 1500));
+  const savedError = await text(page, '.data__error');
+  results.push([
+    `стиль сохранён без ошибки${savedError ? ` (${savedError})` : ''}`,
+    savedError === '',
+  ]);
+
+  // Стиль обязан лежать на сервере у того проекта, который открыт.
+  // Идентификатор берётся из разметки холста: гадать по «первому
+  // проекту в списке» нельзя — у пользователя их несколько.
+  const persisted = await evalAsync(page, `
+    const headers = {
+      Authorization: 'Bearer ' + localStorage.getItem('aurabuilder.access'),
+    };
+    const body = await (await fetch(
+      '/api/projects/' + ${JSON.stringify('__PROJECT_ID__')} + '/component-styles/',
+      { headers },
+    )).json();
+    const style = body.styles.find((s) => s.kind === 'section');
+    return { background: style.tokens.background, isDefault: style.isDefault };
+  `.replace('__PROJECT_ID__', compsBox.result.value.project));
+  results.push([
+    `стиль сохранён на сервере (${persisted?.background ?? '—'})`,
+    persisted?.background === 'accentSurface' && persisted?.isDefault === false,
+  ]);
+
+  await click(page, '.data__top .btn--ghost');
+  await waitFor(page, '.canvas canvas', 25000);
+  await new Promise((r) => setTimeout(r, 900));
+
+  const shotAfter = await page.send('Page.captureScreenshot', { format: 'png' });
+  const afterStats = regionStats(
+    decodePng(Buffer.from(shotAfter.data, 'base64')),
+    { x: compsBox.result.value.x + 300, y: compsBox.result.value.y + 110, width: 200, height: 40 },
+  );
+  const beforeMean = beforeStats.mean.join(',');
+  const afterMean = afterStats.mean.join(',');
+  results.push([
+    `стиль из библиотеки применился к секциям (${beforeMean} -> ${afterMean})`,
+    beforeMean !== afterMean,
+  ]);
+
+  /*
+   * Уборка за прогоном.
+   *
+   * Каждый прогон создаёт проект, источник данных и запись. Без удаления
+   * список проектов рос бы до сотни карточек, и следующий прогон начинал
+   * бы падать не из-за кода, а из-за длины списка: клики уезжали бы за
+   * пределы окна. Стиль секции тоже возвращается к умолчанию — иначе
+   * золотой фон доехал бы до следующих проверок скриншота.
+   */
+  mark('уборка за прогоном');
+  await evalAsync(page, `
+    const headers = {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + localStorage.getItem('aurabuilder.access'),
+    };
+    const projectId = '${compsBox.result.value.project}';
+    await fetch('/api/projects/' + projectId + '/component-styles/section/', {
+      method: 'DELETE', headers,
+    });
+    await fetch('/api/projects/' + projectId + '/', { method: 'DELETE', headers });
+    return projectId;
+  `);
 
   return results;
 }

@@ -27,6 +27,11 @@ import { Group, Line, Rect, Text } from 'react-konva';
 import type { Block } from './project';
 import { cellText, type DataRecord } from './data';
 import type { CanvasTokens } from './useCanvasTokens';
+import { kindOf } from './moduleRegistry';
+import type { ResolvedStyle } from './components';
+
+/** Стили всех видов компонентов: ключ — вид блока. */
+export type StyleByKind = Record<'section' | 'text' | 'media', ResolvedStyle>;
 
 const FONT = 'Inter, sans-serif';
 const MONO = "'JetBrains Mono', monospace";
@@ -262,10 +267,25 @@ export function modulePreview(
   block: Block,
   tokens: CanvasTokens,
   records: DataRecord[] = [],
+  styles?: StyleByKind,
 ): ReactNode {
   const h = block.height;
   const titleSize = fontFor(h, 0.13, 14, 30);
   const bodySize = fontFor(h, 0.06, 11, 15);
+
+  /*
+   * Стиль из библиотеки компонентов (ТЗ п.3.1).
+   *
+   * Стиль задаётся на вид компонента, а не на блок: цвет текста в
+   * заголовке и в абзаце берётся из одного места, и правка в библиотеке
+   * меняет их на всех страницах разом. Локальные свойства блока
+   * (fontStyle из макета) сохраняются — библиотека меняет цвет и
+   * насыщенность, а не ломает макет.
+   */
+  const style = styles?.[kindOf(block.module)];
+  const headingFill = style?.text ?? tokens.textPrimary;
+  const headingWeight = style?.weight && style.weight >= 600 ? 'bold' : 'normal';
+  const bodyWeight = style?.weight && style.weight >= 600 ? 'bold' : 'normal';
 
   switch (block.module) {
     case 'section.hero': {
@@ -280,9 +300,9 @@ export function modulePreview(
             width={block.width - PAD * 2}
             text={heading}
             fontSize={titleSize}
-            fontStyle="bold"
+            fontStyle={headingWeight}
             fontFamily={FONT}
-            fill={tokens.textPrimary}
+            fill={headingFill}
             wrap="word"
           />
           <Text
@@ -326,9 +346,9 @@ export function modulePreview(
             y={block.y + 12}
             text="Логотип"
             fontSize={14}
-            fontStyle="bold"
+            fontStyle={headingWeight}
             fontFamily={FONT}
-            fill={tokens.textPrimary}
+            fill={headingFill}
           />
           {items.map((item, i) => (
             <Text
@@ -361,9 +381,9 @@ export function modulePreview(
             width={block.width - PAD * 2}
             text="Почему это работает"
             fontSize={titleSize}
-            fontStyle="bold"
+            fontStyle={headingWeight}
             fontFamily={FONT}
-            fill={tokens.textPrimary}
+            fill={headingFill}
           />
           {cols.map((c, i) => (
             <Group key={`${block.id}-f${i}`}>
@@ -414,9 +434,9 @@ export function modulePreview(
             width={block.width - PAD * 2}
             text={text(block, 'heading', 'Подборка')}
             fontSize={titleSize}
-            fontStyle="bold"
+            fontStyle={headingWeight}
             fontFamily={FONT}
-            fill={tokens.textPrimary}
+            fill={headingFill}
           />
           {cols.map((c, i) => (
             <Group key={`${block.id}-c${i}`}>
@@ -464,9 +484,9 @@ export function modulePreview(
             width={half}
             text={text(block, 'heading', 'Левая колонка')}
             fontSize={titleSize}
-            fontStyle="bold"
+            fontStyle={headingWeight}
             fontFamily={FONT}
-            fill={tokens.textPrimary}
+            fill={headingFill}
             wrap="word"
           />
           <Text
@@ -504,9 +524,9 @@ export function modulePreview(
             width={block.width - PAD * 2}
             text={text(block, 'heading', 'Остались вопросы?')}
             fontSize={titleSize}
-            fontStyle="bold"
+            fontStyle={headingWeight}
             fontFamily={FONT}
-            fill={tokens.textPrimary}
+            fill={headingFill}
             wrap="word"
           />
           <Rect
@@ -604,9 +624,9 @@ export function modulePreview(
             verticalAlign="middle"
             text={text(block, 'text', block.label)}
             fontSize={fontFor(h, 0.32, 16, 34)}
-            fontStyle="bold"
+            fontStyle={headingWeight}
             fontFamily={FONT}
-            fill={tokens.textPrimary}
+            fill={headingFill}
             wrap="word"
             ellipsis
           />
@@ -629,8 +649,9 @@ export function modulePreview(
               'Текст абзаца. Он показывает, как будет выглядеть содержимое блока на собранной странице.',
             )}
             fontSize={fontFor(h, 0.07, 12, 16)}
+            fontStyle={bodyWeight}
             fontFamily={FONT}
-            fill={tokens.textPrimary}
+            fill={headingFill}
             lineHeight={1.6}
             wrap="word"
             ellipsis

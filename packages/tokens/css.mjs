@@ -139,6 +139,25 @@ function themeVars(theme) {
   return lines.join('\n');
 }
 
+/**
+ * @returns {{light: Record<string, string>, dark: Record<string, string>}}
+ *   значения токенов по темам для Python-части платформы.
+ *
+ * Control Plane проверяет контраст выбранных пользователем цветов, а
+ * tokens.css до него не дотягивается: сервер не запускает браузер.
+ * Значения едут тем же генератором, что и CSS, иначе проверка
+ * контраста считала бы по одной теме, а страница показывала другую.
+ */
+export function paletteValues() {
+  const palette = loadPalette();
+  return { light: { ...palette.light }, dark: { ...palette.dark } };
+}
+
+/** Токены, пригодные как заливка или как цвет текста. */
+export function solidColorTokens(values) {
+  return Object.entries(values).filter(([, v]) => /^#[0-9a-f]{6}$/i.test(v));
+}
+
 /** @returns {string} содержимое tokens.css */
 export function generateTokensCss() {
   const palette = loadPalette();

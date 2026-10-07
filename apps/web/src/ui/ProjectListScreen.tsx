@@ -208,7 +208,15 @@ export function ProjectListScreen({
       ) : (
         <ul className="dash__grid">
           {projects.map((project) => (
-            <li key={project.id} className="dash__card" data-project={project.id}>
+            // Идентификатор и имя лежат в разметке: автопроверка ищет карточку
+      // по data-name, а не по тексту внутри — при одинаковых именах
+      // текстовый поиск попадал не в ту карточку.
+      <li
+        key={project.id}
+        className="dash__card"
+        data-project={project.id}
+        data-name={project.name}
+      >
               <button
                 type="button"
                 className="dash__open"
