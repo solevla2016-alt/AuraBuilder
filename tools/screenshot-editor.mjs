@@ -13,7 +13,9 @@
  */
 
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import {
+  mkdtempSync, readdirSync, rmSync, statSync, writeFileSync, existsSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MiniWebSocket } from './minisocket.mjs';
@@ -316,8 +318,61 @@ const evalAsync = async (page, body) => {
 };
 
 await page.send('Page.navigate', { url: URL_TO_TEST });
-// Холст грузится лениво: ждём, пока он появится и отрисовался.
+// Холст грузится лениво: ждём, пока он появился и отрисовался.
 await new Promise((r) => setTimeout(r, 6000));
+
+/*
+ * Стенд должен быть новее последней правки исходников.
+ *
+ * Проверки идут против того, что реально отдал nginx. Если образ не
+ * пересобран, браузер получает прошлый бандл, сценарии проходят, а
+ * правки фронта в них не участвуют: так сломанный выбор блока держался
+ * зелёным до отчёта пользователя.
+ *
+ * Сравниваются не имена файлов сборки — они не совпадают между
+ * локальной сборкой и сборкой в образе, — а время: бандл должен быть
+ * не старше самого свежего файла в apps/web/src.
+ */
+{
+  const served = await evalAsync(page, `
+    const res = await fetch('/', { cache: 'no-store' });
+    const html = await res.text();
+    const js = html.match(/(?:src|href)="\\/?(assets\\/[^"]+\\.js)"/);
+    if (!js) return { html };
+    const asset = await fetch('/' + js[1], { method: 'HEAD', cache: 'no-store' });
+    return { asset: js[1], lastModified: asset.headers.get('last-modified') };
+  `);
+  const lastModified = served?.lastModified ? Date.parse(served.lastModified) : NaN;
+  let newest = 0;
+  let newestFile = '';
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.(ts|tsx|css|html)$/.test(entry.name)) {
+        const mtime = statSync(full).mtimeMs;
+        if (mtime > newest) {
+          newest = mtime;
+          newestFile = full;
+        }
+      }
+    }
+  };
+  walk('apps/web/src');
+  if (Number.isNaN(lastModified)) {
+    throw new Error(
+      `не удалось узнать время отдаваемой сборки (${served?.asset ?? 'бандл не найден'}). ` +
+        'Проверьте, что стенд отдаёт статику с заголовком Last-Modified.',
+    );
+  }
+  if (lastModified < newest - 1000) {
+    throw new Error(
+      `стенд отдаёт сборку старее исходников: ${served.asset}\n` +
+        `  изменён: ${newestFile}\n` +
+        '  пересоберите образ: docker compose build web && docker compose up -d',
+    );
+  }
+}
 
 /*
  * Вход выполняется до всех остальных проверок.
@@ -588,6 +643,32 @@ const key = async (letter, code, modifiers = 0) => {
   // Выделение обязано пережить правки: иначе пользователь потерял бы
   // блок, который настраивал.
   results.push(['выделение сохраняется после правок', afterUndo.selected !== '']);
+
+  // Снятие выделения: панель возвращается в пустое состояние, а холст
+  // остаётся на месте. Проверяется именно обратный переход — раньше
+  // список источников грузился хуком после раннего возврата, и при
+  // выборе блока число хуков менялось, React ронял дерево, а экран
+  // становился пустым ровно в этот момент.
+  // Выделение снимается повторным кликом по тому же блоку: клик по
+  // пустому месту холста зависит от того, попал ли туда другой блок.
+  await clickOnBlock();
+  await new Promise((r) => setTimeout(r, 600));
+  const deselected = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `(() => ({
+      empty: !!document.querySelector('.props--empty'),
+      canvas: !!document.querySelector('.canvas canvas'),
+      blocks: document.querySelectorAll('.props--empty').length,
+    }))()`,
+  });
+  const afterDeselect = deselected.result.value ?? {};
+  results.push([
+    'снятие выделения не ломает редактор',
+    afterDeselect.empty === true && afterDeselect.canvas === true,
+  ]);
+
+  // Возвращаем выделение: следующие проверки работают с панелью.
+  await clickOnBlock();
 
   // Содержимое текстового блока вводится через панель и должно появиться
   // на холсте. Берём блок text.*: у section.hero поля содержимого нет,
