@@ -53,7 +53,22 @@ export interface Project {
   name: string;
   /** Дерево страницы; обновляется при сохранении. */
   tree: PageTree;
+  /**
+   * Номер версии документа (ТЗ п.3.2). Редактор предъявляет его при
+   * сохранении: если документ успели изменить с другой вкладки,
+   * сервер отвечает 409, и правка не затирает чужую работу молча.
+   */
+  version: number;
   updatedAt: string;
+}
+
+/** Строка истории версий. Дерево запрашивается отдельно. */
+export interface DocumentVersionRow {
+  number: number;
+  label: string;
+  author: string | null;
+  createdAt: string;
+  blocks: number;
 }
 
 const MAX_BLOCKS = 500;

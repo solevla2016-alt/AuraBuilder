@@ -5,6 +5,7 @@ import { AuthScreen, requiresAuth } from './ui/AuthScreen';
 import { ProjectListScreen } from './ui/ProjectListScreen';
 import { DataScreen } from './ui/DataScreen';
 import { ComponentsScreen } from './ui/ComponentsScreen';
+import { VersionsScreen } from './ui/VersionsScreen';
 import { Icon } from './ui/icons';
 import { api, clearTokens, onSessionExpired, type UserProfile } from './ui/api';
 import type { Project } from './ui/project';
@@ -22,7 +23,8 @@ type Screen =
   | { name: 'dashboard' }
   | { name: 'editor'; project: Project }
   | { name: 'data'; project: Project }
-  | { name: 'components'; project: Project };
+  | { name: 'components'; project: Project }
+  | { name: 'versions'; project: Project };
 
 export function App() {
   const { theme, toggle } = useTheme();
@@ -91,6 +93,11 @@ export function App() {
           projectId={screen.project.id}
           onBack={() => setScreen({ name: 'editor', project: screen.project })}
         />
+      ) : screen.name === 'versions' ? (
+        <VersionsScreen
+          projectId={screen.project.id}
+          onBack={() => setScreen({ name: 'editor', project: screen.project })}
+        />
       ) : screen.name === 'components' ? (
         <ComponentsScreen
           projectId={screen.project.id}
@@ -102,6 +109,7 @@ export function App() {
           onBack={() => setScreen({ name: 'dashboard' })}
           onOpenData={() => setScreen({ name: 'data', project: screen.project })}
           onOpenComponents={() => setScreen({ name: 'components', project: screen.project })}
+          onOpenVersions={() => setScreen({ name: 'versions', project: screen.project })}
           onSignOut={signOut}
         />
       )}

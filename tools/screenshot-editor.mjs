@@ -1542,6 +1542,105 @@ const key = async (letter, code, modifiers = 0) => {
   ]);
 
   /*
+   * Версии документа (ТЗ п.3.2).
+   *
+   * Проверяется поведение, а не наличие экрана: правка в редакторе
+   * обязана появиться в истории, восстановление — вернуть прежнее
+   * дерево, а сохранение с устаревшей версией — получить отказ вместо
+   * молчаливой затирки чужой работы.
+   */
+  mark('версии документа');
+  await click(page, '[aria-label="Версии проекта"]');
+  if (!(await waitFor(page, '.vers__list, .data__empty', 15000))) {
+    const dump = await page.send('Runtime.evaluate', {
+      returnByValue: true,
+      expression: `JSON.stringify({
+        main: document.querySelector('main')?.className ?? null,
+        hint: document.querySelector('.data__hint')?.textContent ?? null,
+        error: document.querySelector('.data__error')?.textContent ?? null,
+        title: document.querySelector('.data__title')?.textContent ?? null,
+      })`,
+    });
+    throw new Error(`экран версий не открылся: ${dump.result.value}`);
+  }
+  const emptyBefore = await has(page, '.vers .data__empty');
+  results.push([
+    `история версий на месте (${emptyBefore ? 'пусто' : 'есть строки'})`,
+    true,
+  ]);
+
+  // Ручная отметка: подпись и появление строки в истории.
+  await fill(page, '[aria-label="Подпись версии"]', 'Проверка версий');
+  await click(page, '.vers__mark-row .btn--primary');
+  await waitFor(page, '.vers__row', 15000);
+  const marked = await text(page, '.vers__row-label');
+  results.push(['отметка состояния видна в истории', marked.includes('Проверка версий')]);
+
+  // Правка дерева через API: должна породить следующую версию.
+  const afterEdit = await evalAsync(page, `
+    const headers = {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + localStorage.getItem('aurabuilder.access'),
+    };
+    const projectId = '${compsBox.result.value.project}';
+    const project = await (await fetch('/api/projects/' + projectId + '/', { headers })).json();
+    const tree = structuredClone(project.tree);
+    tree.blocks[1].label = 'Правка для версий';
+    const saved = await (await fetch('/api/projects/' + projectId + '/', {
+      method: 'PATCH', headers, body: JSON.stringify({ tree, expectedVersion: project.version }),
+    })).json();
+    return { version: saved.version };
+  `);
+  results.push([
+    `правка подняла версию до ${afterEdit?.version ?? '—'}`,
+    typeof afterEdit?.version === 'number' && afterEdit.version > 1,
+  ]);
+
+  // Конфликт: та же версия, что видел редактор, но документ уже уехал.
+  const conflict = await evalAsync(page, `
+    const headers = {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + localStorage.getItem('aurabuilder.access'),
+    };
+    const projectId = '${compsBox.result.value.project}';
+    const res = await fetch('/api/projects/' + projectId + '/', {
+      method: 'PATCH', headers,
+      body: JSON.stringify({ tree: { width: 720, blocks: [] }, expectedVersion: 1 }),
+    });
+    return { status: res.status };
+  `);
+  results.push([
+    `устаревшая версия отвергнута (${conflict?.status})`,
+    conflict?.status === 409,
+  ]);
+
+  // Восстановление к отмеченной версии.
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      const btn = [...document.querySelectorAll('.vers__row')]
+        .find(row => row.textContent.includes('Проверка версий'))
+        ?.querySelector('.btn--ghost');
+      if (btn) btn.click();
+    })()`,
+  });
+  const restoredNote = await waitFor(page, '.vers__ok', 20000);
+  const restoredTree = await evalAsync(page, `
+    const headers = {
+      Authorization: 'Bearer ' + localStorage.getItem('aurabuilder.access'),
+    };
+    const project = await (await fetch('/api/projects/${compsBox.result.value.project}/', { headers })).json();
+    return { label: project.tree.blocks[1].label, version: project.version };
+  `);
+  results.push([
+    `восстановление вернуло прежнее дерево (${restoredTree?.label ?? '—'})`,
+    Boolean(restoredNote) && restoredTree?.label !== 'Правка для версий',
+  ]);
+  results.push([
+    `восстановление стало новой версией (${restoredTree?.version ?? '—'})`,
+    typeof restoredTree?.version === 'number' && restoredTree.version > (afterEdit?.version ?? 0),
+  ]);
+
+  /*
    * Уборка за прогоном.
    *
    * Каждый прогон создаёт проект, источник данных и запись. Без удаления

@@ -25,6 +25,7 @@ from accounts.permissions import (
     EDIT_CONTENT,
     MANAGE_ACCESS,
     VIEW,
+    IsAuthenticatedUser,
     ProjectAccess,
     can,
     readable_projects,
@@ -36,8 +37,9 @@ from accounts.serializers import (
     get_client_ip,
 )
 
-from .models import Project
+from .models import DocumentVersion, Project
 from .module_registry import CATEGORIES, MODULES, modules_for_stage
+from .versions import restore as restore_version, snapshot
 from .serializers import ProjectCreateSerializer, ProjectSerializer
 
 
@@ -175,11 +177,144 @@ def project_detail(request, project_id: str):
         project.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    # Optimistic concurrency (ТЗ п.3.2). Клиент присылает номер версии,
+    # которую видел. Если документ успели изменить, сохранение молча
+    # перезаписало бы чужую работу, поэтому отвечаем 409 и отдаём
+    # текущую версию: редактор покажет конфликт, а не потеряет правку
+    # без предупреждения.
+    expected = request.data.get('expectedVersion')
+    if expected is not None:
+        try:
+            expected = int(expected)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'expectedVersion должен быть числом.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if expected != project.version:
+            return Response(
+                {
+                    'detail': 'Документ изменил другой редактор.',
+                    'version': project.version,
+                    'updatedAt': project.updated_at,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+    before = project.tree
     serializer = ProjectSerializer(project, data=request.data, partial=request.method == 'PATCH')
     serializer.is_valid(raise_exception=True)
-    serializer.save()
+    saved = serializer.save()
+
+    # Снимок только когда дерево действительно изменилось: иначе
+    # каждый заход на страницу засор��л бы историю одинаковыми
+    # версиями, и восстанавливать было бы нечего.
+    if 'tree' in request.data and saved.tree != before:
+        created = snapshot(
+            project,
+            saved.tree,
+            author=request.user if request.user.is_authenticated else None,
+        )
+        project.version = created.number
+        project.save(update_fields=['version', 'updated_at'])
+
     audit(request, 'project.update', project)
-    return Response(serializer.data)
+    return Response(ProjectSerializer(project).data)
+
+
+def _project_by_id(project_id: str):
+    try:
+        return Project.objects.filter(pk=uuid.UUID(project_id)).select_related('owner').first()
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticatedUser])
+def version_list(request, project_id: str):
+    """Версии документа проекта (ТЗ п.3.2).
+
+    Список отдаётся без самих деревьев: история растёт, а редактор
+    показывает строки «кто, когда, сколько блоков». Дерево запрашивается
+    отдельно и только для выбранной версии.
+    """
+
+    project = _project_by_id(project_id)
+    if project is None or not can(request.user, project, VIEW):
+        return Response({'detail': 'проект не найден'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'POST':
+        if not can(request.user, project, EDIT_CONTENT):
+            return Response(
+                {'detail': 'Недостаточно прав для этого действия.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        created = snapshot(
+            project,
+            project.tree,
+            author=request.user,
+            label=str(request.data.get('label', ''))[:200],
+        )
+        project.version = created.number
+        project.save(update_fields=['version', 'updated_at'])
+        audit(request, 'project.snapshot', project, str(created.number))
+        return Response(
+            _version_payload(created),
+            status=status.HTTP_201_CREATED,
+        )
+
+    rows = [
+        _version_payload(v)
+        for v in DocumentVersion.objects.filter(project=project).select_related('author')[:100]
+    ]
+    return Response({'version': project.version, 'versions': rows})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticatedUser])
+def version_detail(request, project_id: str, number: int):
+    """Один снимок вместе с деревом."""
+
+    project = _project_by_id(project_id)
+    if project is None or not can(request.user, project, VIEW):
+        return Response({'detail': 'проект не найден'}, status=status.HTTP_404_NOT_FOUND)
+    version = DocumentVersion.objects.filter(project=project, number=number).first()
+    if version is None:
+        return Response({'detail': 'версия не найдена'}, status=status.HTTP_404_NOT_FOUND)
+    payload = _version_payload(version)
+    payload['tree'] = version.tree
+    return Response(payload)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticatedUser])
+def version_restore(request, project_id: str, number: int):
+    """Вернуть проект к версии."""
+
+    project = _project_by_id(project_id)
+    if project is None or not can(request.user, project, VIEW):
+        return Response({'detail': 'проект не найден'}, status=status.HTTP_404_NOT_FOUND)
+    if not can(request.user, project, EDIT_CONTENT):
+        return Response(
+            {'detail': 'Недостаточно прав для этого действия.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    version = DocumentVersion.objects.filter(project=project, number=number).first()
+    if version is None:
+        return Response({'detail': 'версия не найдена'}, status=status.HTTP_404_NOT_FOUND)
+    created = restore_version(request, project, version)
+    return Response(_version_payload(created))
+
+
+def _version_payload(version: DocumentVersion) -> dict:
+    blocks = version.tree.get('blocks') if isinstance(version.tree, dict) else None
+    return {
+        'number': version.number,
+        'label': version.label,
+        'author': version.author.username if version.author_id else None,
+        'createdAt': version.created_at,
+        'blocks': len(blocks) if isinstance(blocks, list) else 0,
+    }
 
 
 @api_view(['GET', 'POST'])

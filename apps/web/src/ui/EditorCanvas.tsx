@@ -70,6 +70,7 @@ export function EditorCanvas({
   onBack,
   onOpenData,
   onOpenComponents,
+  onOpenVersions,
   onSignOut,
 }: {
   /** Проект открыт из списка: идентификатор и название известны заранее. */
@@ -77,6 +78,7 @@ export function EditorCanvas({
   onBack: () => void;
   onOpenData: () => void;
   onOpenComponents: () => void;
+  onOpenVersions: () => void;
   onSignOut: () => void;
 }) {
   const [tool, setTool] = useState('select');
@@ -97,6 +99,16 @@ export function EditorCanvas({
    * и обновляются из самой библиотеки.
    */
   const [styles, setStyles] = useState<Record<string, ComponentStyle> | null>(null);
+
+  /*
+   * Номер версии документа (ТЗ п.3.2) и конфликт при сохранении.
+   *
+   * Версия обновляется после каждого успешного сохранения: следующий
+   * запрос должен предъявлять уже новую, иначе собственная правка была
+   * бы отвергнута как чужая.
+   */
+  const [documentVersion, setDocumentVersion] = useState<number | undefined>(undefined);
+  const [conflict, setConflict] = useState<string | null>(null);
   const loadStyles = useCallback(async () => {
     try {
       const body = await componentsApi.list(project.id);
@@ -179,6 +191,9 @@ export function EditorCanvas({
       .then((p) => {
         if (cancelled) return;
         setProjectId(p.id);
+        // Версия документа нужна для первого сохранения: без неё сервер
+        // не сможет отличить правку этой вкладки от чужой.
+        setDocumentVersion(p.version);
         // reset, а не commit: то, что пришло с сервера, не должно
         // попадать в историю и отменяться по Ctrl+Z.
         history.reset(p.tree);
@@ -376,12 +391,30 @@ export function EditorCanvas({
     }
 
     if (projectId === null) throw new Error('Проект ещё не загружен');
-    const saved = await api.saveProject(projectId, project.name, tree);
+    // Номер версии предъявляется при каждом сохранении: сервер отвечает
+    // 409, если документ изменили с другой вкладки. Молча перезаписать
+    // чужую работу нельзя, поэтому конфликт останавливает автосохранение
+    // и показывается пользователю.
+    let saved;
+    try {
+      saved = await api.saveProject(projectId, project.name, tree, documentVersion);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        setConflict(
+          'Документ изменил другой редактор. Автосохранение остановлено, ' +
+            'чтобы не затереть его работу: откройте «Версии» и восстановите нужное состояние.',
+        );
+        throw e;
+      }
+      throw e;
+    }
     // Ответ сервера помечается сохранённым, но история не сбрасывается:
     // сброс здесь означал бы, что Ctrl+Z перестаёт работать через
     // секунду после каждой правки — отмена пропадала бы именно в тот
     // момент, когда пользователь вернулся к работе.
     history.markSaved(saved.tree);
+    setDocumentVersion(saved.version);
+    setConflict(null);
     setSaveError(null);
   }
 
@@ -518,6 +551,18 @@ export function EditorCanvas({
             <Icon name="layers" />
             <span>Компоненты</span>
           </button>
+          {/* Версии документа (ТЗ п.3.2): кто и когда сохранял, и
+              возможность вернуть проект к прошлому состоянию. */}
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={onOpenVersions}
+            title="Версии проекта"
+            aria-label="Версии проекта"
+          >
+            <Icon name="history" />
+            <span>Версии</span>
+          </button>
           {/* Кнопка возврата в список проектов: без неё из редактора
               не выйти, кроме выхода из аккаунта, а это разные вещи. */}
           <button
@@ -571,7 +616,16 @@ export function EditorCanvas({
         </div>
       </header>
 
-      {autosave.state === 'error' ? (
+      {conflict ? (
+        // Конфликт версий показывается отдельно от ошибок сети: дело не
+        // в соединении, документ изменил другой редактор. Молча
+        // перезаписать его работу нельзя, поэтому сохранение остановлено
+        // до явного решения пользователя.
+        <p className="banner banner--warn" role="alert">
+          <Icon name="settings" size={16} />
+          {conflict}
+        </p>
+      ) : autosave.state === 'error' ? (
         <p className="banner banner--warn" role="status">
           <Icon name="settings" size={16} />
           {autosave.error ?? saveError}

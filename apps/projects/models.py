@@ -58,6 +58,10 @@ class Project(models.Model):
         blank=True,
         related_name='owned_projects',
     )
+    # Номер последней сохранённой версии документа. Нужен для
+    # optimistic concurrency: клиент присылает версию, которую видел,
+    # и сервер отвечает 409, если документ уже изменили (ТЗ п.3.2).
+    version = models.PositiveIntegerField('версия', default=1)
     created_at = models.DateTimeField('создан', auto_now_add=True)
     updated_at = models.DateTimeField('изменён', auto_now=True)
 
@@ -68,3 +72,52 @@ class Project(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+
+class DocumentVersion(models.Model):
+    """Снимок дерева проекта (ТЗ п.3.2).
+
+    Зачем снимок, если есть история действий: история живёт в браузере
+    и умирает вместе со вкладкой, а снимок хранится на сервере и
+    переживает чужую правку. По ТЗ модель командной работы —
+    optimistic concurrency по версиям документа (docs/TZ-GAPS.md, п.2.3),
+    и для неё нужен номер, который можно предъявить при сохранении.
+
+    Снимок неизменяем: восстановление не переписывает историю, а
+    сохраняет дерево старой версии как новую. Иначе «отменить
+    восстановление» было бы нечем.
+    """
+
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='versions',
+    )
+    # Нор��ер снимка в пределах проекта, начиная с 1. Именно он
+    # предъявляется при сохранении: сервер отвечает 409, если версия
+    # успела уехать вперёд.
+    number = models.PositiveIntegerField('номер')
+    tree = models.JSONField('дерево')
+    label = models.CharField('подпись', max_length=200, blank=True)
+    author = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='document_versions',
+    )
+    created_at = models.DateTimeField('создан', auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'версия документа'
+        verbose_name_plural = 'версии документа'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['project', 'number'],
+                name='unique_document_version_per_project',
+            ),
+        ]
+        ordering = ['-number']
+
+    def __str__(self) -> str:
+        return f'{self.project_id}: версия {self.number}'

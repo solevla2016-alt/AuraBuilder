@@ -181,8 +181,11 @@ class ProjectSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Project
-        fields = ['id', 'name', 'tree', 'createdAt', 'updatedAt']
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        # version обязателен в ответе: клиент предъявляет его при
+        # следующем сохранении, и без него проверка конфликта (ТЗ п.3.2)
+        # не работает.
+        fields = ['id', 'name', 'tree', 'version', 'createdAt', 'updatedAt']
+        read_only_fields = ['id', 'version', 'created_at', 'updated_at']
 
     def validate_name(self, value: str) -> str:
         value = value.strip()

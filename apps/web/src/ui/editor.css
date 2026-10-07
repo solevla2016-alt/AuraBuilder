@@ -1475,3 +1475,77 @@ select.prop__input option {
     grid-template-columns: 1fr;
   }
 }
+
+/* --------------------------------------------------------------------------
+   Версии документа (ТЗ п.3.2)
+   Список строк без карточек: история читается взглядом сверху вниз, и
+   каждая строка — одна сохранённая точка, к которой можно вернуться.
+   -------------------------------------------------------------------------- */
+
+.vers {
+  gap: var(--space-lg);
+}
+
+.vers__mark {
+  margin: 0 var(--space-lg);
+}
+
+.vers__mark-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.vers__ok {
+  margin: 0 var(--space-lg);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--success);
+  border-radius: var(--radius-md);
+  color: var(--success);
+}
+
+.vers__list {
+  padding: 0 var(--space-lg);
+}
+
+.vers__list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.vers__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.vers__row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vers__row-label {
+  font-size: var(--text-sm);
+}
+
+.vers__row-meta {
+  font-size: var(--text-xs);
+  color: var(--textSecondary);
+}
+
+@media (width <= 720px) {
+  .vers__mark-row {
+    grid-template-columns: 1fr;
+  }
+}

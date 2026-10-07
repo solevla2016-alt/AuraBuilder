@@ -9,7 +9,7 @@
  * сейчас запросы идут без них, как и предполагает стенд.
  */
 
-import type { Project } from './project';
+import type { DocumentVersionRow, Project } from './project';
 import { request, setTokens, getRefreshToken, clearTokens } from './apiClient';
 
 // Общий слой запросов живёт в apiClient.ts: узлы данных ходят в API
@@ -68,11 +68,38 @@ export const api = {
 
   getProject: (id: string) => request<Project>(`/projects/${id}/`),
 
-  saveProject: (id: string, name: string, tree: unknown) =>
+  /**
+   * Сохранение с проверкой версии (ТЗ п.3.2).
+   *
+   * expectedVersion — та версия, которую редактор видел. Сервер
+   * отвечает 409, если документ изменили с другой вкладки: молча
+   * перезаписать чужую работу нельзя. Конфликт приходит отдельным
+   * типом, чтобы показать предупреждение, а не «ошибку сети».
+   */
+  saveProject: (id: string, name: string, tree: unknown, expectedVersion?: number) =>
     request<Project>(`/projects/${id}/`, {
       method: 'PUT',
-      body: JSON.stringify({ name, tree }),
+      body: JSON.stringify({
+        name,
+        tree,
+        ...(expectedVersion === undefined ? {} : { expectedVersion }),
+      }),
     }),
+
+  /** История версий документа. */
+  versions: (id: string) =>
+    request<{ version: number; versions: DocumentVersionRow[] }>(`/projects/${id}/versions/`),
+
+  /** Ручная отметка: «запомнить состояние перед редизайном». */
+  createVersion: (id: string, label: string) =>
+    request<DocumentVersionRow>(`/projects/${id}/versions/`, {
+      method: 'POST',
+      body: JSON.stringify({ label }),
+    }),
+
+  /** Вернуть проект к версии. История при этом не переписывается. */
+  restoreVersion: (id: string, number: number) =>
+    request<DocumentVersionRow>(`/projects/${id}/versions/${number}/restore/`, { method: 'POST' }),
 
   createProject: (name: string, tree?: unknown) =>
     request<Project>('/projects/', {
