@@ -25,7 +25,9 @@
     "registry:check": "npm run tokens:check && npm run registry:catalog -- --check && npm run props:catalog -- --check && node packages/registry/build.mjs --check",
     "preview:palette": "node tools/build_palette_preview.mjs",
     "measure:lcp": "node tools/measure-lcp.mjs",
-    "licenses": "node tools/license-gate.mjs"
+    "licenses": "node tools/license-gate.mjs",
+    "probe": "node tools/probe.mjs",
+    "verify:browser": "node tools/screenshot-editor.mjs"
   },
   "devDependencies": {
     "@fontsource-variable/inter": "^5.3.0"

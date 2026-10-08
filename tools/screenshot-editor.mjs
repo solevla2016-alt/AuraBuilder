@@ -352,16 +352,26 @@ const fetchFromPage = async (page, path, withAuth) => {
  * результат кладётся в window.__result и читается следующим вызовом.
  */
 const evalAsync = async (page, body) => {
+  /*
+   * Маркер результата уникален на вызов.
+   *
+   * Общий window.__result давал гонку: выражение, обнуляющее маркер,
+   * ещё не успевало выполниться, а опрос уже читал результат
+   * предыдущего вызова — и возвращал чужие данные как свои. Проверки
+   * после первого выражения получали произвольный результат, и часть
+   * падала «без причины», а часть проходила мимо своего предмета.
+   */
+  const token = '__result_' + Math.random().toString(36).slice(2);
   await page.send('Runtime.evaluate', {
     expression: `(() => {
-      window.__result = { pending: true };
+      window.${token} = { pending: true };
       Promise.resolve().then(async () => {
         const value = await (async () => {
           ${body}
         })();
-        window.__result = { pending: false, value };
+        window.${token} = { pending: false, value };
       }).catch((e) => {
-        window.__result = { pending: false, error: String(e) };
+        window.${token} = { pending: false, error: String(e) };
       });
     })()`,
   });
@@ -370,7 +380,7 @@ const evalAsync = async (page, body) => {
   while (Date.now() < deadline) {
     const res = await page.send('Runtime.evaluate', {
       returnByValue: true,
-      expression: 'JSON.stringify(window.__result ?? null)',
+      expression: `JSON.stringify(window.${token} ?? null)`,
     });
     const parsed = res.result.value ? JSON.parse(res.result.value) : null;
     if (parsed && parsed.pending === false) {
@@ -385,59 +395,6 @@ const evalAsync = async (page, body) => {
 await page.send('Page.navigate', { url: URL_TO_TEST });
 // Холст грузится лениво: ждём, пока он появился и отрисовался.
 await new Promise((r) => setTimeout(r, 6000));
-
-/*
- * Стенд должен быть новее последней правки исходников.
- *
- * Проверки идут против того, что реально отдал nginx. Если образ не
- * пересобран, браузер получает прошлый бандл, сценарии проходят, а
- * правки фронта в них не участвуют: так сломанный выбор блока держался
- * зелёным до отчёта пользователя.
- *
- * Сравниваются не имена файлов сборки — они не совпадают между
- * локальной сборкой и сборкой в образе, — а время: бандл должен быть
- * не старше самого свежего файла в apps/web/src.
- */
-{
-  const served = await evalAsync(page, `
-    const res = await fetch('/', { cache: 'no-store' });
-    const html = await res.text();
-    const js = html.match(/(?:src|href)="\\/?(assets\\/[^"]+\\.js)"/);
-    if (!js) return { html };
-    const asset = await fetch('/' + js[1], { method: 'HEAD', cache: 'no-store' });
-    return { asset: js[1], lastModified: asset.headers.get('last-modified') };
-  `);
-  const lastModified = served?.lastModified ? Date.parse(served.lastModified) : NaN;
-  let newest = 0;
-  let newestFile = '';
-  const walk = (dir) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else if (/\.(ts|tsx|css|html)$/.test(entry.name)) {
-        const mtime = statSync(full).mtimeMs;
-        if (mtime > newest) {
-          newest = mtime;
-          newestFile = full;
-        }
-      }
-    }
-  };
-  walk('apps/web/src');
-  if (Number.isNaN(lastModified)) {
-    throw new Error(
-      `не удалось узнать время отдаваемой сборки (${served?.asset ?? 'бандл не найден'}). ` +
-        'Проверьте, что стенд отдаёт статику с заголовком Last-Modified.',
-    );
-  }
-  if (lastModified < newest - 1000) {
-    throw new Error(
-      `стенд отдаёт сборку старее исходников: ${served.asset}\n` +
-        `  изменён: ${newestFile}\n` +
-        '  пересоберите образ: docker compose build web && docker compose up -d',
-    );
-  }
-}
 
 /*
  * Вход выполняется до всех остальных проверок.
@@ -554,7 +511,106 @@ writeFileSync(OUT, png);
  * видно на экране, поэтому состояние проверяется через DOM: приложение
  * выставляет data-атрибуты, которые невозможно «нарисовать».
  */
-async function runScenarios(page, box) {
+/**
+ * Что именно отдал стенд.
+ *
+ * Отдельно от сценариев, потому что проверка должна быть первым
+ * пунктом отчёта: если стенд отдаёт устаревшую сборку, всё остальное
+ * в отчёте не имеет смысла.
+ *
+ * Два режима:
+ *
+ * 1. Собранный пакет. Сравнивается время отдаваемой сборки со временем
+ *    последней правки в apps/web/src. Имена файлов сравнивать нельзя:
+ *    локальная сборка и сборка в образе дают разные хеши.
+ *
+ * 2. Dev-сервер Vite. Он отдаёт исходник, а не бандл, и такая сверка
+ *    бессмысленна. Проверяется другое: что сервер действительно dev
+ *    (в HTML есть точка входа из src) и отдаёт её. Мёртвый dev-сервер
+ *    с устаревшим кэшем так не пройдёт.
+ */
+async function inspectStand(page) {
+  const devProbe = await evalAsync(page, `
+    const res = await fetch('/', { cache: 'no-store' });
+    const html = await res.text();
+    if (!html.includes('/src/main')) return { dev: false };
+    const entry = await fetch('/src/main.tsx', { cache: 'no-store' });
+    return { dev: true, entryStatus: entry.status };
+  `);
+
+  if (devProbe?.dev) {
+    return {
+      devProbe,
+      error:
+        devProbe.entryStatus === 200
+          ? null
+          : `dev-сервер не отдаёт точку входа: ${devProbe.entryStatus}. ` +
+            'Проверьте, что npm run dev работает.',
+    };
+  }
+
+  /*
+   * Имя файла ищется без регулярного выражения намеренно.
+   *
+   * Тело передаётся в страницу шаблонной строкой, и обратные косые
+   * в регулярном выражении переживают ещё одно прочтение: "\/?"
+   * превращается в "/?", и выражение перестаёт совпадать с адресом.
+   * Разбор HTML регулярным выражением здесь того не стоит — нужен
+   * первый файл из assets.
+   */
+  const asset = await evalAsync(page, `
+    const res = await fetch('/', { cache: 'no-store' });
+    const html = await res.text();
+    const at = html.indexOf('assets/');
+    if (at < 0) return { name: null, lastModified: null, length: html.length };
+    const rest = html.slice(at);
+    const end = rest.search(/["'\s<>]/);
+    const name = end < 0 ? rest : rest.slice(0, end);
+    const head = await fetch('/' + name, { method: 'HEAD', cache: 'no-store' });
+    return { name, lastModified: head.headers.get('last-modified'), length: html.length };
+  `);
+
+  let newest = 0;
+  let newestFile = '';
+  const walk = (dir) => {
+    for (const node of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, node.name);
+      if (node.isDirectory()) walk(full);
+      else if (/\.(ts|tsx|css|html)$/.test(node.name)) {
+        const mtime = statSync(full).mtimeMs;
+        if (mtime > newest) {
+          newest = mtime;
+          newestFile = full;
+        }
+      }
+    }
+  };
+  walk('apps/web/src');
+
+  const served = asset?.lastModified ? Date.parse(asset.lastModified) : NaN;
+  if (Number.isNaN(served) || !asset?.name) {
+    return {
+      devProbe,
+      error:
+        `не удалось узнать время отдаваемой сборки (${asset?.name ?? 'бандл не найден'}; ` +
+        `длина ответа ${asset?.length ?? '?'}). ` +
+        'Проверьте, что стенд отдаёт статику с заголовком Last-Modified.',
+    };
+  }
+  if (served < newest - 1000) {
+    return {
+      devProbe,
+      error:
+        `стенд отдаёт сборку старее исходников: ${asset.name}\n` +
+        `  изменён: ${newestFile}\n` +
+        '  пересоберите образ: docker compose build web && docker compose up -d\n' +
+        '  либо работайте через dev-сервер: npm run dev',
+    };
+  }
+  return { devProbe, error: null };
+}
+
+async function runScenarios(page, box, stand) {
   const results = [];
   /*
    * Отметка шага включается переменной PROBE_TRACE и нужна только при
@@ -625,6 +681,14 @@ const key = async (letter, code, modifiers = 0) => {
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...common });
   await new Promise((r) => setTimeout(r, 350));
 };
+
+  // Соответствие стенда исходникам — первый пункт отчёта: если стенд
+  // отдаёт не то, все остальные результаты ничего не значат.
+  if (stand.error) throw new Error(stand.error);
+  results.push([
+    stand.devProbe?.dev ? 'стенд — dev-сервер с актуальными исходниками' : 'стенд отдаёт свежую сборку',
+    true,
+  ]);
 
   const before = await state();
   results.push(['блоки загружены', before.blocks > 0]);
@@ -1896,7 +1960,7 @@ const checks = [
 
 // Сценарии выполняются до закрытия сокета: они шлют команды в браузер.
 // После cleanup() соединение уже разорвано и CDP отвечает таймаутом.
-const scenarios = info.found ? await runScenarios(page, info.box) : [];
+const scenarios = await runScenarios(page, info.box, await inspectStand(page));
 
 // Кадр после сценариев: на нём видны панель свойств и выделенный блок.
 // Раньше снимок брался до сценариев и показывал пустую панель.
