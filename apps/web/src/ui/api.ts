@@ -10,7 +10,7 @@
  */
 
 import type { DocumentVersionRow, Project } from './project';
-import { request, setTokens, getRefreshToken, clearTokens } from './apiClient';
+import { BASE, request, setTokens, getRefreshToken, clearTokens } from './apiClient';
 
 // Общий слой запросов живёт в apiClient.ts: узлы данных ходят в API
 // так же и должны делить с ними обновление токенов.
@@ -96,6 +96,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ label }),
     }),
+
+  /**
+   * Адрес архива. Ссылка, а не тело ответа: файл может весить
+   * десятки мегабайт, и держать его в памяти вкладки незачем —
+   * браузер сохранит его сам по заголовку Content-Disposition.
+   */
+  exportUrl: (id: string, version?: number) => {
+    const query = version === undefined ? '' : '?version=' + version;
+    return `${BASE}/projects/${id}/export/${query}`;
+  },
 
   /** Вернуть проект к версии. История при этом не переписывается. */
   restoreVersion: (id: string, number: number) =>

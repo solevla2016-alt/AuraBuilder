@@ -19,6 +19,9 @@ urlpatterns = [
     # Версии объявлены раньше деталей проекта: иначе строка «versions»
     # разбиралась бы как project_id.
     path('<str:project_id>/versions/', views.version_list, name='project-versions'),
+    # Экспорт объявлен раньше деталей: иначе строка 'export'
+    # разбиралась бы как project_id.
+    path('<str:project_id>/export/', views.project_export, name='project-export'),
     path(
         '<str:project_id>/versions/<int:number>/',
         views.version_detail,

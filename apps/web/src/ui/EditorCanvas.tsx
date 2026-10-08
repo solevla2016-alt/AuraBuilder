@@ -609,6 +609,20 @@ export function EditorCanvas({
             <Icon name="download" size={16} />
             Сохранить
           </button>
+          {/*
+            Выгрузка пакета (ТЗ п.16.4) — рабочее действие. Рядом стоит
+            «Опубликовать» без действия: это заглушка под этап 4, и
+            разница видна сразу, чтобы не выдавать одно за другое.
+          */}
+          <a
+            className="btn btn--ghost"
+            href={api.exportUrl(project.id)}
+            title="Скачать статический пакет (.zip)"
+            aria-label="Выгрузить статический пакет"
+          >
+            <Icon name="download" size={16} />
+            Выгрузить
+          </a>
           <button type="button" className="btn btn--primary">
             <Icon name="rocket" />
             Опубликовать

@@ -18,12 +18,15 @@ from django.db.models import Q
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
+from django.http import HttpResponse
+from django.utils.http import content_disposition_header
 
 from accounts.models import AuditLog, Membership, Role
 from accounts.permissions import (
     DELETE,
     EDIT_CONTENT,
     MANAGE_ACCESS,
+    PUBLISH,
     VIEW,
     IsAuthenticatedUser,
     ProjectAccess,
@@ -39,6 +42,8 @@ from accounts.serializers import (
 
 from .models import DocumentVersion, Project
 from .module_registry import CATEGORIES, MODULES, modules_for_stage
+from .export import ExportError
+from .package import build_package, package_zip, slugify, slugify_ascii
 from .versions import restore as restore_version, snapshot
 from .serializers import ProjectCreateSerializer, ProjectSerializer
 
@@ -220,6 +225,72 @@ def project_detail(request, project_id: str):
 
     audit(request, 'project.update', project)
     return Response(ProjectSerializer(project).data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticatedUser])
+def project_export(request, project_id: str):
+    """Статический пакет проекта (ТЗ п.16.4).
+
+    Отдаётся архив, а не ссылка на страницу: пакет должен открыться на
+    чужом хостинге без платформы. Версия берётся из ?version=, иначе
+    последняя сохранённая.
+    """
+
+    project = _project_by_id(project_id)
+    if project is None or not can(request.user, project, VIEW):
+        return Response({'detail': 'проект не найден'}, status=status.HTTP_404_NOT_FOUND)
+    # Выгрузка — не чтение: тарифы ограничивают её отдельно (п.17.1),
+    # и право здесь то же, что у публикации.
+    if not can(request.user, project, PUBLISH):
+        return Response(
+            {'detail': 'Выгружать проект может тот, кто публикует.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    raw = request.query_params.get('version')
+    if raw is not None:
+        try:
+            number = int(raw)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'version должен быть числом.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        version = DocumentVersion.objects.filter(project=project, number=number).first()
+        if version is None:
+            return Response({'detail': 'версия не найдена'}, status=status.HTTP_404_NOT_FOUND)
+    else:
+        # Последний снимок, а не текущее дерево: экспорт должен
+        # воспроизводить зафиксированное состояние, иначе «собери архив
+        # версии 5» отдал бы версию 6.
+        version = DocumentVersion.objects.filter(project=project).order_by('-number').first()
+        if version is None:
+            return Response(
+                {'detail': 'Сначала сохраните проект: нечего выгружать.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+    try:
+        built = build_package(
+            project, version, base_url=request.query_params.get('baseUrl', '')
+        )
+    except ExportError as e:
+        # Пакет с дырой хуже отказа: собранное валидно целиком или
+        # задание неуспешно (п.16.2).
+        return Response({'detail': str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+    _, blob = package_zip(built['files'])
+    audit(request, 'project.export', project, str(version.number))
+    response = HttpResponse(blob, content_type='application/zip')
+    # Имя файла транслитерируется, потому что заголовок HTTP
+    # ограничен ASCII: кириллица в Content-Disposition кодируется
+    # платформой по-своему, и часть клиентов показывает
+    # пользователю «=?utf-8?b?...?=».
+    response['Content-Disposition'] = content_disposition_header(as_attachment=True, filename=f'{slugify_ascii(project.name)}-static.zip')
+    response['X-AuraBuilder-Version'] = str(version.number)
+    response['X-AuraBuilder-Warnings'] = str(len(built['report'].warnings))
+    return response
 
 
 def _project_by_id(project_id: str):

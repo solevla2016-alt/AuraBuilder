@@ -13,6 +13,7 @@
  */
 
 import { spawn } from 'node:child_process';
+import zlib from 'node:zlib';
 import {
   mkdtempSync, readdirSync, rmSync, statSync, writeFileSync, existsSync,
 } from 'node:fs';
@@ -164,6 +165,50 @@ const reload = async (page) => {
 };
 
 /** Ожидание появления селектора. Возвращает false, если не дождались. */
+/**
+ * Чтение zip из буфера.
+ *
+ * Своё, а не библиотека: ради одного формата тянуть зависимость ради
+ * проверки не стоит, а формат здесь не меняется — пакет собирает наш
+ * же код. Поддерживается ровно то, чем пишет zipfile: deflate и
+ * без сжатия, без шифрования и имён в UTF-16.
+ */
+function readZip(buffer) {
+  const names = [];
+  const files = {};
+  const eocd = buffer.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  if (eocd < 0) return { names, files };
+  const total = buffer.readUInt16LE(eocd + 10);
+  let pointer = buffer.readUInt32LE(eocd + 16);
+
+  for (let i = 0; i < total; i++) {
+    if (buffer.readUInt32LE(pointer) !== 0x02014b50) break;
+    const method = buffer.readUInt16LE(pointer + 10);
+    const compressed = buffer.readUInt32LE(pointer + 20);
+    const nameLen = buffer.readUInt16LE(pointer + 28);
+    const extraLen = buffer.readUInt16LE(pointer + 30);
+    const commentLen = buffer.readUInt16LE(pointer + 32);
+    const localOffset = buffer.readUInt32LE(pointer + 42);
+    const name = buffer.toString('utf8', pointer + 46, pointer + 46 + nameLen);
+    names.push(name);
+
+    // Смещение в локальном заголовке: своя длина имени иextra.
+    const localNameLen = buffer.readUInt16LE(localOffset + 26);
+    const localExtraLen = buffer.readUInt16LE(localOffset + 28);
+    const dataStart = localOffset + 30 + localNameLen + localExtraLen;
+    const raw = buffer.slice(dataStart, dataStart + compressed);
+    // inflateRawSync отдаёт Buffer, а не строку: Buffer.toString даёт
+    // байты обратно. Раньше здесь стоял raw для несжатых файлов и
+    // результат inflate для сжатых, и проверка получала объект вместо
+    // текста — сравнение строк проходило само по себе.
+    const content = method === 0 ? raw : zlib.inflateRawSync(raw);
+    files[name] = Buffer.isBuffer(content) ? content.toString('utf8') : String(content);
+
+    pointer += 46 + nameLen + extraLen + commentLen;
+  }
+  return { names, files };
+}
+
 const waitFor = async (page, selector, timeoutMs) => {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -1542,6 +1587,113 @@ const key = async (letter, code, modifiers = 0) => {
   ]);
 
   /*
+   * Архив разбирается в Node, а не в странице.
+   *
+   * Внутри браузера пришлось бы угадывать смещение в заголовке записи
+   * zip: оно зависит от длины имени файла и от способа сжатия. Такое
+   * угадывание — это второй zip-парсер, который разойдётся с первым
+   * при первом же отличии. Здесь zlib штатный, и структура архива
+   * читается точно.
+   *
+   * Проверяется то, за что экспорт существует: до заказчика доехал
+   * пакет, который открывается сам.
+   */
+  mark('выгрузка пакета');
+  const pinned = await evalAsync(page, `
+    const headers = {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + localStorage.getItem('aurabuilder.access'),
+    };
+    const projectId = '${compsBox.result.value.project}';
+    const project = await (await fetch('/api/projects/' + projectId + '/', { headers })).json();
+    const tree = structuredClone(project.tree);
+    tree.blocks[1].label = 'Проверка выгрузки';
+    const res = await fetch('/api/projects/' + projectId + '/', {
+      method: 'PATCH', headers, body: JSON.stringify({ tree, expectedVersion: project.version }),
+    });
+    return { ok: res.ok, version: (await res.json()).version };
+  `);
+  results.push([
+    `версия зафиксирована для выгрузки (${pinned?.version ?? '—'})`,
+    pinned?.ok === true,
+  ]);
+
+  const downloaded = await evalAsync(page, `
+    const headers = { Authorization: 'Bearer ' + localStorage.getItem('aurabuilder.access') };
+    const res = await fetch('/api/projects/' + '${compsBox.result.value.project}' + '/export/', { headers });
+    if (!res.ok) return { ok: false, status: res.status };
+    const buffer = new Uint8Array(await res.arrayBuffer());
+    let binary = '';
+    for (const byte of buffer) binary += String.fromCharCode(byte);
+    return {
+      ok: true,
+      status: res.status,
+      type: res.headers.get('content-type'),
+      name: res.headers.get('content-disposition'),
+      version: res.headers.get('x-aurabuilder-version'),
+      base64: btoa(binary),
+    };
+  `);
+
+  let archive = { names: [], files: {} };
+  if (downloaded?.ok) {
+    archive = readZip(Buffer.from(downloaded.base64, 'base64'));
+  }
+
+  results.push([
+    `пакет выгружается архивом (${downloaded?.type ?? '—'})`,
+    downloaded?.ok === true && downloaded?.type === 'application/zip',
+  ]);
+  // Заголовок печатается рядом с проверкой: расхождение с ожиданием
+  // невозможно объяснить, не видя, что именно пришло.
+  results.push([
+    `имя файла безопасно для заголовка: ${downloaded?.name ?? '(нет)'}`,
+    typeof downloaded?.name === 'string'
+      && !/[^\x20-\x7e]/.test(downloaded.name)
+      && downloaded.name.includes('.zip'),
+  ]);
+  const index = archive.files['index.html'] ?? '';
+  results.push([
+    `в архиве ${archive.names.length} файлов`,
+    archive.names.includes('index.html')
+      && archive.names.includes('build-manifest.json')
+      && archive.names.includes('robots.txt')
+      && archive.names.includes('assets/css/site.css'),
+  ]);
+  results.push([
+    'главная страница — настоящий HTML',
+    index.includes('<html') && index.includes('charset="utf-8"') && index.includes('</html>'),
+  ]);
+  const expectedLabel = 'Проверка выгрузки';
+  results.push([
+    `в пакет попала правка из редактора (длина текста ${index.length})`,
+    index.includes(expectedLabel),
+  ]);
+  if (!index.includes(expectedLabel)) {
+    console.log('--- index.html из пакета ---');
+    console.log(index);
+    console.log('--- конец ---');
+  }
+  results.push([
+    'в пакете нет внешних ссылок',
+    !/fonts\.g|cdnjs|unpkg|google-analytics/.test(
+      Object.values(archive.files).join('\n'),
+    ),
+  ]);
+  let manifest = null;
+  try {
+    manifest = JSON.parse(archive.files['build-manifest.json'] ?? '{}');
+  } catch (e) {
+    manifest = null;
+  }
+  results.push([
+    `манифест указывает версию ${manifest?.documentVersion ?? '—'} (заголовок ${downloaded?.version ?? '—'})`,
+    manifest !== null
+      && String(manifest.documentVersion) === String(downloaded?.version)
+      && manifest.requiresPlatform === false,
+  ]);
+
+  /*
    * Версии документа (ТЗ п.3.2).
    *
    * Проверяется поведение, а не наличие экрана: правка в редакторе
@@ -1570,11 +1722,30 @@ const key = async (letter, code, modifiers = 0) => {
   ]);
 
   // Ручная отметка: подпись и появление строки в истории.
-  await fill(page, '[aria-label="Подпись версии"]', 'Проверка версий');
+  //
+  // Проверяется строка с подписью, а не весь экран: к этому моменту
+  // история уже не пуста, и общее состояние страницы содержало бы
+  // подпись независимо от того, создалась ли новая отметка.
+  const markLabel = `Проверка версий ${Date.now().toString(36).slice(-4)}`;
+  await fill(page, '[aria-label="Подпись версии"]', markLabel);
   await click(page, '.vers__mark-row .btn--primary');
-  await waitFor(page, '.vers__row', 15000);
-  const marked = await text(page, '.vers__row-label');
-  results.push(['отметка состояния видна в истории', marked.includes('Проверка версий')]);
+  const markRow = await waitFor(
+    page,
+    `.vers__row-label`,
+    15000,
+  );
+  await new Promise((r) => setTimeout(r, 400));
+  const labels = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `[...document.querySelectorAll('.vers__row-label')].map(e => e.textContent)`,
+  });
+  const labelList = labels.result.value ?? [];
+  results.push([
+    `отметка состояния видна в истории (${labelList.length} подписей)`,
+    markRow && labelList.includes(markLabel),
+  ]);
+  // Подпись нужна дальше для восстановления именно этой версии.
+  globalThis.__markLabel = markLabel;
 
   // Правка дерева через API: должна породить следующую версию.
   const afterEdit = await evalAsync(page, `
