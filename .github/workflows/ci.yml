@@ -172,6 +172,19 @@ jobs:
         working-directory: apps
         run: python manage.py collectstatic --noinput
 
+      # Редирект на HTTPS выключается ровно на время тестов.
+      #
+      # При DEBUG=0 settings.py включает SECURE_SSL_REDIRECT, и каждый
+      # запрос к API отвечает 301 на несуществующий https-хост. Тесты
+      # видели не JSON, а редирект, и падали с
+      # «'HttpResponsePermanentRedirect' object has no attribute 'data'»
+      # — ошибка выглядела как поломка логики, хотя код был верен.
+      # На боевом стенде редирект остаётся включённым: здесь снимают
+      # его только тесты, которые идут по обычному HTTP.
+      - name: Настройки Django
+        run: |
+          echo "DJANGO_SECURE_SSL_REDIRECT=0" >> "$GITHUB_ENV"
+
       - name: Проверка конфигурации при DEBUG=0
         working-directory: apps
         run: python manage.py check --deploy

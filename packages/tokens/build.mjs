@@ -82,30 +82,35 @@ const css = generateTokensCss();
 const python = generatePython();
 
 if (check) {
+  /*
+   * Проверяются только файлы, которые лежат в git.
+   *
+   * tokens.css — артефакт сборки, он под .gitignore и в чистой копии
+   * репозитория его нет. Проверка требовала его наличия и падала на
+   * «отсутствует» ещё до сравнения: на CI и в свежем клоне файла нет
+   * по умыслу, и требовать его — значит требовать лишнего. Если файл
+   * всё же есть (локальная разработка), он сверяется как обычно.
+   */
   const current = existsSync(outFile) ? readFileSync(outFile, 'utf8') : null;
   const currentPy = existsSync(pythonFile) ? readFileSync(pythonFile, 'utf8') : null;
-  const cssOk = current === css;
-  const pyOk = currentPy === python;
-  if (cssOk && pyOk) {
-    console.log('tokens.css актуален, palette_tokens.py актуален');
+
+  const problems = [];
+  if (current !== null && current !== css) {
+    problems.push('tokens.css разошёлся с docs/palette.json — запустите npm run tokens:build');
+  }
+  if (currentPy === null) {
+    problems.push('apps/projects/palette_tokens.py отсутствует — запустите npm run tokens:build');
+  } else if (currentPy !== python) {
+    problems.push(
+      'palette_tokens.py разошёлся с docs/palette.json — запустите npm run tokens:build',
+    );
+  }
+
+  if (problems.length === 0) {
+    console.log('palette_tokens.py актуален; токены CSS в порядке');
     process.exit(0);
   }
-  console.error(
-    [
-      current === null
-        ? 'tokens.css отсутствует — запустите npm run tokens:build'
-        : !cssOk
-          ? 'tokens.css разошёлся с docs/palette.json — запустите npm run tokens:build'
-          : null,
-      currentPy === null
-        ? 'apps/projects/palette_tokens.py отсутствует — запустите npm run tokens:build'
-        : !pyOk
-          ? 'palette_tokens.py разошёлся с docs/palette.json — запустите npm run tokens:build'
-          : null,
-    ]
-      .filter(Boolean)
-      .join('\n'),
-  );
+  console.error(problems.join('\n'));
   process.exit(1);
 }
 

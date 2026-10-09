@@ -14,7 +14,7 @@
   "scripts": {
     "dev": "npm run dev --workspace @aurabuilder/web",
     "build": "npm run build --workspace @aurabuilder/web",
-    "preview": "npm run preview --workspace @aurabuilder/web",
+    "preview": "npm run preview --workspace @aurabuilder/web --",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "tokens:build": "node packages/tokens/build.mjs",
     "tokens:check": "node packages/tokens/build.mjs --check",

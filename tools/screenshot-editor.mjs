@@ -561,12 +561,30 @@ async function inspectStand(page) {
   const asset = await evalAsync(page, `
     const res = await fetch('/', { cache: 'no-store' });
     const html = await res.text();
-    const at = html.indexOf('assets/');
-    if (at < 0) return { name: null, lastModified: null, length: html.length };
-    const rest = html.slice(at);
-    const end = rest.search(/["'\s<>]/);
-    const name = end < 0 ? rest : rest.slice(0, end);
-    const head = await fetch('/' + name, { method: 'HEAD', cache: 'no-store' });
+
+    /*
+     * Тело уходит в браузер внутри шаблонной строки Node, поэтому здесь
+     * нельзя писать regexp с обратными слэшами: в шаблонной строке \/ и
+     * \. теряют слэш, /(^\//) превращается в невалидное выражение, и весь
+     * evaluate падает на разборе — результат так и не приходит.
+     * Поэтому HTML разбирается разбиением по кавычкам, без regexp.
+     */
+    const refs = [];
+    for (const part of html.split('"')) {
+      if (part.startsWith('/assets/') && part.endsWith('.js')) refs.push(part);
+    }
+
+    /*
+     * Имя файла ищется по адресу, а не по первому вхождению «assets/»:
+     * favicon и манифест тоже лежат в assets/, и первый совпавший адрес
+     * оказывался не бандлем. Last-Modified проверяется у бандла —
+     * у иконки он ничего не говорит о свежести кода.
+     */
+    const name = refs[0] ?? null;
+    if (name === null) {
+      return { name: null, lastModified: null, length: html.length, head: html.slice(0, 200) };
+    }
+    const head = await fetch(name, { method: 'HEAD', cache: 'no-store' });
     return { name, lastModified: head.headers.get('last-modified'), length: html.length };
   `);
 

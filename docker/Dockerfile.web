@@ -21,14 +21,14 @@ RUN npm ci --workspace @aurabuilder/web --include-workspace-root
 # Плагин vite.config.ts читает docs/palette.json и генерирует токены
 # виртуальным модулем, поэтому источник палитры нужен на этапе сборки.
 COPY packages ./packages
-COPY apps/web/ ./apps/web/
 COPY docs/palette.json ./docs/palette.json
 
-# tokens:build кладёт рядом с CSS ещё и Python-модуль со значениями
-# палитры: им пользуется Control Plane для проверки контраста. В образ
-# фронтенда каталога apps/projects нет, поэтому он создаётся заранее —
-# иначе генератор упал бы с ENOENT на ровно этом шаге.
-RUN mkdir -p apps/projects
+# Копируется всё дерево apps/, а не только apps/web: генератор токенов
+# пишет ещё и apps/projects/palette_tokens.py, и выборочная копия
+# оставляла бы папку пустой — сборка падала бы с ENOENT на этом шаге.
+# Порядок слоёв: package.json до кода, иначе зависимости переустанавливаются
+# на каждую правку исходников.
+COPY apps/ ./apps/
 
 RUN npm run tokens:build \
     && npm run build --workspace @aurabuilder/web
