@@ -254,7 +254,13 @@ jobs:
           # тесты LoginThrottleTests проверяют боевое значение 5, и
           # глобальная переменная молча ломала их (уходил 200/400 вместо 429).
           LOGIN_ATTEMPT_LIMIT: '50'
+        # Миграции обязательны: в CI база чистая, и без них первый же
+        # запрос регистрации падал с «no such table: auth_user», а
+        # сценарий — с «после входа не открылся список проектов».
+        # Локально это не воспроизводится: dev-база давно мигрирована,
+        # и browser job выглядит исправным ровно до первого входа.
         run: |
+          python manage.py migrate --noinput
           nohup python manage.py runserver 127.0.0.1:8000 > /tmp/django.log 2>&1 &
           for i in $(seq 1 30); do
             curl -fsS http://127.0.0.1:8000/api/health/ && break
