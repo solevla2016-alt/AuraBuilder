@@ -19,18 +19,34 @@ import { MiniWebSocket } from './minisocket.mjs';
 
 const URL_TO_TEST = process.argv[2] ?? 'http://localhost:4173/';
 
+/*
+ * Пути перечислены и для Linux, и для Windows. Раньше здесь были только
+ * пути Windows, и замер LCP в CI падал с «Chrome/Edge не найден»,
+ * хотя google-chrome-stable на ubuntu-latest предустановлен: браузерные
+ * сценарии его находили, а замер — нет. Список и проверка взяты из
+ * tools/screenshot-editor.mjs, чтобы браузер искался одним способом.
+ */
 const CHROME_CANDIDATES = [
+  process.env.CHROME_PATH,
+  '/usr/bin/google-chrome-stable',
+  '/usr/bin/google-chrome',
+  '/usr/bin/chromium-browser',
+  '/usr/bin/chromium',
+  '/snap/bin/chromium',
   'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
   'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
   'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
   'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-];
+].filter(Boolean);
 
 async function findChrome() {
   for (const p of CHROME_CANDIDATES) {
     if (existsSync(p)) return p;
   }
-  throw new Error('Chrome/Edge не найден: проверьте путь установки');
+  throw new Error(
+    'Chrome/Edge не найден. Задайте путь в переменной CHROME_PATH. Проверены: ' +
+      CHROME_CANDIDATES.join(', '),
+  );
 }
 
 const profile = mkdtempSync(join(tmpdir(), 'ab-lcp-'));
