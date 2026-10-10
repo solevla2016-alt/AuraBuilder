@@ -26,6 +26,8 @@
     "preview:palette": "node tools/build_palette_preview.mjs",
     "measure:lcp": "node tools/measure-lcp.mjs",
     "licenses": "node tools/license-gate.mjs",
+    "sbom": "node tools/sbom.mjs",
+    "verify": "node tools/verify.mjs",
     "probe": "node tools/probe.mjs",
     "verify:browser": "node tools/screenshot-editor.mjs"
   },

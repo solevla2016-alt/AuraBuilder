@@ -58,6 +58,37 @@ jobs:
       - name: Проверить контраст палитры
         run: npm run tokens:contrast
 
+  # --- Реестр SBOM --------------------------------------------------------
+  # ТЗ п.0.7: SBOM генерируется на релиз. Реестр лежит в репозитории и
+  # проверяется на каждом прогоне: добавление зависимости без обновления
+  # реестра означало бы, что состав поставки неизвестен, а это ровно тот
+  # риск, который п.0.7 закрывает.
+  sbom:
+    name: Реестр SBOM актуален
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: apps/requirements.txt
+
+      - name: Установить зависимости
+        run: npm ci
+
+      - name: Установить зависимости Control Plane
+        run: python -m pip install --upgrade pip && python -m pip install -r apps/requirements.txt
+
+      - name: Проверить реестр
+        run: npm run sbom -- --check
+
   # --- Лицензии ------------------------------------------------------------
   licenses:
     name: Лицензии зависимостей
