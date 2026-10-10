@@ -1,4 +1,66 @@
 /**
+ * Генерация docs/design-tokens.ts — документации дизайн-системы.
+ *
+ * Зачем файл вообще нужен, если есть CSS-переменные: он остаётся
+ * единственным местом, где шкалы описаны словами — почему золото
+ * только для действий, почему акцент-текст отделён от акцентной
+ * поверхности, почему свечение привязано к действию.
+ *
+ * Раньше значения в нём были выписаны руками и разошлись с CSS:
+ * файл объявлял типы и themes дважды и в таком виде не компилировался,
+ * при этом ничего не импортировал — расхождение было не видно.
+ * Теперь числа подставляются генератором.
+ *
+ * Шкалы вставляются литералами, а не импортом: файл читают как
+ * описание, и он должен оставаться верным, даже если его перенесли
+ * или положили в другой проект. Темы, наоборот, импортируются из
+ * palette.json — там единственный источник цветов, и дублировать его
+ * в документации незачем.
+ *
+ * Запуск:
+ *   node packages/tokens/build.mjs          вместе с остальными токенами
+ *   node packages/tokens/build.mjs --check  без записи (CI)
+ */
+
+import { writeFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { REPO_ROOT } from './css.mjs';
+import {
+  typography,
+  spacing,
+  radii,
+  shadows,
+  layers,
+  motion,
+  effects,
+  canvas,
+  a11y,
+} from './scales.mjs';
+
+const OUT = join(REPO_ROOT, 'docs', 'design-tokens.ts');
+
+/**
+ * Значение в формате TypeScript. Ключи, годящиеся как идентификаторы,
+ * оставляются как есть, остальные берутся в кавычки: имена вроде
+ * '2xl' иначе не проходят разбор.
+ */
+function value(v, indent) {
+  const pad = ' '.repeat(indent);
+  if (v === null || typeof v !== 'object') return JSON.stringify(v);
+  const inner = ' '.repeat(indent + 2);
+  const lines = Object.entries(v).map(([k, item]) => {
+    const key = /^[A-Za-z_][A-Za-z0-9_]*$/.test(k) ? k : JSON.stringify(k);
+    return `${inner}${key}: ${value(item, indent + 2)},`;
+  });
+  return `{\n${lines.join('\n')}\n${pad}}`;
+}
+
+function block(name, v) {
+  return `export const ${name} = ${value(v, 0)} as const;\n`;
+}
+
+export function generateDesignTokens() {
+  return `/**
  * Design tokens редактора AuraBuilder.
  *
  * СГЕНЕРИРОВАНО — не править руками.
@@ -66,173 +128,29 @@ export const themes: Record<ThemeName, Theme> = {
  * Типографика. Интервал 1.25 (major third third).
  * Inter — самохостинговый, SIL OFL.
  */
-export const typography = {
-  fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-  fontFamilyMono: "'JetBrains Mono', 'SF Mono', Consolas, monospace",
-  scale: {
-    xs: {
-      size: "0.75rem",
-      lineHeight: 1.333,
-      weight: 500,
-    },
-    sm: {
-      size: "0.875rem",
-      lineHeight: 1.429,
-      weight: 400,
-    },
-    base: {
-      size: "1rem",
-      lineHeight: 1.5,
-      weight: 400,
-    },
-    md: {
-      size: "1.125rem",
-      lineHeight: 1.5,
-      weight: 500,
-    },
-    lg: {
-      size: "1.375rem",
-      lineHeight: 1.333,
-      weight: 600,
-    },
-    xl: {
-      size: "1.75rem",
-      lineHeight: 1.286,
-      weight: 600,
-    },
-    "2xl": {
-      size: "2.25rem",
-      lineHeight: 1.222,
-      weight: 700,
-    },
-    "3xl": {
-      size: "3rem",
-      lineHeight: 1.167,
-      weight: 700,
-    },
-  },
-} as const;
-
+${block('typography', typography)}
 /** Отступы. Кратны четырём: сетка холста опирается на шаг 8. */
-export const spacing = {
-  xs: "4px",
-  sm: "8px",
-  md: "12px",
-  lg: "16px",
-  xl: "24px",
-  "2xl": "32px",
-  "3xl": "48px",
-  "4xl": "64px",
-  "5xl": "96px",
-} as const;
-
-export const radii = {
-  sm: "4px",
-  md: "8px",
-  lg: "12px",
-  xl: "16px",
-  pill: "999px",
-  round: "50%",
-} as const;
-
-export const shadows = {
-  none: "none",
-  sm: "0 1px 2px rgba(15, 16, 18, 0.06)",
-  md: "0 2px 8px rgba(15, 16, 18, 0.08)",
-  lg: "0 8px 24px rgba(15, 16, 18, 0.12)",
-  xl: "0 16px 48px rgba(15, 16, 18, 0.16)",
-} as const;
-
+${block('spacing', spacing)}
+${block('radii', radii)}
+${block('shadows', shadows)}
 /**
  * Слои. Холст 0–4, панели 10–12, оверлеи 20–50. В шаблонах z-index
  * достигал 16 — здесь сознательно меньше, чтобы порядок наложения
  * оставался читаемым.
  */
-export const layers = {
-  canvas: 0,
-  canvasContent: 1,
-  canvasSelection: 2,
-  canvasGuides: 3,
-  canvasDropTarget: 4,
-  floatingPalette: 10,
-  bottomDock: 11,
-  topBar: 12,
-  drawer: 20,
-  modal: 30,
-  toast: 40,
-  commandPalette: 50,
-} as const;
-
+${block('layers', layers)}
 /**
  * Анимация. Длительности короткие намеренно: редактор — рабочий
  * инструмент, и анимация здесь объясняет, что произошло, а не
  * украшает. Всё, что не несёт смысла, отключается при
  * prefers-reduced-motion.
  */
-export const motion = {
-  easing: {
-    standard: "cubic-bezier(0.2, 0, 0, 1)",
-    decelerate: "cubic-bezier(0, 0, 0.2, 1)",
-    accelerate: "cubic-bezier(0.4, 0, 1, 1)",
-    emphasized: "cubic-bezier(0.2, 0, 0, 1.2)",
-  },
-  duration: {
-    fast: "120ms",
-    base: "200ms",
-    slow: "320ms",
-  },
-  reducedMotion: "@media (prefers-reduced-motion: reduce)",
-} as const;
-
-export const effects = {
-  auraDragging: {
-    near: "0 0 0 1px rgba(217, 164, 65, 0.9)",
-    far: "0 0 24px 4px rgba(217, 164, 65, 0.35)",
-  },
-  auraActive: {
-    near: "0 0 0 1px rgba(217, 164, 65, 0.6)",
-    far: "0 0 16px 2px rgba(217, 164, 65, 0.22)",
-  },
-  backlightGlow: "radial-gradient(600px 300px at 50% 0%, rgba(217, 164, 65, 0.28) 0%, rgba(217, 164, 65, 0.10) 40%, transparent 75%)",
-  pulseDuration: "2.4s",
-} as const;
-
+${block('motion', motion)}
+${block('effects', effects)}
 /** Сетка и брейкпоинты холста (ТЗ п.6). */
-export const canvas = {
-  gridSize: 8,
-  snapThreshold: 4,
-  breakpoints: {
-    mobile: 360,
-    tablet: 768,
-    desktop: 1024,
-    wide: 1440,
-  },
-  devices: {
-    mobile: {
-      width: 375,
-      label: "Mobile",
-    },
-    tablet: {
-      width: 768,
-      label: "Tablet",
-    },
-    desktop: {
-      width: 1280,
-      label: "Desktop",
-    },
-  },
-} as const;
-
+${block('canvas', canvas)}
 /** Пороги WCAG 2.1, на которые опирается проверка контраста. */
-export const a11y = {
-  minTargetSize: "44px",
-  contrast: {
-    text: 4.5,
-    largeText: 3,
-    ui: 3,
-  },
-} as const;
-
+${block('a11y', a11y)}
 
 export const tokens = {
   neutral,
@@ -251,3 +169,10 @@ export const tokens = {
 
 export type Tokens = typeof tokens;
 export default tokens;
+`;
+}
+
+export function writeDesignTokens() {
+  writeFileSync(OUT, generateDesignTokens(), 'utf8');
+  return OUT;
+}

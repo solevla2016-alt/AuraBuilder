@@ -43,6 +43,7 @@ from accounts.serializers import (
 from .models import DocumentVersion, Project
 from .module_registry import CATEGORIES, MODULES, modules_for_stage
 from .export import ExportError
+from .package import PackageTooLarge
 from .package import build_package, package_zip, slugify, slugify_ascii
 from .versions import restore as restore_version, snapshot
 from .serializers import ProjectCreateSerializer, ProjectSerializer
@@ -274,6 +275,17 @@ def project_export(request, project_id: str):
     try:
         built = build_package(
             project, version, base_url=request.query_params.get('baseUrl', '')
+        )
+    except PackageTooLarge as e:
+        # Превышение технического лимита — не поломка пакета, а слишком
+        # большой проект. Ответ 413 с указанием источника и границы
+        # позволяет показать это в интерфейсе, а не молча урезать данные.
+        return Response(
+            {
+                'detail': f'Проект не выгружается: превышен технический лимит ({e}).',
+                'limit': 'MAX_RECORDS_PER_SOURCE',
+            },
+            status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
         )
     except ExportError as e:
         # Пакет с дырой хуже отказа: собранное валидно целиком или

@@ -10,7 +10,24 @@
 
 from uuid import uuid4
 
+from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils.translation import gettext_lazy as _
+
+from accounts.permissions import LIMIT_ERROR
+
+
+def count_modules(tree: dict) -> int:
+    """Число модулей в дереве.
+
+    Считаются только узлы верхнего уровня: модули не вкладываются друг
+    в друга, а блоки внутри модуля живут в его собственном поле props.
+    Подсчёт по вложенности дал бы двойной счёт и срабатывал бы на
+    обычном проекте.
+    """
+    blocks = tree.get('blocks') if isinstance(tree, dict) else None
+    return len(blocks) if isinstance(blocks, list) else 0
 
 
 def default_tree() -> dict:
@@ -69,6 +86,21 @@ class Project(models.Model):
         verbose_name = 'проект'
         verbose_name_plural = 'проекты'
         ordering = ['-updated_at']
+
+    def clean(self) -> None:
+        """Проверка технических лимитов (ТЗ п.4.11).
+
+        Лимит проверяется здесь, а не только в сериализаторе: дерево
+        приходит ещё и из внутренних сценариев — импорта, миграций,
+        тестового наполнения, — и мимо API прошло бы.
+        """
+        super().clean()
+        modules = count_modules(self.tree)
+        limit = settings.LIMITS['MAX_MODULES_PER_PROJECT']
+        if modules > limit:
+            raise ValidationError({
+                'tree': LIMIT_ERROR.format(what='модулей', count=modules, limit=limit),
+            })
 
     def __str__(self) -> str:
         return self.name

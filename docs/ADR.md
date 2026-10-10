@@ -61,3 +61,4 @@
 | [0001](adr/0001-postgresql.md) | PostgreSQL как основное хранилище, `psycopg[binary]` | принято |
 | [0002](adr/0002-license-gate.md) | Свой лицензионный gate вместо Trivy, Grype и Syft | принято |
 | [0003](adr/0003-optimistic-locking.md) | Оптимистичная блокировка версий документа | принято |
+| [0004](adr/0004-row-level-security.md) | Row-level security отложена до внешнего доступа к данным | принято |

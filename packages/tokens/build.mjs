@@ -18,10 +18,16 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { generateTokensCss, paletteValues, solidColorTokens, VARS } from './css.mjs';
+import { generateDesignTokens } from './docs-tokens.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, 'dist');
 const outFile = join(outDir, 'tokens.css');
+
+// Документация шкал. Она тоже генерируется: когда значения были
+// выписаны вручную, docs/design-tokens.ts разошёлся с CSS и перестал
+// компилироваться, а заметить это было негде — файл ничего не импортировал.
+const docsTokensFile = join(here, '..', '..', 'docs', 'design-tokens.ts');
 
 // Control Plane проверяет контраст цветов, которые выбрал пользователь,
 // и нуждается в значениях токенов на сервере. Модуль генерируется
@@ -80,6 +86,7 @@ THEMES: dict[str, dict[str, str]] = {
 const check = process.argv.includes('--check');
 const css = generateTokensCss();
 const python = generatePython();
+const designTokens = generateDesignTokens();
 
 if (check) {
   /*
@@ -93,10 +100,16 @@ if (check) {
    */
   const current = existsSync(outFile) ? readFileSync(outFile, 'utf8') : null;
   const currentPy = existsSync(pythonFile) ? readFileSync(pythonFile, 'utf8') : null;
+  const currentDocs = existsSync(docsTokensFile) ? readFileSync(docsTokensFile, 'utf8') : null;
 
   const problems = [];
   if (current !== null && current !== css) {
     problems.push('tokens.css разошёлся с docs/palette.json — запустите npm run tokens:build');
+  }
+  if (currentDocs === null) {
+    problems.push('docs/design-tokens.ts отсутствует — запустите npm run tokens:build');
+  } else if (currentDocs !== designTokens) {
+    problems.push('docs/design-tokens.ts разошёлся со шкалами — запустите npm run tokens:build');
   }
   if (currentPy === null) {
     problems.push('apps/projects/palette_tokens.py отсутствует — запустите npm run tokens:build');
@@ -107,7 +120,7 @@ if (check) {
   }
 
   if (problems.length === 0) {
-    console.log('palette_tokens.py актуален; токены CSS в порядке');
+    console.log('palette_tokens.py актуален; токены CSS и документация шкал в порядке');
     process.exit(0);
   }
   console.error(problems.join('\n'));
@@ -117,7 +130,9 @@ if (check) {
 mkdirSync(outDir, { recursive: true });
 writeFileSync(outFile, css, 'utf8');
 writeFileSync(pythonFile, python, 'utf8');
+writeFileSync(docsTokensFile, designTokens, 'utf8');
 console.log(
   `written: ${outFile} (${VARS.length} переменных на тему, ${(css.length / 1024).toFixed(1)} КБ)`,
 );
 console.log(`written: ${pythonFile} (значения токенов для Control Plane)`);
+console.log(`written: ${docsTokensFile} (документация шкал)`);

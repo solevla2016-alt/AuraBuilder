@@ -30,9 +30,17 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.text import slugify
+
+from accounts.permissions import LIMIT_ERROR
+
+#: Число записей, которое клиент запрашивает одним списком. Это не
+#: технический лимит хранения (тот живёт в settings.LIMITS), а граница
+#: одного ответа: браузер и выгрузка читают источник постранично.
+MAX_RECORDS = 200
 
 FIELD_TYPES = (
     ('text', 'Текст'),
@@ -201,6 +209,24 @@ class DataRecord(models.Model):
                 raise ValidationError({'data': f'Поле «{key}»: ожидается да или нет.'})
             if isinstance(value, (dict, list)):
                 raise ValidationError({'data': f'Поле «{key}»: значение должно быть простым.'})
+
+        # Технический лимит на число записей (ТЗ п.4.11). Считается
+        # только при создании: при правке запись уже учтена, а лишний
+        # COUNT на каждом сохранении не нужен.
+        #
+        # Признак новой записи — _state.adding, а не self.pk: у поля
+        # id задан default=uuid4, поэтому pk заполняется уже при
+        # создании объекта в памяти. Проверка на self.pk никогда не
+        # срабатывала, и лимит пропускал всё, что создавали через API.
+        if self._state.adding and self.source_id:
+            limit = settings.LIMITS['MAX_RECORDS_PER_SOURCE']
+            total = DataRecord.objects.filter(source_id=self.source_id).count()
+            if total >= limit:
+                raise ValidationError({
+                    'source': LIMIT_ERROR.format(
+                        what='записей в источнике', count=total + 1, limit=limit
+                    ),
+                })
 
     def __str__(self) -> str:
         return f'{self.source_id}#{self.pk}'

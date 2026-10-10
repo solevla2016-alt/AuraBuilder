@@ -17,6 +17,8 @@ from datetime import UTC, datetime
 from io import BytesIO
 from typing import Any
 
+from django.conf import settings
+
 from component_library.models import ComponentStyle
 
 from data_sources.models import DataSource
@@ -117,12 +119,22 @@ def _records_for(block: dict, sources: dict[str, list[dict]]) -> list[dict]:
     return sources.get(source_id, [])
 
 
+class PackageTooLarge(Exception):
+    """Выгрузка не укладывается в технический лимит (ТЗ п.4.11)."""
+
+
 def _collect_sources(project: Project, version: DocumentVersion) -> dict[str, list[dict]]:
     """Данные источников, на которые ссылается снимок.
 
     Берутся только те источники, что упомянуты в дереве: выгружать все
     источники проекта значило бы положить в архив данные, до которых
-    страница не дотягивается.
+    страница не дтягивается.
+
+    Записи берутся целиком. Раньше здесь стоял срез [:100], и источник
+    со 150 записями молча терял 50 из них: архив получался
+    корректным, сборка проходила, и потеря обнаруживалась только на
+    опубликованном сайте. Обрезать данные молча нельзя, поэтому
+    превышение лимита останавливает выгрузку с внятным сообщением.
     """
 
     referenced: set[str] = set()
@@ -136,9 +148,15 @@ def _collect_sources(project: Project, version: DocumentVersion) -> dict[str, li
     out: dict[str, list[dict]] = {}
     if not referenced:
         return out
+    limit = settings.LIMITS['MAX_RECORDS_PER_SOURCE']
     for data_source in DataSource.objects.filter(project=project, id__in=referenced):
+        total = data_source.records.count()
+        if total > limit:
+            raise PackageTooLarge(
+                f'источник «{data_source.name}»: записей {total}, максимум {limit}'
+            )
         rows = []
-        for record in data_source.records.all()[:100]:
+        for record in data_source.records.all():
             values = record.data if isinstance(record.data, dict) else {}
             rows.append(' · '.join(str(v) for v in values.values() if v not in (None, '')))
         out[str(data_source.id)] = rows
