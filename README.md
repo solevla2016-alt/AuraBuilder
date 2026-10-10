@@ -369,6 +369,19 @@ docker compose up -d db      # тестам нужна база
 npm run verify               # то же, что делает CI
 ```
 
+Свежий стенд без учётной записи: том с базой пуст, и войти нельзя.
+Владелец создаётся одной командой:
+
+```bash
+docker compose exec api python manage.py create_owner --username owner
+# пароль спросит STEND_OWNER_PASSWORD:
+STEND_OWNER_PASSWORD='пароль' docker compose exec -e STEND_OWNER_PASSWORD \
+  api python manage.py create_owner --username owner
+```
+
+Команда идемпотентна: существующего пользователя не ломает, пароль
+трогает только с `--reset-password`.
+
 Шаги идут от дешёвых к дорогим: сначала сгенерированные файлы и
 лицензии, потом типы и сборка, в конце тесты. Браузерные сценарии и
 сборку образов `verify` не гоняет — они требуют поднятого стенда и
