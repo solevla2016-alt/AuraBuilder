@@ -873,11 +873,152 @@ def _render_count(block: dict, records: list[dict] | None = None,
     )
 
 
-def _render_price(block: dict, records: list[dict] | None = None) -> str:
-    """Цена из источника или из свойства блока."""
-    rows = records or []
-    value = rows[0] if rows else _text(block, 'value', '\u2014')
-    return f'<p class="price block">{esc(value)}</p>'
+def _int_prop(block: dict, name: str, fallback: int, low: int, high: int) -> int:
+    """Числовое свойство в границах: значение из настроек может быть любым."""
+    value = _props(block).get(name)
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return fallback
+    return max(low, min(high, int(value)))
+
+
+def _price_of(row: dict, field: str) -> str:
+    """Цена записи: значение поля либо прочерк, если поля нет."""
+    value = row.get(field)
+    if value in (None, ''):
+        return '\u2014'
+    text = str(value).strip()
+    return text or '\u2014'
+
+
+def _product_card(row: dict, title_field: str, price_field: str,
+                  image_field: str, detail_field: str, button: str,
+                  price_prefix: str) -> str:
+    """Карточка товара из одной записи.
+
+    Ключи полей задаёт пользователь: в источнике имена произвольны, и
+    без явного указания нельзя отличить название от цены.
+    """
+    title = str(row.get(title_field) or 'Товар')
+    price = _price_of(row, price_field) if price_field else ''
+    image = str(row.get(image_field) or '') if image_field else ''
+    detail = str(row.get(detail_field) or '') if detail_field else ''
+
+    picture = (
+        f'<img class="product__image" src="{esc(image)}" alt="{esc(title)}" loading="lazy">'
+        if image
+        else '<div class="product__image media__placeholder" role="img" '
+             f'aria-label="{esc(title)}"></div>'
+    )
+    price_html = ''
+    if price and price != '\u2014':
+        money = f'{price_prefix} {price}'.strip() if price_prefix else price
+        price_html = f'<p class="product__price">{esc(money)}</p>'
+    detail_html = f'<p class="product__detail">{esc(detail)}</p>' if detail else ''
+    label = esc(button) if button else ''
+
+    return (
+        '<article class="product">'
+        f'{picture}<h3 class="product__title">{esc(title)}</h3>'
+        f'{price_html}{detail_html}'
+        + (f'<span class="product__action">{label}</span>' if label else '')
+        + '</article>'
+    )
+
+
+def _render_catalog(block: dict, records: list[dict] | None = None,
+                    dataset: list[dict] | None = None) -> str:
+    """Каталог товаров.
+
+    Раньше был тем же списком, что data.list: карточек не было, и
+    посетитель видел сплошной текст вместо товаров.
+    """
+    title_field = _own(block, 'titleField', 'title')
+    price_field = _own(block, 'priceField', 'price')
+    image_field = _own(block, 'imageField', '')
+    columns = _int_prop(block, 'columns', 3, 2, 4)
+    limit = _int_prop(block, 'limit', 12, 1, 100)
+
+    rows = list(dataset if dataset is not None else [])
+    shown = rows[:limit]
+    cards = ''.join(
+        _product_card(row, title_field, price_field, image_field, '', '', '')
+        for row in shown
+    )
+    if not cards:
+        cards = '<p class="data__empty">Каталог пуст.</p>'
+
+    return (
+        '<section class="section section--catalog">'
+        f'<div class="catalog" style="--catalog-columns:{columns}">{cards}</div>'
+        f'<p class="data__note">Показано {len(shown)} из {len(rows)}</p>'
+        '</section>'
+    )
+
+
+def _render_card(block: dict, records: list[dict] | None = None,
+                 dataset: list[dict] | None = None) -> str:
+    """Карточка одного товара: первая запись источника."""
+    title_field = _own(block, 'titleField', 'title')
+    price_field = _own(block, 'priceField', 'price')
+    image_field = _own(block, 'imageField', '')
+    detail_field = _own(block, 'detailField', '')
+    button = _own(block, 'buttonLabel', 'Подробнее')
+    prefix = _own(block, 'pricePrefix', '')
+
+    rows = list(dataset if dataset is not None else [])
+    if not rows:
+        return (
+            '<section class="section section--product">'
+            '<p class="data__empty">Товар не выбран.</p></section>'
+        )
+
+    return (
+        '<section class="section section--product">'
+        + _product_card(rows[0], title_field, price_field, image_field,
+                        detail_field, button, prefix)
+        + '</section>'
+    )
+
+
+def _render_price(block: dict, records: list[dict] | None = None,
+                  dataset: list[dict] | None = None) -> str:
+    """Цена товара.
+
+    Раньше выводилась первая строка источника целиком: вместе с ценой
+    посетитель видел название и всё остальное. Теперь берётся поле,
+    указанное в настройках, и добавляются единица и «от».
+    """
+    field = _own(block, 'field', 'price')
+    prefix = _own(block, 'prefix', '')
+    suffix = _own(block, 'suffix', '\u20bd')
+    show_old = _props(block).get('showOld') is True
+
+    rows = list(dataset if dataset is not None else [])
+    if rows:
+        value = _price_of(rows[0], field)
+    else:
+        value = _own(block, 'value', '') or '\u2014'
+
+    if value == '\u2014':
+        return (
+            '<section class="section section--price">'
+            '<p class="price">\u2014</p></section>'
+        )
+
+    money = f'{value} {suffix}'.strip() if suffix else value
+    old_value = _own(block, 'oldValue', '')
+    old = (
+        f'<s class="price__old">{esc(old_value)}</s>'
+        if show_old and old_value
+        else ''
+    )
+    return (
+        '<section class="section section--price">'
+        + (f'<span class="price__prefix">{esc(prefix)}</span>' if prefix else '')
+        + f'<span class="price__value">{esc(money)}</span>'
+        + old
+        + '</section>'
+    )
 
 
 def _numbers(values: list[Any]) -> list[float]:
@@ -1257,8 +1398,8 @@ RENDERERS = {
     'data.filter': _render_data_filter,
     'data.related': _render_data_related,
     'data.form': _render_data_form,
-    'shop.card': _render_data,
-    'shop.catalog': _render_data,
+    'shop.card': _render_card,
+    'shop.catalog': _render_catalog,
     'shop.reviews': _render_review_list,
     'shop.price': _render_price,
     'promo.pricing': _render_data,
@@ -1280,6 +1421,9 @@ DATASET_MODULES = frozenset({
     'data.sort',
     'data.count',
     'data.related',
+    'shop.catalog',
+    'shop.card',
+    'shop.price',
 })
 
 

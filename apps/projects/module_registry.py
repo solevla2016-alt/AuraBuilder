@@ -404,6 +404,39 @@ SCHEMAS: dict[str, ModuleSchema] = {
         Prop('label', 'text', False, None, {}, 'Подпись для навигации поиском по странице'),
         ),
     ),
+    'shop.catalog': ModuleSchema(
+        'shop.catalog',
+        (
+        Prop('source', 'text', False, None, {}, 'Идентификатор источника данных; пусто — источник не выбран'),
+        Prop('titleField', 'text', True, "title", {}, 'Ключ поля с названием товара'),
+        Prop('priceField', 'text', False, "price", {}, 'Ключ поля с ценой; пусто — цена не выводится'),
+        Prop('imageField', 'text', False, None, {}, 'Ключ поля с адресом картинки'),
+        Prop('columns', 'number', False, 3, {"min":2,"max":4,"step":1}, 'Сколько карточек в ряд'),
+        Prop('limit', 'number', False, 12, {"min":1,"max":100,"step":1}, 'Сколько товаров показать'),
+        ),
+    ),
+    'shop.card': ModuleSchema(
+        'shop.card',
+        (
+        Prop('source', 'text', False, None, {}, 'Идентификатор источника данных; пусто — источник не выбран'),
+        Prop('titleField', 'text', True, "title", {}, 'Ключ поля с названием товара'),
+        Prop('priceField', 'text', False, "price", {}, 'Ключ поля с ценой'),
+        Prop('imageField', 'text', False, None, {}, 'Ключ поля с адресом картинки'),
+        Prop('detailField', 'text', False, None, {}, 'Ключ поля, из которого берётся краткое описание'),
+        Prop('buttonLabel', 'text', False, "Подробнее", {}, 'Надпись на кнопке'),
+        Prop('pricePrefix', 'text', False, None, {}, 'Что показать перед ценой'),
+        ),
+    ),
+    'shop.price': ModuleSchema(
+        'shop.price',
+        (
+        Prop('source', 'text', False, None, {}, 'Идентификатор источника данных; пусто — берётся из свойства'),
+        Prop('field', 'text', False, "price", {}, 'Ключ поля с ценой'),
+        Prop('prefix', 'text', False, None, {}, 'Надпись перед ценой, например «от»'),
+        Prop('suffix', 'text', False, "₽", {}, 'Единица измерения после цены'),
+        Prop('showOld', 'boolean', False, False, {}, 'Показывать старую цену зачёркнутой'),
+        ),
+    ),
     'action.button': ModuleSchema(
         'action.button',
         (

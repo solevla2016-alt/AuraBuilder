@@ -2470,6 +2470,234 @@ export function modulePreview(
       );
     }
 
+    case 'shop.catalog': {
+      /*
+       * Каталог: сетка карточек. Каждая — рамка с местом под картинку,
+       * названием и ценой. Именно такая структура повторяется в
+       * выгрузке, поэтому на холсте видно то же, что увидит посетитель.
+       */
+      const rows = recordLines(records);
+      const columns = Math.max(2, Math.min(4, Number(block.props?.['columns'] ?? 3)));
+      const limit = Math.max(1, Number(block.props?.['limit'] ?? 12));
+      const shown = rows.slice(0, limit);
+      const top = block.y + PAD;
+      const area = Math.max(40, h - PAD * 2);
+      const cellW = (block.width - PAD * 2 - 12 * (columns - 1)) / columns;
+      const rowsCount = Math.max(1, Math.ceil(shown.length / columns));
+      const cellH = (area - 12 * (rowsCount - 1)) / rowsCount;
+
+      return (
+        <Group listening={false}>
+          {shown.length
+            ? shown.map((row, i) => {
+                const col = i % columns;
+                const line = Math.floor(i / columns);
+                const x = block.x + PAD + col * (cellW + 12);
+                const y = top + line * (cellH + 12);
+                const parts = row.split(' \u00b7 ');
+                const price = parts.length > 1 ? parts[parts.length - 1] : '';
+                return (
+                  <Group key={`${block.id}-p${i}`}>
+                    <Rect
+                      x={x}
+                      y={y}
+                      width={cellW}
+                      height={cellH}
+                      fill={tokens.panel}
+                      stroke={tokens.border}
+                      strokeWidth={1}
+                      cornerRadius={10}
+                    />
+                    <Rect
+                      x={x}
+                      y={y}
+                      width={cellW}
+                      height={cellH * 0.45}
+                      fill={tokens.panelSunken}
+                      cornerRadius={[10, 10, 0, 0]}
+                    />
+                    <Text
+                      x={x + 12}
+                      y={y + cellH * 0.45 + 10}
+                      width={cellW - 24}
+                      text={parts[0] || 'Товар'}
+                      fontSize={bodySize}
+                      fontStyle="bold"
+                      fontFamily={FONT}
+                      fill={tokens.textPrimary}
+                      ellipsis
+                    />
+                    {price ? (
+                      <Text
+                        x={x + 12}
+                        y={y + cellH - 22}
+                        width={cellW - 24}
+                        text={price}
+                        fontSize={bodySize}
+                        fontFamily={MONO}
+                        fill={tokens.selectionBorder}
+                        ellipsis
+                      />
+                    ) : null}
+                  </Group>
+                );
+              })
+            : [
+                <Text
+                  key={`${block.id}-empty`}
+                  x={block.x + PAD}
+                  y={block.y + h / 2}
+                  width={block.width - PAD * 2}
+                  align="center"
+                  text="Каталог пуст: источник не выбран или в нём нет записей"
+                  fontSize={bodySize}
+                  fontFamily={FONT}
+                  fill={tokens.textSecondary}
+                />,
+              ]}
+        </Group>
+      );
+    }
+
+    case 'shop.card': {
+      /*
+       * Карточка товара: одно изображение, название, описание и цена.
+       * Отличие от каталога видно сразу: блок высокий, в нём одно
+       * изображение и подробное описание, а не сетка.
+       */
+      const rows = recordLines(records);
+      const row = rows[0] ?? '';
+      const parts = row.split(' \u00b7 ');
+      const price = parts.length > 1 ? parts[parts.length - 1] : '';
+      const button = prop(block, 'buttonLabel', 'Подробнее');
+      const imageH = Math.max(40, h * 0.42);
+      const top = block.y + PAD;
+
+      return (
+        <Group listening={false}>
+          {row ? (
+            <Group key={`${block.id}-card`}>
+              <Rect
+                x={block.x + PAD}
+                y={top}
+                width={block.width - PAD * 2}
+                height={imageH}
+                fill={tokens.panelSunken}
+                stroke={tokens.border}
+                strokeWidth={1}
+                cornerRadius={10}
+              />
+              <Text
+                x={block.x + block.width / 2 - 60}
+                y={top + imageH / 2 - 10}
+                width={120}
+                align="center"
+                text="Изображение"
+                fontSize={bodySize}
+                fontFamily={FONT}
+                fill={tokens.textSecondary}
+              />
+              <Text
+                x={block.x + PAD}
+                y={top + imageH + 12}
+                width={block.width - PAD * 2}
+                text={parts[0] || 'Товар'}
+                fontSize={titleSize}
+                fontStyle="bold"
+                fontFamily={FONT}
+                fill={tokens.textPrimary}
+                ellipsis
+              />
+              {price ? (
+                <Text
+                  x={block.x + PAD}
+                  y={top + imageH + 16 + titleSize}
+                  width={Math.max(120, block.width - PAD * 2 - 140)}
+                  text={`${prop(block, 'pricePrefix', '')} ${price}`.trim()}
+                  fontSize={Math.max(20, titleSize * 0.9)}
+                  fontStyle="bold"
+                  fontFamily={MONO}
+                  fill={tokens.selectionBorder}
+                  ellipsis
+                />
+              ) : null}
+              <Rect
+                x={block.x + block.width - PAD - 110}
+                y={top + imageH + 16 + titleSize}
+                width={110}
+                height={30}
+                fill={tokens.selectionBorder}
+                cornerRadius={6}
+              />
+              <Text
+                x={block.x + block.width - PAD - 110}
+                y={top + imageH + 25 + titleSize}
+                width={110}
+                align="center"
+                text={button}
+                fontSize={bodySize}
+                fontStyle="bold"
+                fontFamily={FONT}
+                fill={tokens.canvas}
+                ellipsis
+              />
+            </Group>
+          ) : (
+            <Text
+              x={block.x + PAD}
+              y={block.y + h / 2}
+              width={block.width - PAD * 2}
+              align="center"
+              text="Товар не выбран: источник не задан или пуст"
+              fontSize={bodySize}
+              fontFamily={FONT}
+              fill={tokens.textSecondary}
+            />
+          )}
+        </Group>
+      );
+    }
+
+    case 'shop.price': {
+      /*
+       * Цена: крупная сумма с единицей измерения и префиксом «от».
+       * Число моноширинным шрифтом — разряды не должны разъезжаться,
+       * а в цене это видно сразу.
+       */
+      const rows = recordLines(records);
+      const parts = (rows[0] ?? '').split(' \u00b7 ');
+      const value = parts.length > 1 ? parts[parts.length - 1] : (parts[0] || '\u2014');
+      const suffix = prop(block, 'suffix', '\u20bd');
+      const prefix = prop(block, 'prefix', '');
+
+      return (
+        <Group listening={false}>
+          {prefix ? (
+            <Text
+              x={block.x + PAD}
+              y={block.y + h / 2 - titleSize * 0.5}
+              width={80}
+              text={prefix}
+              fontSize={bodySize}
+              fontFamily={FONT}
+              fill={tokens.textSecondary}
+            />
+          ) : null}
+          <Text
+            x={block.x + PAD + (prefix ? 84 : 0)}
+            y={block.y + h / 2 - titleSize * 0.7}
+            width={block.width - PAD * 2 - (prefix ? 84 : 0)}
+            text={`${value}${suffix ? ` ${suffix}` : ''}`.trim()}
+            fontSize={Math.max(28, titleSize * 1.4)}
+            fontStyle="bold"
+            fontFamily={MONO}
+            fill={tokens.textPrimary}
+            ellipsis
+          />
+        </Group>
+      );
+    }
+
     default: {
       // Модуль без собственного представления: остаётся подпись с
       // идентификатором, чтобы блок был узнаваем на холсте.

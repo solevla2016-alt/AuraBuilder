@@ -136,6 +136,9 @@ class SchemaTests(APITestCase):
             # заполнить их из редактора было нельзя.
             'media.audio', 'text.code', 'social.links',
             'text.table', 'media.file', 'nav.anchor',
+            # Каталог, карточка и цена: строятся на узле данных, им не
+            # нужен рантайм, в отличие от корзины и оформления заказа.
+            'shop.catalog', 'shop.card', 'shop.price',
         }
         self.assertEqual(set(SCHEMAS), expected)
         self.assertEqual(SCHEMA_IDS, frozenset(expected))

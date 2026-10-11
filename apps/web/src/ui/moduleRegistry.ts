@@ -320,6 +320,30 @@ export const SCHEMAS: ModuleSchema[] = [
     { name: 'anchor', type: 'text', required: true, default: "section", limits: {}, description: 'Имя метки; на него ссылается меню' },
     { name: 'label', type: 'text', required: false, default: null, limits: {}, description: 'Подпись для навигации поиском по странице' }
   ] },
+  { moduleId: 'shop.catalog', props: [
+    { name: 'source', type: 'text', required: false, default: null, limits: {}, description: 'Идентификатор источника данных; пусто — источник не выбран' },
+    { name: 'titleField', type: 'text', required: true, default: "title", limits: {}, description: 'Ключ поля с названием товара' },
+    { name: 'priceField', type: 'text', required: false, default: "price", limits: {}, description: 'Ключ поля с ценой; пусто — цена не выводится' },
+    { name: 'imageField', type: 'text', required: false, default: null, limits: {}, description: 'Ключ поля с адресом картинки' },
+    { name: 'columns', type: 'number', required: false, default: 3, limits: {"min":2,"max":4,"step":1}, description: 'Сколько карточек в ряд' },
+    { name: 'limit', type: 'number', required: false, default: 12, limits: {"min":1,"max":100,"step":1}, description: 'Сколько товаров показать' }
+  ] },
+  { moduleId: 'shop.card', props: [
+    { name: 'source', type: 'text', required: false, default: null, limits: {}, description: 'Идентификатор источника данных; пусто — источник не выбран' },
+    { name: 'titleField', type: 'text', required: true, default: "title", limits: {}, description: 'Ключ поля с названием товара' },
+    { name: 'priceField', type: 'text', required: false, default: "price", limits: {}, description: 'Ключ поля с ценой' },
+    { name: 'imageField', type: 'text', required: false, default: null, limits: {}, description: 'Ключ поля с адресом картинки' },
+    { name: 'detailField', type: 'text', required: false, default: null, limits: {}, description: 'Ключ поля, из которого берётся краткое описание' },
+    { name: 'buttonLabel', type: 'text', required: false, default: "Подробнее", limits: {}, description: 'Надпись на кнопке' },
+    { name: 'pricePrefix', type: 'text', required: false, default: null, limits: {}, description: 'Что показать перед ценой' }
+  ] },
+  { moduleId: 'shop.price', props: [
+    { name: 'source', type: 'text', required: false, default: null, limits: {}, description: 'Идентификатор источника данных; пусто — берётся из свойства' },
+    { name: 'field', type: 'text', required: false, default: "price", limits: {}, description: 'Ключ поля с ценой' },
+    { name: 'prefix', type: 'text', required: false, default: null, limits: {}, description: 'Надпись перед ценой, например «от»' },
+    { name: 'suffix', type: 'text', required: false, default: "₽", limits: {}, description: 'Единица измерения после цены' },
+    { name: 'showOld', type: 'boolean', required: false, default: false, limits: {}, description: 'Показывать старую цену зачёркнутой' }
+  ] },
   { moduleId: 'action.button', props: [
     { name: 'label', type: 'text', required: true, default: "Кнопка", limits: {}, description: 'Текст на кнопке' },
     { name: 'link', type: 'text', required: false, default: "#", limits: {}, description: 'Адрес перехода' }
