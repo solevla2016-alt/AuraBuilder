@@ -292,8 +292,15 @@ def _render_cta(block: dict, records: list[dict] | None = None) -> str:
 
 
 def _render_anchor(block: dict) -> str:
-    """Якорь: пустая метка в разметке, к которой ведут ссылки меню."""
-    return f'<a id="{esc(_text(block, "anchor", block.get("id", "anchor")))}"></a>'
+    """Якорь: пустая метка в разметке, к которой ведут ссылки меню.
+
+    Подпись выводится только если она задана: пустая метка нужна для
+    ссылок меню, а подпись — для навигации поиском по странице.
+    """
+    anchor = _own(block, 'anchor', '') or str(block.get('id', 'anchor'))
+    label = _own(block, 'label', '')
+    tail = f'<span class="visually-hidden">{esc(label)}</span>' if label else ''
+    return f'<a id="{esc(anchor)}"></a>{tail}' 
 
 
 def _render_breadcrumbs(block: dict) -> str:
@@ -446,56 +453,130 @@ def _render_steps(block: dict) -> str:
 
 
 def _render_audio(block: dict) -> str:
-    # Аудиофайла нет, и подставлять чужой src нельзя: страница получила
-    # бы битый плеер. Показывается подпись с местом под файл.
-    title = _text(block, 'title', 'Аудио')
+    """Аудиозапись.
+
+    Плеер появляется только когда задан src: подставлять чужой файл
+    нельзя, посетитель получил бы битый плеер. Без src остаётся
+    подпись с местом под файл.
+    """
+    title = _own(block, 'title', 'Аудио')
+    src = _own(block, 'src', '')
+    if not src:
+        return (
+            '<figure class="block block--audio">'
+            f'<figcaption class="media__placeholder">{esc(title)}</figcaption>'
+            '<figcaption class="media__note">Аудиофайл не подключён.</figcaption>'
+            '</figure>'
+        )
+    autoplay = _props(block).get('autoplay') is True
+    loop = _props(block).get('loop') is True
+    flags = ''
+    if autoplay:
+        flags += ' autoplay'
+    if loop:
+        flags += ' loop'
     return (
         '<figure class="block block--audio">'
-        f'<figcaption class="media__placeholder">{esc(title)}</figcaption></figure>'
+        f'<figcaption>{esc(title)}</figcaption>'
+        f'<audio controls src="{esc(src)}"{flags}></audio>'
+        '</figure>'
     )
 
 
 def _render_code(block: dict) -> str:
-    return f'<pre class="block block--code"><code>{esc(block.get("content"))}</code></pre>'
+    """Блок кода.
+
+    Текст берётся из свойства code: раньше читалось внутреннее поле
+    content, которого нет в панели свойств, и код нельзя было задать
+    из редактора — в выгрузку попадало пустое значение.
+    """
+    heading = _own(block, 'heading', '')
+    language = _own(block, 'language', 'js')
+    body = _own(block, 'code', '')
+    head = f'<h3>{esc(heading)}</h3>' if heading else ''
+    return (
+        f'<section class="block block--code" data-language="{esc(language)}">'
+        f'{head}<pre><code>{esc(body)}</code></pre></section>'
+    )
 
 
 def _render_social(block: dict) -> str:
-    """Ссылки на соцсети.
+    """Ссылки на соцсети: по одному адресу в строке.
 
-    Адреса берутся из текста построчно: список href в настройках
-    означал бы, что экспорт должен ходить в сеть за разбором ссылок.
+    Адреса хранятся текстом, а не списком href в настройках: список
+    означал бы, что экспорт должен ходить в сеть за разбором ссылок,
+    а пакет должен собираться без сети.
     """
-    raw = _text(block, 'links') or _text(block, 'text')
-    links = [line.strip() for line in raw.split('\n') if line.strip()]
+    heading = _own(block, 'heading', '')
+    links = _items(block, 'links', ['https://example.com/social'])
     items = ''.join(f'<li><a href="{esc(link)}">{esc(link)}</a></li>' for link in links)
-    if not items:
-        items = '<li>Ссылки появятся после настройки модуля.</li>'
-    return f'<ul class="social">{items}</ul>'
+    head = f'<h2>{esc(heading)}</h2>' if heading else ''
+    return (
+        '<section class="block block--social">'
+        f'{head}<ul class="social">{items}</ul></section>'
+    )
 
 
 def _render_table(block: dict) -> str:
-    """Таблица из содержимого: первая строка — заголовки."""
-    raw = block.get('content')
-    rows = [line for line in str(raw or '').splitlines() if line.strip()]
-    if not rows:
-        return '<p class="block block--text">Таблица пуста.</p>'
-    header = [c.strip() for c in rows[0].split('|') if c.strip()]
-    head = ''.join(f'<th scope="col">{esc(c)}</th>' for c in header)
+    """Таблица из текста: первая строка — заголовки.
+
+    Раньше содержимое бралось из внутреннего поля content, которого
+    нет в панели свойств, и таблицу нельзя было заполнить из
+    редактора. Столбцы разделены точкой с запятой, строки — переводом
+    строки; разделитель выбран тот же, что у списков.
+    """
+    heading = _own(block, 'heading', '')
+    raw = _own(block, 'rows', '')
+    lines = [line.strip() for line in raw.splitlines() if line.strip()]
+
+    # Таблица выводится даже пустой: на странице под неё отведено
+    # место, и исчезновение таблицы оставляет дыру в вёрстке.
+    if not lines:
+        return (
+            '<section class="block block--table"><table>'
+            '<thead><tr><th scope="col"></th></tr></thead>'
+            '<tbody></tbody></table>'
+            '<p class="data__empty">Таблица пуста.</p></section>'
+        )
+
+    header = [c.strip() for c in lines[0].split(';') if c.strip()]
+    if not header:
+        header = [' ']
+    head_html = ''.join(f'<th scope="col">{esc(c)}</th>' for c in header)
     body = ''
-    for line in rows[1:]:
-        cells = [c.strip() for c in line.split('|') if c.strip()]
-        body += '<tr>' + ''.join(f'<td>{esc(c)}</td>' for c in cells) + '</tr>'
+    for line in lines[1:]:
+        cells = [c.strip() for c in line.split(';') if c.strip()]
+        # Недостающие столбцы дополняются пустыми: иначе строки разъезжаются,
+        # и таблица выглядит битой из-за одного пустого значения.
+        padded = cells + [''] * (len(header) - len(cells))
+        body += '<tr>' + ''.join(f'<td>{esc(c)}</td>' for c in padded[:len(header)]) + '</tr>'
+
+    head_block = f'<h2>{esc(heading)}</h2>' if heading else ''
     return (
-        f'<table class="block block--table"><thead><tr>{head}</tr></thead>'
-        f'<tbody>{body}</tbody></table>'
+        '<section class="block block--table">'
+        f'{head_block}<table><thead><tr>{head_html}</tr></thead>'
+        f'<tbody>{body}</tbody></table></section>'
     )
 
 
 def _render_file(block: dict) -> str:
-    title = _text(block, 'title', 'Файл')
+    """Файл для скачивания.
+
+    Без href ссылка ведёт в никуда, и посетитель нажимает и получает
+    пустую страницу. В этом случае показывается подпись без ссылки.
+    """
+    title = _own(block, 'title', 'Файл')
+    href = _own(block, 'href', '')
+    size = _own(block, 'size', '')
+    tail = f'<span class="file__size">{esc(size)}</span>' if size else ''
+    if not href:
+        return (
+            f'<div class="block block--file"><span class="file__name">{esc(title)}</span>'
+            f'{tail}<span class="file__note">Файл не прикреплён.</span></div>'
+        )
     return (
-        '<a class="block block--file" href="#" download>'
-        f'{esc(title)}</a>'
+        f'<a class="block block--file" href="{esc(href)}" download>'
+        f'<span class="file__name">{esc(title)}</span>{tail}</a>'
     )
 
 

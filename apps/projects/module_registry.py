@@ -358,6 +358,52 @@ SCHEMAS: dict[str, ModuleSchema] = {
         Prop('note', 'text', False, None, {}, 'Пояснение под формой'),
         ),
     ),
+    'media.audio': ModuleSchema(
+        'media.audio',
+        (
+        Prop('title', 'text', True, "Аудио", {}, 'Название записи'),
+        Prop('src', 'text', False, None, {}, 'Адрес файла; пусто — файл не подключён'),
+        Prop('autoplay', 'boolean', False, False, {}, 'Проигрывать автоматически'),
+        Prop('loop', 'boolean', False, False, {}, 'Повторять'),
+        ),
+    ),
+    'text.code': ModuleSchema(
+        'text.code',
+        (
+        Prop('heading', 'text', False, None, {}, 'Заголовок над блоком'),
+        Prop('code', 'textarea', True, "console.log('Привет, мир!');", {}, 'Текст кода'),
+        Prop('language', 'select', True, "js", {"options":["js","json","html","css","bash","text"]}, 'Язык для подсветки'),
+        ),
+    ),
+    'social.links': ModuleSchema(
+        'social.links',
+        (
+        Prop('heading', 'text', False, "Мы здесь", {}, 'Заголовок над списком'),
+        Prop('links', 'textarea', True, "https://example.com/social", {}, 'Адреса по одному в строке'),
+        ),
+    ),
+    'text.table': ModuleSchema(
+        'text.table',
+        (
+        Prop('heading', 'text', False, None, {}, 'Заголовок над таблицей'),
+        Prop('rows', 'textarea', True, "Услуга;Стоимость;Срок\\nАудит;30 000 ₽;3 дня", {}, 'Строки таблицы; первая — заголовки, разделитель столбцов точка с запятой'),
+        ),
+    ),
+    'media.file': ModuleSchema(
+        'media.file',
+        (
+        Prop('title', 'text', True, "Файл", {}, 'Название файла для посетителя'),
+        Prop('href', 'text', False, None, {}, 'Адрес файла; пусто — ссылка ведёт в никуда'),
+        Prop('size', 'text', False, None, {}, 'Размер файла подписью, например 2,4 МБ'),
+        ),
+    ),
+    'nav.anchor': ModuleSchema(
+        'nav.anchor',
+        (
+        Prop('anchor', 'text', True, "section", {}, 'Имя метки; на него ссылается меню'),
+        Prop('label', 'text', False, None, {}, 'Подпись для навигации поиском по странице'),
+        ),
+    ),
     'action.button': ModuleSchema(
         'action.button',
         (

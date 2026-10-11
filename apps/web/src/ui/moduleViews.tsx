@@ -174,6 +174,15 @@ function columns(block: Block, count: number, gap = 16) {
  * recordFields возвращает имена полей, а нужны сами значения: на
  * макете модулей вычислений видно, какие записи попадут в выгрузку.
  */
+/** Строки многострочного свойства, ограниченные числом строк. */
+function textLines(raw: string, count: number): string[] {
+  const parts = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return parts.slice(0, count);
+}
+
 function recordLines(rows: DataRecord[]): string[] {
   return rows.map((row) =>
     Object.values(row.data ?? {})
@@ -2100,6 +2109,362 @@ export function modulePreview(
             fontStyle="bold"
             fontFamily={FONT}
             fill={tokens.canvas}
+          />
+        </Group>
+      );
+    }
+
+    case 'media.audio': {
+      /*
+       * Аудио: панель плеера с названием. Кнопку воспроизведения
+       * рисуем рамкой, а не сплошной заливкой: на холсте это макет,
+       * и он должен читаться так же, как на странице.
+       */
+      const title = prop(block, 'title', 'Аудио');
+      const src = prop(block, 'src', '');
+      const top = block.y + PAD;
+      const barH = 30;
+
+      return (
+        <Group listening={false}>
+          <Text
+            x={block.x + PAD}
+            y={top}
+            width={block.width - PAD * 2}
+            text={title}
+            fontSize={titleSize}
+            fontStyle={headingWeight}
+            fontFamily={FONT}
+            fill={headingFill}
+            ellipsis
+          />
+          <Rect
+            x={block.x + PAD}
+            y={top + titleSize + 10}
+            width={block.width - PAD * 2}
+            height={barH}
+            fill={tokens.panel}
+            stroke={tokens.border}
+            strokeWidth={1}
+            cornerRadius={8}
+          />
+          <Line
+            points={[
+              block.x + PAD + 14,
+              top + titleSize + 25,
+              block.x + PAD + 26,
+              top + titleSize + 25,
+            ]}
+            stroke={tokens.selectionBorder}
+            strokeWidth={3}
+            lineCap="round"
+          />
+          <Line
+            points={[
+              block.x + PAD + 22,
+              top + titleSize + 19,
+              block.x + PAD + 22,
+              top + titleSize + 31,
+            ]}
+            stroke={tokens.selectionBorder}
+            strokeWidth={3}
+            lineCap="round"
+          />
+          <Line
+            points={[
+              block.x + PAD + 42,
+              top + titleSize + 25,
+              block.x + PAD + 200,
+              top + titleSize + 25,
+            ]}
+            stroke={tokens.border}
+            strokeWidth={3}
+            lineCap="round"
+          />
+          <Text
+            x={block.x + PAD}
+            y={top + titleSize + 48}
+            width={block.width - PAD * 2}
+            text={src ? 'Файл подключён' : 'Аудиофайл не подключён'}
+            fontSize={bodySize}
+            fontFamily={FONT}
+            fill={tokens.textSecondary}
+          />
+        </Group>
+      );
+    }
+
+    case 'text.code': {
+      /*
+       * Блок кода: тёмное полотно с моноширинным текстом и нумерацией
+       * строк. Подсветка синтаксиса на холсте не нужна: она отвлекает
+       * от оценки вёрстки, а на странице её делает браузер.
+       */
+      const heading = prop(block, 'heading', '');
+      const code = prop(block, 'code', "console.log('Привет, мир!');");
+      const language = prop(block, 'language', 'js');
+      const top = block.y + PAD + (heading ? titleSize + 8 : 0);
+      const areaH = Math.max(30, h - PAD * 2 - titleSize - (heading ? 8 : 0));
+      const codeLines = textLines(code ?? '', 8);
+
+      return (
+        <Group listening={false}>
+          {heading ? (
+            <Text
+              x={block.x + PAD}
+              y={block.y + PAD}
+              width={block.width - PAD * 2}
+              text={heading}
+              fontSize={titleSize}
+              fontStyle={headingWeight}
+              fontFamily={FONT}
+              fill={headingFill}
+            />
+          ) : null}
+          <Rect
+            x={block.x + PAD}
+            y={top}
+            width={block.width - PAD * 2}
+            height={areaH}
+            fill={tokens.panelSunken}
+            cornerRadius={8}
+          />
+          {codeLines.map((lineText, i) => (
+            <Group key={`${block.id}-l${i}`}>
+              <Text
+                x={block.x + PAD + 10}
+                y={top + 10 + i * (bodySize + 4)}
+                width={20}
+                text={String(i + 1)}
+                fontSize={bodySize}
+                fontFamily={MONO}
+                fill={tokens.textSecondary}
+              />
+              <Text
+                x={block.x + PAD + 34}
+                y={top + 10 + i * (bodySize + 4)}
+                width={block.width - PAD * 2 - 44}
+                text={lineText}
+                fontSize={bodySize}
+                fontFamily={MONO}
+                fill={tokens.textPrimary}
+                ellipsis
+              />
+            </Group>
+          ))}
+          <Text
+            x={block.x + block.width - PAD - 60}
+            y={block.y + PAD}
+            width={60}
+            align="right"
+            text={language}
+            fontSize={bodySize}
+            fontFamily={MONO}
+            fill={tokens.textSecondary}
+          />
+        </Group>
+      );
+    }
+
+    case 'social.links': {
+      /*
+       * Соцсети: адреса списком. Подписи нет — показывается сам
+       * адрес, потому что без значка иконки ссылка должна оставаться
+       * узнаваемой и в выгрузке.
+       */
+      const heading = prop(block, 'heading', 'Мы здесь');
+      const links = listProp(block, 'links', 3, ['https://example.com/social']);
+      const top = block.y + PAD + titleSize + 10;
+      const rowH = Math.max(20, (h - PAD * 2 - titleSize - 10) / links.length);
+
+      return (
+        <Group listening={false}>
+          <Text
+            x={block.x + PAD}
+            y={block.y + PAD}
+            width={block.width - PAD * 2}
+            text={heading}
+            fontSize={titleSize}
+            fontStyle={headingWeight}
+            fontFamily={FONT}
+            fill={headingFill}
+          />
+          {links.map((link, i) => (
+            <Group key={`${block.id}-s${i}`}>
+              <Line
+                points={[
+                  block.x + PAD + 4,
+                  top + i * rowH + rowH / 2,
+                  block.x + PAD + 12,
+                  top + i * rowH + rowH / 2,
+                ]}
+                stroke={tokens.selectionBorder}
+                strokeWidth={2}
+                lineCap="round"
+              />
+              <Text
+                x={block.x + PAD + 20}
+                y={top + i * rowH + rowH / 2 - bodySize / 2}
+                width={block.width - PAD * 2 - 20}
+                text={link}
+                fontSize={bodySize}
+                fontFamily={MONO}
+                fill={tokens.textPrimary}
+                ellipsis
+              />
+            </Group>
+          ))}
+        </Group>
+      );
+    }
+
+    case 'text.table': {
+      /*
+       * Таблица: сетка ячеек. Столбцы считаются по первой непустой
+       * строке, а строки — по переводам строк, как их разбирает
+       * выгрузка: разные разборы дали бы разные таблицы.
+       */
+      const heading = prop(block, 'heading', '');
+      const rows = textLines(prop(block, 'rows', '') ?? '', 6);
+      const tableRows: string[] = rows.length ? rows : [' '];
+      const headerCount = Math.max(
+        1,
+        (tableRows[0] ?? '').split(';').filter((c) => c.trim()).length,
+      );
+      const top = block.y + PAD + (heading ? titleSize + 8 : 0);
+      const areaH = Math.max(30, h - PAD * 2 - titleSize - (heading ? 8 : 0));
+      const rowH = Math.max(16, areaH / tableRows.length);
+      const colW = (block.width - PAD * 2) / headerCount;
+
+      return (
+        <Group listening={false}>
+          {heading ? (
+            <Text
+              x={block.x + PAD}
+              y={block.y + PAD}
+              width={block.width - PAD * 2}
+              text={heading}
+              fontSize={titleSize}
+              fontStyle={headingWeight}
+              fontFamily={FONT}
+              fill={headingFill}
+            />
+          ) : null}
+          {tableRows.map((rowText, r) => (
+            <Group key={`${block.id}-r${r}`}>
+              <Rect
+                x={block.x + PAD}
+                y={top + r * rowH}
+                width={block.width - PAD * 2}
+                height={rowH}
+                fill={r === 0 ? tokens.panelSunken : tokens.panel}
+                stroke={tokens.border}
+                strokeWidth={1}
+              />
+              {Array.from({ length: headerCount }, (_, c) => (
+                <Text
+                  key={`${block.id}-c${c}`}
+                  x={block.x + PAD + c * colW + 8}
+                  y={top + r * rowH + rowH / 2 - bodySize / 2}
+                  width={colW - 16}
+                  text={rowText.split(';')[c] ?? ''}
+                  fontSize={bodySize}
+                  fontStyle={r === 0 ? 'bold' : 'normal'}
+                  fontFamily={FONT}
+                  fill={r === 0 ? tokens.textPrimary : tokens.textSecondary}
+                  ellipsis
+                />
+              ))}
+            </Group>
+          ))}
+        </Group>
+      );
+    }
+
+    case 'media.file': {
+      /*
+       * Файл: имя, рамка и подпись о размере. Без адреса рамка
+       * показана пунктиром: файл ещё не прикреплён, и обещать
+       * скачивание нечего.
+       */
+      const title = prop(block, 'title', 'Файл');
+      const size = prop(block, 'size', '');
+      const href = prop(block, 'href', '');
+      const boxH = Math.min(52, h - PAD * 2);
+      const top = block.y + h / 2 - boxH / 2;
+      const boxW = Math.min(block.width - PAD * 2, 360);
+
+      return (
+        <Group listening={false}>
+          <Rect
+            x={block.x + PAD}
+            y={top}
+            width={boxW}
+            height={boxH}
+            fill={tokens.panel}
+            stroke={tokens.border}
+            strokeWidth={1}
+            {...(href ? {} : { strokeDash: [6, 4] })}
+            cornerRadius={8}
+          />
+          <Text
+            x={block.x + PAD + 14}
+            y={top + boxH / 2 - bodySize / 2 - (size ? 8 : 0)}
+            width={boxW - 28}
+            text={title}
+            fontSize={bodySize}
+            fontStyle="bold"
+            fontFamily={FONT}
+            fill={tokens.textPrimary}
+            ellipsis
+          />
+          <Text
+            x={block.x + PAD + 14}
+            y={top + boxH / 2 + 4}
+            width={boxW - 28}
+            text={size || (href ? 'Файл для скачивания' : 'Файл не прикреплён')}
+            fontSize={bodySize}
+            fontFamily={FONT}
+            fill={tokens.textSecondary}
+            ellipsis
+          />
+        </Group>
+      );
+    }
+
+    case 'nav.anchor': {
+      /*
+       * Якорь: метка в левом поле блока. Размер блока не важен —
+       * он не виден на странице, поэтому на холсте показан пунктиром,
+       * чтобы пустой блок не выглядел сломанным.
+       */
+      const label = prop(block, 'label', '');
+      return (
+        <Group listening={false}>
+          <Rect
+            x={block.x}
+            y={block.y}
+            width={block.width}
+            height={block.height}
+            stroke={tokens.selectionBorder}
+            strokeWidth={1}
+            strokeDash={[4, 4]}
+            cornerRadius={4}
+          />
+          <Line
+            points={[block.x + 12, block.y, block.x, block.y + 12]}
+            stroke={tokens.selectionBorder}
+            strokeWidth={1.5}
+          />
+          <Text
+            x={block.x + 14}
+            y={block.y + 6}
+            width={block.width - 28}
+            text={label || `#${prop(block, 'anchor', block.id)}`}
+            fontSize={bodySize}
+            fontFamily={MONO}
+            fill={tokens.textSecondary}
+            ellipsis
           />
         </Group>
       );

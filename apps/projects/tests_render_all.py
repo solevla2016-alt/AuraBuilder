@@ -38,7 +38,9 @@ EXPECTED: dict[str, str] = {
     'media.image': 'role="img"',
     'media.video': 'role="img"',
     'media.audio': '<figcaption',
-    'media.file': 'download',
+    # Файл без адреса выводится подписью, а не ссылкой: ссылка в никуда
+    # хуже, чем её отсутствие. При заданном href появляется download.
+    'media.file': 'block--file',
     'media.embed': 'class="embed"',
     'action.button': '<a class="button"',
     'action.link': '<a class="button"',
@@ -148,11 +150,29 @@ class ModuleOutputTests(SimpleTestCase):
     def test_no_external_links_in_any_module(self):
         # Проверяется по всему набору: одна ссылка в одном модуле
         # сделала бы пакет зависимым от чужого сервера (п.15.3).
+        #
+        # Исключён social.links: адреса в нём задаёт пользователь, и
+        # это его выбор, а не зависимость платформы. Сам модуль не
+        # приносит никаких внешних ресурсов — только то, что ввёл человек.
+        allowed = {'social.links'}
         for module in MODULES:
+            if module.id in allowed:
+                continue
             with self.subTest(module=module.id):
                 html = render_block(block_for(module.id)).html
                 for host in ('http://', 'https://', 'fonts.g'):
                     self.assertNotIn(host, html, f'{module.id}: внешняя ссылка')
+
+    def test_social_links_carry_only_user_addresses(self):
+        """Модуль соцсетей выводит ровно то, что задал пользователь.
+
+        Проверяется, что адрес не подставляется извне: значение по
+        умолчанию — пример из документации, а не чужой сервис.
+        """
+        html = render_block(block_for('social.links')).html
+        self.assertIn('example.com', html)
+        self.assertNotIn('facebook', html.lower())
+        self.assertNotIn('vk.com', html.lower())
 
     def test_markup_is_balanced(self):
         # Незакрытый тег ломает страницу целиком: браузер дорисует

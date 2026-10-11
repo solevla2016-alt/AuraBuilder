@@ -19,6 +19,7 @@
 | `apps/projects` | Проекты, модули, версии, выгрузка |
 | `apps/data_sources` | Узлы данных |
 | `apps/component_library` | Библиотека компонентов |
+| `docs/MODULE-PROPS.md` | Схемы свойств модулей: описаны для 53 из 65 |
 | `apps/web` | Редактор на React и Vite |
 | `packages/tokens`, `packages/registry` | Токены палитры и реестр модулей |
 | `docker/`, `docker-compose.yml` | Образы и локальный стенд |

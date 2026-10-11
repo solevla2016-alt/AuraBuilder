@@ -131,6 +131,11 @@ class SchemaTests(APITestCase):
             # склеенные строки, поэтому схемы описаны вместе с ними.
             'data.count', 'data.aggregate', 'data.filter',
             'data.sort', 'data.related', 'data.form',
+            # Контентные модули этапа 5: код и таблица раньше читались
+            # из внутреннего поля content, которого нет в панели, и
+            # заполнить их из редактора было нельзя.
+            'media.audio', 'text.code', 'social.links',
+            'text.table', 'media.file', 'nav.anchor',
         }
         self.assertEqual(set(SCHEMAS), expected)
         self.assertEqual(SCHEMA_IDS, frozenset(expected))

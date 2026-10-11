@@ -292,6 +292,34 @@ export const SCHEMAS: ModuleSchema[] = [
     { name: 'submitLabel', type: 'text', required: false, default: "Отправить", limits: {}, description: 'Надпись на кнопке' },
     { name: 'note', type: 'text', required: false, default: null, limits: {}, description: 'Пояснение под формой' }
   ] },
+  { moduleId: 'media.audio', props: [
+    { name: 'title', type: 'text', required: true, default: "Аудио", limits: {}, description: 'Название записи' },
+    { name: 'src', type: 'text', required: false, default: null, limits: {}, description: 'Адрес файла; пусто — файл не подключён' },
+    { name: 'autoplay', type: 'boolean', required: false, default: false, limits: {}, description: 'Проигрывать автоматически' },
+    { name: 'loop', type: 'boolean', required: false, default: false, limits: {}, description: 'Повторять' }
+  ] },
+  { moduleId: 'text.code', props: [
+    { name: 'heading', type: 'text', required: false, default: null, limits: {}, description: 'Заголовок над блоком' },
+    { name: 'code', type: 'textarea', required: true, default: "console.log('Привет, мир!');", limits: {}, description: 'Текст кода' },
+    { name: 'language', type: 'select', required: true, default: "js", limits: {"options":["js","json","html","css","bash","text"]}, description: 'Язык для подсветки' }
+  ] },
+  { moduleId: 'social.links', props: [
+    { name: 'heading', type: 'text', required: false, default: "Мы здесь", limits: {}, description: 'Заголовок над списком' },
+    { name: 'links', type: 'textarea', required: true, default: "https://example.com/social", limits: {}, description: 'Адреса по одному в строке' }
+  ] },
+  { moduleId: 'text.table', props: [
+    { name: 'heading', type: 'text', required: false, default: null, limits: {}, description: 'Заголовок над таблицей' },
+    { name: 'rows', type: 'textarea', required: true, default: "Услуга;Стоимость;Срок\\nАудит;30 000 ₽;3 дня", limits: {}, description: 'Строки таблицы; первая — заголовки, разделитель столбцов точка с запятой' }
+  ] },
+  { moduleId: 'media.file', props: [
+    { name: 'title', type: 'text', required: true, default: "Файл", limits: {}, description: 'Название файла для посетителя' },
+    { name: 'href', type: 'text', required: false, default: null, limits: {}, description: 'Адрес файла; пусто — ссылка ведёт в никуда' },
+    { name: 'size', type: 'text', required: false, default: null, limits: {}, description: 'Размер файла подписью, например 2,4 МБ' }
+  ] },
+  { moduleId: 'nav.anchor', props: [
+    { name: 'anchor', type: 'text', required: true, default: "section", limits: {}, description: 'Имя метки; на него ссылается меню' },
+    { name: 'label', type: 'text', required: false, default: null, limits: {}, description: 'Подпись для навигации поиском по странице' }
+  ] },
   { moduleId: 'action.button', props: [
     { name: 'label', type: 'text', required: true, default: "Кнопка", limits: {}, description: 'Текст на кнопке' },
     { name: 'link', type: 'text', required: false, default: "#", limits: {}, description: 'Адрес перехода' }
