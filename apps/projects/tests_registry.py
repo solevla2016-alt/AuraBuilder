@@ -116,6 +116,11 @@ class SchemaTests(APITestCase):
             'action.button', 'action.link',
             'data.collection', 'data.single', 'data.field',
             'data.list', 'data.search', 'data.pagination',
+            # Секции этапа 5: схемы описаны вместе с представлением
+            # на холсте, чтобы свойства читались одинаково и там, и
+            # в выгрузке.
+            'section.accordion', 'section.tabs', 'section.gallery',
+            'section.timeline', 'section.steps',
         }
         self.assertEqual(set(SCHEMAS), expected)
         self.assertEqual(SCHEMA_IDS, frozenset(expected))

@@ -150,6 +150,21 @@ def _text(block: dict, name: str, fallback: str = '') -> str:
     return fallback
 
 
+
+def _items(block: dict, name: str, fallback: list[str]) -> list[str]:
+    """Пункты многострочного свойства: список строк без пустых.
+
+    Значение хранится одной строкой с переводами строк — так список
+    занимает одно поле панели свойств, а не двадцать. Если свойство
+    не задано, берутся значения по умолчанию: пустая секция в
+    выгрузке выглядит как ошибка сборки, хотя собрана верно.
+    """
+    raw = _text(block, name, '')
+    if not raw:
+        return list(fallback)
+    parts = [line.strip() for line in raw.splitlines() if line.strip()]
+    return parts or list(fallback)
+
 def _align(block: dict) -> str:
     align = block.get('align')
     return align if align in ('left', 'center', 'right') else 'left'
@@ -265,64 +280,144 @@ def _render_breadcrumbs(block: dict) -> str:
 
 
 def _render_accordion(block: dict) -> str:
-    """Аккордеон на нативном <details>."""
-    title = _text(block, 'title', 'Вопрос')
-    body = _text(block, 'text', 'Ответ')
-    return (
-        '<details class="block block--accordion">'
-        f'<summary>{esc(title)}</summary><p>{esc(body)}</p></details>'
-    )
+    """Аккордеон на нативном <details>.
+
+    Свойства читаются по схеме docs/MODULE-PROPS.md: заголовок секции
+    и список вопросов по одному в строке. Раньше здесь ожидались title
+    и text — другие имена, чем в схеме, поэтому заданные в редакторе
+    вопросы в выгрузку не попадали и подставлялся вопрос по умолчанию.
+
+    Ответ на вопрос пишется в той же строке после двоеточия:
+    «Вопрос: ответ». Так один многострочный список хранит и заголовки,
+    и содержимое панелей, а не два свойства, которые надо заполнять
+    раздельно.
+    """
+    items = _items(block, "items", ["Как оформить заказ?", "Где доставка?"])
+    first_open = _props(block).get("firstOpen") is not False
+    heading = _text(block, "heading", "")
+
+    parts = ["<section class=\"block block--accordion\">"]
+    if heading:
+        parts.append(f"<h2>{esc(heading)}</h2>")
+    for i, item in enumerate(items):
+        question, _, answer = item.partition(":")
+        body = answer.strip() or "Ответ на вопрос."
+        opened = " open" if first_open and i == 0 else ""
+        parts.append(
+            f"<details{opened}><summary>{esc(question.strip())}</summary>"
+            f"<p>{esc(body)}</p></details>"
+        )
+    parts.append("</section>")
+    return "".join(parts)
 
 
 def _render_tabs(block: dict) -> str:
     """Вкладки.
 
-    Разметка семантическая, переключение — CSS через :target или
-    checkbox. Скрипт в статическом пакете не нужен: пакет должен
-    работать без платформы, а :target работает везде.
+    Переключение — CSS и нативный <details>: скрипт в статическом
+    пакете не нужен, пакет должен работать без платформы. Подписи
+    берутся из свойства tabs, как в схеме; раньше читался items,
+    и заданные в редакторе подписи до выгрузки не доходили.
     """
-    raw = _text(block, 'items', 'Один\nДва\nТри')
-    items = [line.strip() for line in raw.split('\n') if line.strip()] or ['Один']
-    parts = []
-    for i, item in enumerate(items):
-        open_attr = ' open' if i == 0 else ''
+    heading = _text(block, "heading", "")
+    items = _items(block, "tabs", ["Подготовка", "Проверка", "Доставка"])
+    limit = _props(block).get("columns")
+    if isinstance(limit, int) and 2 <= limit <= 4:
+        items = items[:limit]
+
+    parts = ["<section class=\"block block--tabs\">"]
+    if heading:
+        parts.append(f"<h2>{esc(heading)}</h2>")
+    parts.append("<div class=\"tabs\">")
+    for item in items:
         parts.append(
-            f'<details class="tabs__item"{open_attr}><summary>{esc(item)}</summary>'
-            f'<p>{esc(item)}</p></details>'
+            f"<details class=\"tabs__item\"><summary>{esc(item)}</summary>"
+            f"<p>{esc(item)}</p></details>"
         )
-    return f'<div class="tabs">{"".join(parts)}</div>'
+    parts.append("</div></section>")
+    return "".join(parts)
 
 
 def _render_gallery(block: dict) -> str:
-    """Галерея плейсхолдеров: файлов на стенде нет."""
-    count = _props(block).get('count')
-    count = count if isinstance(count, int) and 2 <= count <= 12 else 3
-    cells = ''.join(
-        f'<figure class="gallery__item"><div class="media__placeholder" role="img" '
-        f'aria-label="Изображение {i + 1}">Изображение {i + 1}</div></figure>'
-        for i in range(count)
+    """Галерея плейсхолдеров: файлов на стенде нет.
+
+    Раскладка задаётся схемой: сколько кадров в ряд (columns) и
+    промежуток (gap). Раньше читалось count — свойства, которого в
+    схеме нет, поэтому настройки раскладки в выгрузку не доходили.
+    """
+    props = _props(block)
+    heading = _text(block, "heading", "")
+    columns = props.get("columns")
+    columns = columns if isinstance(columns, int) and 2 <= columns <= 5 else 3
+    gap = props.get("gap")
+    gap = gap if isinstance(gap, int) and 4 <= gap <= 48 else 16
+    frames = props.get("frames")
+    frames = frames if isinstance(frames, int) and 2 <= frames <= 24 else columns
+
+    cells = "".join(
+        f"<figure class=\"gallery__item\"><div class=\"media__placeholder\" role=\"img\" "
+        f"aria-label=\"Изображение {i + 1}\">Изображение {i + 1}</div></figure>"
+        for i in range(frames)
     )
-    return f'<div class="gallery">{cells}</div>'
+    return (
+        "<section class=\"block block--gallery\">"
+        + (f"<h2>{esc(heading)}</h2>" if heading else "")
+        + f'<div class="gallery" style="--gallery-columns:{columns};--gallery-gap:{gap}px">'
+        + cells
+        + "</div></section>"
+    )
 
 
 def _render_timeline(block: dict) -> str:
-    raw = _text(block, 'items', '2024\n2025\n2026')
-    items = [line.strip() for line in raw.split('\n') if line.strip()] or ['2026']
-    entries = ''.join(
-        f'<li class="timeline__item"><span>{esc(item)}</span></li>' for item in items
+    """Таймлайн: год первого события и шаг между годами.
+
+    Список лет не хранится: пользователь задаёт начало и шаг, а
+    подписи событий — по одной на событие (event0, event1). Так годы
+    не расходятся с подписями и не требуют дублирования.
+    """
+    props = _props(block)
+    heading = _text(block, "heading", "")
+    year = props.get("year")
+    year = year if isinstance(year, int) else 2019
+    step = props.get("stepYears")
+    step = step if isinstance(step, int) and 1 <= step <= 10 else 2
+    count = props.get("events")
+    count = count if isinstance(count, int) and 2 <= count <= 8 else 4
+
+    entries = "".join(
+        f'<li class="timeline__item"><span class="timeline__year">{year + step * i}</span>'
+        f"<span>{esc(_text(block, f'event{i}', 'Событие'))}</span></li>"
+        for i in range(count)
     )
-    return f'<ol class="timeline">{entries}</ol>'
+    return (
+        "<section class=\"block block--timeline\">"
+        + (f"<h2>{esc(heading)}</h2>" if heading else "")
+        + f'<ol class="timeline">{entries}</ol></section>'
+    )
 
 
 def _render_steps(block: dict) -> str:
-    raw = _text(block, 'items', 'Шаг 1\nШаг 2\nШаг 3')
-    items = [line.strip() for line in raw.split('\n') if line.strip()] or ['Шаг 1']
-    entries = ''.join(
-        f'<li class="steps__item"><span class="steps__num">{i + 1}</span>'
-        f'<span>{esc(item)}</span></li>'
+    """Шаги по шаблону: название шага на строку.
+
+    Номера отключаются свойством showNumbers — иногда нужны сами шаги
+    без нумерации, например когда они подписаны на картинке.
+    """
+    props = _props(block)
+    heading = _text(block, "heading", "")
+    items = _items(block, "steps", ["Заявка", "Согласование", "Работа"])
+    numbers = props.get("showNumbers") is not False
+
+    entries = "".join(
+        f'<li class="steps__item">'
+        + (f'<span class="steps__num">{i + 1}</span>' if numbers else "")
+        + f"<span>{esc(item)}</span></li>"
         for i, item in enumerate(items)
     )
-    return f'<ol class="steps">{entries}</ol>'
+    return (
+        "<section class=\"block block--steps\">"
+        + (f"<h2>{esc(heading)}</h2>" if heading else "")
+        + f'<ol class="steps">{entries}</ol></section>'
+    )
 
 
 def _render_audio(block: dict) -> str:

@@ -1669,6 +1669,82 @@ const key = async (letter, code, modifiers = 0) => {
   ]);
 
   /*
+   * Секции этапа 5 рисуются на холсте, а не заглушкой.
+   *
+   * Проверка идёт по пикселям, потому что Konva рисует в canvas и в DOM
+   * подписей нет: спросить у страницы «что на холсте» нельзя, можно
+   * только посчитать оттенки в области. У заглушки оттенков два — фон
+   * и текст, у макета аккордеона — рамки, полосы и подписи.
+   *
+   * Блок добавляется через API тем же способом, каким закрепляется
+   * версия для выгрузки: через PATCH дерева, а не кликом по палитре.
+   * Клик зависит от позиции элемента и ломается от правки вёрстки,
+   * а здесь проверяется именно то, что модуль отрисован.
+   */
+  mark('секции этапа 5');
+  const sectionsAdded = await evalAsync(page, `
+    const headers = {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + localStorage.getItem('aurabuilder.access'),
+    };
+    const projectId = '${compsBox.result.value.project}';
+    const project = await (await fetch('/api/projects/' + projectId + '/', { headers })).json();
+    const tree = structuredClone(project.tree);
+    const blocks = tree.blocks.map((b) => ({
+      id: b.id,
+      module: b.module,
+      x: 40,
+      y: b.y,
+      width: 640,
+      height: 260,
+      label: b.label,
+    }));
+    /*
+     * Пункты склеиваются в браузере, а не в шаблонной строке Node.
+     * Обратный слэш в шаблонной строке превращается в настоящий перевод
+     * строки ещё до отправки в браузер, одинарные кавычки рвутся, и
+     * выражение молча не выполняется: таймаут вместо внятной ошибки.
+     */
+    const items = ['Первый вопрос', 'Второй вопрос', 'Третий вопрос'].join(String.fromCharCode(10));
+    blocks.push({
+      id: 'stage5-sections',
+      module: 'section.accordion',
+      x: 40,
+      y: 900,
+      width: 640,
+      height: 260,
+      label: 'Этап 5',
+      props: { heading: 'Проверка секций', items },
+    });
+    const res = await fetch('/api/projects/' + projectId + '/', {
+      method: 'PATCH', headers, body: JSON.stringify({ tree: { ...tree, blocks }, expectedVersion: project.version }),
+    });
+    return { ok: res.ok, blocks: blocks.length };
+  `);
+  await new Promise((r) => setTimeout(r, 1800));
+
+  const sectionShot = await page.send('Page.captureScreenshot', { format: 'png' });
+  // Блок добавлен ниже видимой части, поэтому прокручиваем холст и
+  // снимаем область под ним.
+  await evalAsync(page, `
+    const holder = document.querySelector('.canvas');
+    if (holder) holder.scrollTop = holder.scrollHeight;
+    return true;
+  `);
+  await new Promise((r) => setTimeout(r, 900));
+  const sectionShot2 = await page.send('Page.captureScreenshot', { format: 'png' });
+  const sectionStats = regionStats(decodePng(Buffer.from(sectionShot2.data, 'base64')), {
+    x: Math.round(box.x + 40),
+    y: Math.round(box.y + 40),
+    width: Math.min(640, Math.round(box.width) - 80),
+    height: 220,
+  });
+  results.push([
+    `секция аккордеона нарисована макетом, а не заглушкой (${sectionStats?.distinct ?? 0} оттенков)`,
+    sectionsAdded?.ok === true && (sectionStats?.distinct ?? 0) >= 4,
+  ]);
+
+  /*
    * Архив разбирается в Node, а не в странице.
    *
    * Внутри браузера пришлось бы угадывать смещение в заголовке записи

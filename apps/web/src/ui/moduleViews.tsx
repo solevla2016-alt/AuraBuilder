@@ -23,7 +23,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Group, Line, Rect, Text } from 'react-konva';
+import { Circle, Group, Line, Rect, Text } from 'react-konva';
 import type { Block } from './project';
 import { cellText, type DataRecord } from './data';
 import type { CanvasTokens } from './useCanvasTokens';
@@ -57,6 +57,25 @@ function text(block: Block, propName: string, fallback: string): string {
 function fontFor(height: number, ratio: number, min: number, max: number): number {
   const size = Math.round(height * ratio);
   return Math.max(min, Math.min(max, size));
+}
+
+/**
+ * Пункты многострочного свойства блока.
+ *
+ * Значение приходит строкой «Как оформить заказ?\nГде доставка?»,
+ * а на холсте нужен список. Подсказки используются, когда свойство
+ * не задано: пустая секция на макете не читается как секция, и
+ * пользователь не понимает, что модуль вообще нарисован.
+ */
+function listProp(
+  block: Block,
+  name: string,
+  count: number,
+  fallback: string[],
+): string[] {
+  const raw = prop(block, name, '');
+  if (!raw) return lines(fallback.join('\n'), count);
+  return lines(raw, count);
 }
 
 function lines(content: string, count: number): string[] {
@@ -972,6 +991,364 @@ export function modulePreview(
               fontFamily={FONT}
               fill={i === 0 ? tokens.canvas : tokens.textSecondary}
             />
+          ))}
+        </Group>
+      );
+    }
+
+    case 'section.accordion': {
+      /*
+       * Аккордеон. Пункты идут полосами во всю ширину секции, а не
+       * колонками: раскрытая панель занимает всю ширину, и колонки
+       * разорвали бы её на части. Первый пункт показан раскрытым
+       * (firstOpen), остальные свернуты — иначе на макете не видно,
+       * где происходит раскрытие.
+       */
+      const heading = prop(block, 'heading', 'Частые вопросы');
+      const items = listProp(block, 'items', 4, ['Как оформить заказ?', 'Где доставка?', 'Как вернуть?']);
+      const firstOpen = block.props?.['firstOpen'] !== false;
+      const top = block.y + PAD + titleSize + 10;
+      const available = h - PAD * 2 - titleSize - 10;
+      const rowHeight = Math.max(26, available / Math.max(items.length, 1));
+
+      return (
+        <Group listening={false}>
+          <Text
+            x={block.x + PAD}
+            y={block.y + PAD}
+            width={block.width - PAD * 2}
+            text={heading}
+            fontSize={titleSize}
+            fontStyle={headingWeight}
+            fontFamily={FONT}
+            fill={headingFill}
+          />
+          {items.map((item, i) => (
+            <Group key={`${block.id}-a${i}`}>
+              {firstOpen && i === 0 ? (
+                <Rect
+                  x={block.x + PAD}
+                  y={top + i * rowHeight}
+                  width={block.width - PAD * 2}
+                  height={rowHeight}
+                  fill={tokens.panelSunken}
+                  cornerRadius={8}
+                />
+              ) : null}
+              <Text
+                x={block.x + PAD + 14}
+                y={top + i * rowHeight + rowHeight / 2 - 9}
+                width={block.width - PAD * 2 - 40}
+                text={item}
+                fontSize={bodySize}
+                fontStyle="bold"
+                fontFamily={FONT}
+                fill={tokens.textPrimary}
+              />
+              {/* Маркер раскрытия: у первого пункта стрелка вверх. */}
+              <Line
+                points={[
+                  block.x + block.width - PAD - 22,
+                  top + i * rowHeight + rowHeight / 2 - (firstOpen && i === 0 ? 4 : 0),
+                  block.x + block.width - PAD - 16,
+                  top + i * rowHeight + rowHeight / 2 + (firstOpen && i === 0 ? 0 : 4),
+                  block.x + block.width - PAD - 10,
+                  top + i * rowHeight + rowHeight / 2 - (firstOpen && i === 0 ? 4 : 0),
+                ]}
+                stroke={tokens.textSecondary}
+                strokeWidth={1.5}
+                lineCap="round"
+                lineJoin="round"
+              />
+            </Group>
+          ))}
+        </Group>
+      );
+    }
+
+    case 'section.tabs': {
+      /*
+       * Вкладки. Панель подписей идёт на всю ширину, активная
+       * подчёркнута акцентом — это единственный признак, который
+       * отличает вкладки от обычного списка текста.
+       */
+      const heading = prop(block, 'heading', 'Как это работает');
+      const tabs = listProp(block, 'tabs', 3, ['Подготовка', 'Проверка', 'Доставка']);
+      const count = Math.min(tabs.length, Math.max(2, Number(block.props?.['columns'] ?? 3)));
+      const shown = tabs.slice(0, count);
+      const tabWidth = (block.width - PAD * 2) / Math.max(shown.length, 1);
+      const top = block.y + PAD + titleSize + 10;
+
+      return (
+        <Group listening={false}>
+          <Text
+            x={block.x + PAD}
+            y={block.y + PAD}
+            width={block.width - PAD * 2}
+            text={heading}
+            fontSize={titleSize}
+            fontStyle={headingWeight}
+            fontFamily={FONT}
+            fill={headingFill}
+          />
+          {shown.map((tab, i) => (
+            <Group key={`${block.id}-t${i}`}>
+              <Text
+                x={block.x + PAD + i * tabWidth}
+                y={top}
+                width={tabWidth}
+                align="center"
+                text={tab}
+                fontSize={bodySize}
+                fontStyle={i === 0 ? 'bold' : 'normal'}
+                fontFamily={FONT}
+                fill={i === 0 ? tokens.textPrimary : tokens.textSecondary}
+              />
+              {i === 0 ? (
+                <Line
+                  points={[
+                    block.x + PAD + i * tabWidth + 8,
+                    top + titleSize + 4,
+                    block.x + PAD + (i + 1) * tabWidth - 8,
+                    top + titleSize + 4,
+                  ]}
+                  stroke={tokens.selectionBorder}
+                  strokeWidth={2}
+                  lineCap="round"
+                />
+              ) : null}
+            </Group>
+          ))}
+          <Rect
+            x={block.x + PAD}
+            y={top + titleSize + 6}
+            width={block.width - PAD * 2}
+            height={1}
+            fill={tokens.border}
+          />
+          {/* Содержимое активной вкладки — один абзац, а не полный
+              макет: содержимое вкладок задаётся данными, а на холсте
+              важнее показать, что вкладок несколько и одна выбрана. */}
+          <Text
+            x={block.x + PAD}
+            y={top + titleSize + 22}
+            width={block.width - PAD * 2}
+            height={Math.max(20, h - PAD * 2 - titleSize - 32)}
+            text={prop(block, 'content', 'Содержимое выбранной вкладки')}
+            fontSize={bodySize}
+            fontFamily={FONT}
+            fill={tokens.textSecondary}
+            wrap="word"
+            ellipsis
+          />
+        </Group>
+      );
+    }
+
+    case 'section.gallery': {
+      /*
+       * Галерея. Сетка из плейсхолдеров: файлов на стенде нет, и
+       * рамка с подписью честнее картинки-заглушки, которая потом
+       * окажется не той.
+       */
+      const heading = prop(block, 'heading', 'Работы');
+      const columns = Math.max(2, Math.min(5, Number(block.props?.['columns'] ?? 3)));
+      const gap = Math.max(4, Math.min(48, Number(block.props?.['gap'] ?? 16)));
+      const top = block.y + PAD + titleSize + 10;
+      const area = Math.max(40, h - PAD * 2 - titleSize - 10);
+      const frames = Math.max(columns, Math.min(10, Number(block.props?.['frames'] ?? columns)));
+      const rows = Math.ceil(frames / columns);
+      const cellW = (block.width - PAD * 2 - gap * (columns - 1)) / columns;
+      const cellH = (area - gap * (rows - 1)) / rows;
+
+      return (
+        <Group listening={false}>
+          <Text
+            x={block.x + PAD}
+            y={block.y + PAD}
+            width={block.width - PAD * 2}
+            text={heading}
+            fontSize={titleSize}
+            fontStyle={headingWeight}
+            fontFamily={FONT}
+            fill={headingFill}
+          />
+          {Array.from({ length: frames }, (_, i) => {
+            const col = i % columns;
+            const row = Math.floor(i / columns);
+            const x = block.x + PAD + col * (cellW + gap);
+            const y = top + row * (cellH + gap);
+            return (
+              <Group key={`${block.id}-g${i}`}>
+                <Rect
+                  x={x}
+                  y={y}
+                  width={cellW}
+                  height={cellH}
+                  fill={tokens.panelSunken}
+                  stroke={tokens.border}
+                  strokeWidth={1}
+                  cornerRadius={8}
+                />
+                <Text
+                  x={x + 10}
+                  y={y + cellH / 2 - 7}
+                  width={cellW - 20}
+                  align="center"
+                  text={`${i + 1}`}
+                  fontSize={bodySize}
+                  fontFamily={MONO}
+                  fill={tokens.textSecondary}
+                />
+              </Group>
+            );
+          })}
+        </Group>
+      );
+    }
+
+    case 'section.timeline': {
+      /*
+       * Таймлайн. Вертикальная линия с точками: главный признак —
+       * события идут во времени, и без линии список дат читался бы
+       * как обычный текст.
+       */
+      const heading = prop(block, 'heading', 'История');
+      const events = Math.max(2, Math.min(8, Number(block.props?.['events'] ?? 4)));
+      const year = Number(block.props?.['year'] ?? 2019);
+      const stepYears = Math.max(1, Number(block.props?.['stepYears'] ?? 2));
+      const top = block.y + PAD + titleSize + 12;
+      const step = (h - PAD * 2 - titleSize - 12) / Math.max(events, 1);
+
+      return (
+        <Group listening={false}>
+          <Text
+            x={block.x + PAD}
+            y={block.y + PAD}
+            width={block.width - PAD * 2}
+            text={heading}
+            fontSize={titleSize}
+            fontStyle={headingWeight}
+            fontFamily={FONT}
+            fill={headingFill}
+          />
+          <Line
+            points={[block.x + PAD + 7, top, block.x + PAD + 7, top + step * (events - 1)]}
+            stroke={tokens.border}
+            strokeWidth={2}
+            lineCap="round"
+          />
+          {Array.from({ length: events }, (_, i) => (
+            <Group key={`${block.id}-e${i}`}>
+              <Circle
+                x={block.x + PAD + 7}
+                y={top + i * step}
+                radius={5}
+                fill={i === 0 ? tokens.selectionBorder : tokens.panel}
+                stroke={tokens.selectionBorder}
+                strokeWidth={1.5}
+              />
+              <Text
+                x={block.x + PAD + 24}
+                y={top + i * step - 8}
+                width={90}
+                text={String(year + stepYears * i)}
+                fontSize={bodySize}
+                fontStyle="bold"
+                fontFamily={MONO}
+                fill={tokens.selectionBorder}
+              />
+              <Text
+                x={block.x + PAD + 118}
+                y={top + i * step - 8}
+                width={block.width - PAD * 2 - 118}
+                text={prop(block, `event${i}`, 'Событие')}
+                fontSize={bodySize}
+                fontFamily={FONT}
+                fill={tokens.textPrimary}
+                wrap="word"
+                ellipsis
+              />
+            </Group>
+          ))}
+        </Group>
+      );
+    }
+
+    case 'section.steps': {
+      /*
+       * Шаги. Кружки с номерами и соединительная линия: без неё это
+       * просто строка текста, а с ней виден порядок.
+       */
+      const heading = prop(block, 'heading', 'Три шага');
+      const steps = listProp(block, 'steps', 3, ['Заявка', 'Согласование', 'Работа']);
+      const showNumbers = block.props?.['showNumbers'] !== false;
+      const top = block.y + PAD + titleSize + 18;
+      const stepW = (block.width - PAD * 2) / Math.max(steps.length, 1);
+      const radius = 15;
+      const midY = top + radius;
+
+      return (
+        <Group listening={false}>
+          <Text
+            x={block.x + PAD}
+            y={block.y + PAD}
+            width={block.width - PAD * 2}
+            text={heading}
+            fontSize={titleSize}
+            fontStyle={headingWeight}
+            fontFamily={FONT}
+            fill={headingFill}
+          />
+          {steps.length > 1 ? (
+            <Line
+              points={[
+                block.x + PAD + stepW / 2,
+                midY,
+                block.x + block.width - PAD - stepW / 2,
+                midY,
+              ]}
+              stroke={tokens.border}
+              strokeWidth={2}
+              strokeDash={[6, 6]}
+            />
+          ) : null}
+          {steps.map((step, i) => (
+            <Group key={`${block.id}-s${i}`}>
+              <Circle
+                x={block.x + PAD + stepW / 2 + i * stepW}
+                y={midY}
+                radius={radius}
+                fill={i === 0 ? tokens.selectionBorder : tokens.panel}
+                stroke={tokens.selectionBorder}
+                strokeWidth={1.5}
+              />
+              {showNumbers ? (
+                <Text
+                  x={block.x + PAD + i * stepW + stepW / 2 - radius}
+                  y={midY - 7}
+                  width={radius * 2}
+                  align="center"
+                  text={String(i + 1)}
+                  fontSize={bodySize}
+                  fontStyle="bold"
+                  fontFamily={MONO}
+                  fill={i === 0 ? tokens.canvas : tokens.textPrimary}
+                />
+              ) : null}
+              <Text
+                x={block.x + PAD + i * stepW + 6}
+                y={midY + radius + 10}
+                width={stepW - 12}
+                align="center"
+                text={step}
+                fontSize={bodySize}
+                fontFamily={FONT}
+                fill={tokens.textPrimary}
+                wrap="word"
+                ellipsis
+              />
+            </Group>
           ))}
         </Group>
       );

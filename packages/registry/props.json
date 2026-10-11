@@ -216,6 +216,177 @@
       ]
     },
     {
+      "id": "section.accordion",
+      "props": [
+        {
+          "name": "heading",
+          "type": "text",
+          "required": false,
+          "default": "Частые вопросы",
+          "limits": {},
+          "description": "Заголовок секции"
+        },
+        {
+          "name": "items",
+          "type": "textarea",
+          "required": true,
+          "default": "Как оформить заказ?;Где доставка?;Как вернуть?",
+          "limits": {},
+          "description": "Вопросы по одному в строке"
+        },
+        {
+          "name": "firstOpen",
+          "type": "boolean",
+          "required": false,
+          "default": true,
+          "limits": {},
+          "description": "Раскрыть первый пункт при загрузке"
+        },
+        {
+          "name": "allowMultiple",
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "limits": {},
+          "description": "Разрешить несколько раскрытых пунктов"
+        }
+      ]
+    },
+    {
+      "id": "section.tabs",
+      "props": [
+        {
+          "name": "heading",
+          "type": "text",
+          "required": false,
+          "default": "Как это работает",
+          "limits": {},
+          "description": "Заголовок секции"
+        },
+        {
+          "name": "tabs",
+          "type": "textarea",
+          "required": true,
+          "default": "Подготовка;Проверка;Доставка",
+          "limits": {},
+          "description": "Подписи вкладок по одной в строке"
+        },
+        {
+          "name": "columns",
+          "type": "number",
+          "required": false,
+          "default": 3,
+          "limits": {
+            "step": 1
+          },
+          "description": "Сколько вкладок показывать"
+        }
+      ]
+    },
+    {
+      "id": "section.gallery",
+      "props": [
+        {
+          "name": "heading",
+          "type": "text",
+          "required": false,
+          "default": "Работы",
+          "limits": {},
+          "description": "Заголовок галереи"
+        },
+        {
+          "name": "columns",
+          "type": "number",
+          "required": false,
+          "default": 3,
+          "limits": {
+            "step": 1
+          },
+          "description": "Сколько изображений в ряд"
+        },
+        {
+          "name": "gap",
+          "type": "number",
+          "required": false,
+          "default": 16,
+          "limits": {
+            "step": 4
+          },
+          "description": "Промежуток между кадрами, px"
+        }
+      ]
+    },
+    {
+      "id": "section.timeline",
+      "props": [
+        {
+          "name": "heading",
+          "type": "text",
+          "required": false,
+          "default": "История",
+          "limits": {},
+          "description": "Заголовок секции"
+        },
+        {
+          "name": "year",
+          "type": "text",
+          "required": true,
+          "default": "2019",
+          "limits": {},
+          "description": "Год у первого события"
+        },
+        {
+          "name": "stepYears",
+          "type": "number",
+          "required": false,
+          "default": 2,
+          "limits": {
+            "step": 1
+          },
+          "description": "Разница между годами"
+        },
+        {
+          "name": "events",
+          "type": "number",
+          "required": false,
+          "default": 4,
+          "limits": {
+            "step": 1
+          },
+          "description": "Сколько событий показать"
+        }
+      ]
+    },
+    {
+      "id": "section.steps",
+      "props": [
+        {
+          "name": "heading",
+          "type": "text",
+          "required": false,
+          "default": "Три шага",
+          "limits": {},
+          "description": "Заголовок секции"
+        },
+        {
+          "name": "steps",
+          "type": "textarea",
+          "required": true,
+          "default": "Заявка;Согласование;Работа",
+          "limits": {},
+          "description": "Названия шагов по одному в строке"
+        },
+        {
+          "name": "showNumbers",
+          "type": "boolean",
+          "required": false,
+          "default": true,
+          "limits": {},
+          "description": "Показывать номера шагов"
+        }
+      ]
+    },
+    {
       "id": "action.button",
       "props": [
         {

@@ -127,18 +127,27 @@ lines.push('        """Значения по умолчанию для толь�
 lines.push('        return {p.name: p.default for p in self.props if p.default is not None}');
 lines.push('');
 
+/**
+ * Литерал значения по умолчанию для Python-модуля.
+ *
+ * `String(true)` даёт `true`, а Python такого имени не знает: модуль
+ * падал при импорте с «name 'true' is not defined». Булево печатается
+ * как True/False, остальное — как есть.
+ */
+function pyDefault(value) {
+  if (value === null || value === undefined) return 'None';
+  if (typeof value === 'boolean') return value ? 'True' : 'False';
+  if (typeof value === 'number') return String(value);
+  return JSON.stringify(value);
+}
+
 if (propsByModule.size) {
   lines.push('SCHEMAS: dict[str, ModuleSchema] = {');
     for (const m of propsRegistry.modules) {
       const props = m.props
         .map((p) => {
           const limits = JSON.stringify(p.limits ?? {});
-          const def =
-            p.default === null || p.default === undefined
-              ? 'None'
-              : typeof p.default === 'number' || typeof p.default === 'boolean'
-                ? String(p.default)
-                : JSON.stringify(p.default);
+          const def = pyDefault(p.default);
           const cls = 'Prop';
           return (
             `        ${cls}('${p.name}', '${p.type}', ` +
@@ -284,9 +293,11 @@ if (propsByModule.size) {
         const def =
           p.default === null || p.default === undefined
             ? 'null'
-            : typeof p.default === 'number' || typeof p.default === 'boolean'
+            : typeof p.default === 'boolean'
               ? String(p.default)
-              : JSON.stringify(p.default);
+              : typeof p.default === 'number'
+                ? String(p.default)
+                : JSON.stringify(p.default);
         return (
           `    { name: '${p.name}', type: '${p.type}', required: ${p.required}, ` +
           `default: ${def}, limits: ${JSON.stringify(p.limits ?? {})}, ` +

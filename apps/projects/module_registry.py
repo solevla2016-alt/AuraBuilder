@@ -186,6 +186,48 @@ SCHEMAS: dict[str, ModuleSchema] = {
         Prop('buttonLabel', 'text', False, "Связаться", {}, 'Подпись кнопки'),
         ),
     ),
+    'section.accordion': ModuleSchema(
+        'section.accordion',
+        (
+        Prop('heading', 'text', False, "Частые вопросы", {}, 'Заголовок секции'),
+        Prop('items', 'textarea', True, "Как оформить заказ?;Где доставка?;Как вернуть?", {}, 'Вопросы по одному в строке'),
+        Prop('firstOpen', 'boolean', False, True, {}, 'Раскрыть первый пункт при загрузке'),
+        Prop('allowMultiple', 'boolean', False, False, {}, 'Разрешить несколько раскрытых пунктов'),
+        ),
+    ),
+    'section.tabs': ModuleSchema(
+        'section.tabs',
+        (
+        Prop('heading', 'text', False, "Как это работает", {}, 'Заголовок секции'),
+        Prop('tabs', 'textarea', True, "Подготовка;Проверка;Доставка", {}, 'Подписи вкладок по одной в строке'),
+        Prop('columns', 'number', False, 3, {"step":1}, 'Сколько вкладок показывать'),
+        ),
+    ),
+    'section.gallery': ModuleSchema(
+        'section.gallery',
+        (
+        Prop('heading', 'text', False, "Работы", {}, 'Заголовок галереи'),
+        Prop('columns', 'number', False, 3, {"step":1}, 'Сколько изображений в ряд'),
+        Prop('gap', 'number', False, 16, {"step":4}, 'Промежуток между кадрами, px'),
+        ),
+    ),
+    'section.timeline': ModuleSchema(
+        'section.timeline',
+        (
+        Prop('heading', 'text', False, "История", {}, 'Заголовок секции'),
+        Prop('year', 'text', True, "2019", {}, 'Год у первого события'),
+        Prop('stepYears', 'number', False, 2, {"step":1}, 'Разница между годами'),
+        Prop('events', 'number', False, 4, {"step":1}, 'Сколько событий показать'),
+        ),
+    ),
+    'section.steps': ModuleSchema(
+        'section.steps',
+        (
+        Prop('heading', 'text', False, "Три шага", {}, 'Заголовок секции'),
+        Prop('steps', 'textarea', True, "Заявка;Согласование;Работа", {}, 'Названия шагов по одному в строке'),
+        Prop('showNumbers', 'boolean', False, True, {}, 'Показывать номера шагов'),
+        ),
+    ),
     'action.button': ModuleSchema(
         'action.button',
         (
