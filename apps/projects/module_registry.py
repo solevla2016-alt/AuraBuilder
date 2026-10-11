@@ -176,7 +176,7 @@ SCHEMAS: dict[str, ModuleSchema] = {
         'section.cards',
         (
         Prop('heading', 'text', False, "Подборка", {}, 'Заголовок секции карточек'),
-        Prop('columns', 'number', False, 3, {}, 'Сколько карточек показывать'),
+        Prop('columns', 'number', False, 3, {"min":2,"max":4,"step":1}, 'Сколько карточек показывать'),
         ),
     ),
     'section.cta': ModuleSchema(
@@ -200,15 +200,15 @@ SCHEMAS: dict[str, ModuleSchema] = {
         (
         Prop('heading', 'text', False, "Как это работает", {}, 'Заголовок секции'),
         Prop('tabs', 'textarea', True, "Подготовка;Проверка;Доставка", {}, 'Подписи вкладок по одной в строке'),
-        Prop('columns', 'number', False, 3, {"step":1}, 'Сколько вкладок показывать'),
+        Prop('columns', 'number', False, 3, {"min":2,"max":4,"step":1}, 'Сколько вкладок показывать'),
         ),
     ),
     'section.gallery': ModuleSchema(
         'section.gallery',
         (
         Prop('heading', 'text', False, "Работы", {}, 'Заголовок галереи'),
-        Prop('columns', 'number', False, 3, {"step":1}, 'Сколько изображений в ряд'),
-        Prop('gap', 'number', False, 16, {"step":4}, 'Промежуток между кадрами, px'),
+        Prop('columns', 'number', False, 3, {"min":2,"max":5,"step":1}, 'Сколько изображений в ряд'),
+        Prop('gap', 'number', False, 16, {"min":4,"max":48,"step":4}, 'Промежуток между кадрами, px'),
         ),
     ),
     'section.timeline': ModuleSchema(
@@ -216,8 +216,8 @@ SCHEMAS: dict[str, ModuleSchema] = {
         (
         Prop('heading', 'text', False, "История", {}, 'Заголовок секции'),
         Prop('year', 'text', True, "2019", {}, 'Год у первого события'),
-        Prop('stepYears', 'number', False, 2, {"step":1}, 'Разница между годами'),
-        Prop('events', 'number', False, 4, {"step":1}, 'Сколько событий показать'),
+        Prop('stepYears', 'number', False, 2, {"min":1,"max":10,"step":1}, 'Разница между годами'),
+        Prop('events', 'number', False, 4, {"min":2,"max":8,"step":1}, 'Сколько событий показать'),
         ),
     ),
     'section.steps': ModuleSchema(
@@ -226,6 +226,80 @@ SCHEMAS: dict[str, ModuleSchema] = {
         Prop('heading', 'text', False, "Три шага", {}, 'Заголовок секции'),
         Prop('steps', 'textarea', True, "Заявка;Согласование;Работа", {}, 'Названия шагов по одному в строке'),
         Prop('showNumbers', 'boolean', False, True, {}, 'Показывать номера шагов'),
+        ),
+    ),
+    'legal.offer': ModuleSchema(
+        'legal.offer',
+        (
+        Prop('heading', 'text', True, "Публичная оферта", {}, 'Заголовок документа'),
+        Prop('body', 'textarea', True, "Текст оферты размещается здесь.", {}, 'Полный текст документа'),
+        Prop('updated', 'text', False, None, {}, 'Дата редакции документа'),
+        ),
+    ),
+    'legal.policy': ModuleSchema(
+        'legal.policy',
+        (
+        Prop('heading', 'text', True, "Политика конфиденциальности", {}, 'Заголовок документа'),
+        Prop('body', 'textarea', True, "Текст политики размещается здесь.", {}, 'Полный текст документа'),
+        Prop('updated', 'text', False, None, {}, 'Дата редакции документа'),
+        ),
+    ),
+    'legal.requisites': ModuleSchema(
+        'legal.requisites',
+        (
+        Prop('heading', 'text', False, "Реквизиты", {}, 'Заголовок блока'),
+        Prop('name', 'text', True, "Наименование организации", {}, 'Полное наименование с организационно-правовой формой'),
+        Prop('inn', 'text', True, "0000000000", {}, 'ИНН'),
+        Prop('ogrn', 'text', False, None, {}, 'ОГРН или ОГРНИП'),
+        Prop('address', 'text', True, "Адрес", {}, 'Юридический адрес'),
+        Prop('email', 'text', False, None, {}, 'Почта для обращений'),
+        ),
+    ),
+    'legal.consent': ModuleSchema(
+        'legal.consent',
+        (
+        Prop('text', 'text', True, "Я согласен на обработку персональных данных", {}, 'Текст согласия рядом с флажком'),
+        Prop('link', 'text', True, "/privacy-policy", {}, 'Адрес политики конфиденциальности'),
+        Prop('required', 'boolean', False, True, {}, 'Обязательный флажок'),
+        ),
+    ),
+    'legal.age-mark': ModuleSchema(
+        'legal.age-mark',
+        (
+        Prop('text', 'text', True, "18+", {}, 'Надпись маркировки'),
+        Prop('note', 'text', False, None, {}, 'Пояснение под маркировкой'),
+        ),
+    ),
+    'legal.ad-mark': ModuleSchema(
+        'legal.ad-mark',
+        (
+        Prop('text', 'text', True, "Реклама", {}, 'Надпись маркировки рекламы'),
+        Prop('href', 'text', False, None, {}, 'Адрес сведений о рекламе'),
+        Prop('label', 'text', False, None, {}, 'Надпись ссылки'),
+        ),
+    ),
+    'trust.logos': ModuleSchema(
+        'trust.logos',
+        (
+        Prop('heading', 'text', False, "Нам доверяют", {}, 'Заголовок блока'),
+        Prop('items', 'textarea', True, "Клиент;Клиент;Клиент", {}, 'Названия компаний по одному в строке'),
+        Prop('grayscale', 'boolean', False, True, {}, 'Приглушать логотипы'),
+        ),
+    ),
+    'trust.review': ModuleSchema(
+        'trust.review',
+        (
+        Prop('author', 'text', True, "Покупатель", {}, 'Имя автора отзыва'),
+        Prop('rating', 'number', True, 5, {"min":1,"max":5,"step":1}, 'Оценка'),
+        Prop('text', 'textarea', True, "Отзыв покупателя о работе магазина.", {}, 'Текст отзыва'),
+        ),
+    ),
+    'trust.rating': ModuleSchema(
+        'trust.rating',
+        (
+        Prop('value', 'number', True, 4.8, {"min":0,"max":5,"step":0.1}, 'Средняя оценка'),
+        Prop('count', 'number', True, 120, {"min":0,"max":100000,"step":1}, 'Сколько отзывов учтено'),
+        Prop('source', 'text', False, None, {}, 'Источник оценок'),
         ),
     ),
     'action.button': ModuleSchema(
@@ -246,7 +320,7 @@ SCHEMAS: dict[str, ModuleSchema] = {
         'data.collection',
         (
         Prop('source', 'text', False, None, {}, 'Идентификатор источника данных; пусто — источник не выбран'),
-        Prop('limit', 'number', False, 6, {}, 'Сколько записей показывать'),
+        Prop('limit', 'number', False, 6, {"min":1,"max":24,"step":1}, 'Сколько записей показывать'),
         ),
     ),
     'data.single': ModuleSchema(
@@ -267,7 +341,7 @@ SCHEMAS: dict[str, ModuleSchema] = {
         'data.list',
         (
         Prop('source', 'text', False, None, {}, 'Идентификатор источника данных; пусто — источник не выбран'),
-        Prop('limit', 'number', False, 10, {}, 'Сколько строк показывать'),
+        Prop('limit', 'number', False, 10, {"min":1,"max":50,"step":1}, 'Сколько строк показывать'),
         ),
     ),
     'data.search': ModuleSchema(
@@ -281,7 +355,7 @@ SCHEMAS: dict[str, ModuleSchema] = {
         'data.pagination',
         (
         Prop('source', 'text', False, None, {}, 'Идентификатор источника данных; пусто — источник не выбран'),
-        Prop('limit', 'number', False, 10, {}, 'Записей на страницу'),
+        Prop('limit', 'number', False, 10, {"min":1,"max":50,"step":1}, 'Записей на страницу'),
         ),
     ),
 }

@@ -75,7 +75,15 @@ function listProp(
 ): string[] {
   const raw = prop(block, name, '');
   if (!raw) return lines(fallback.join('\n'), count);
-  return lines(raw, count);
+  // Разделителей два: перевод строки и точка с запятой. Второй нужен
+  // для значения по умолчанию из схемы — оно записывается в одну
+  // строку, перевода строки там не бывает.
+  const parts = raw
+    .split(/\r?\n/)
+    .flatMap((chunk) => chunk.split(';'))
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return lines(parts.join('\n'), count);
 }
 
 function lines(content: string, count: number): string[] {
@@ -1350,6 +1358,401 @@ export function modulePreview(
               />
             </Group>
           ))}
+        </Group>
+      );
+    }
+
+    case 'legal.offer':
+    case 'legal.policy': {
+      /*
+       * Документ: заголовок, дата редакции и полотно текста.
+       *
+       * Дата показана отдельно от заголовка, потому что для юридического
+       * документа это существенная часть: по дате видно, какая редакция
+       * опубликована, и она должна попасть в выгрузку вместе с текстом.
+       */
+      const heading = prop(block, 'heading', 'Публичная оферта');
+      const updated = prop(block, 'updated', '') ?? '';
+      const body = prop(block, 'body', 'Текст документа размещается здесь.');
+      const top = block.y + PAD + titleSize + (updated ? 8 : 0);
+
+      return (
+        <Group listening={false}>
+          <Text
+            x={block.x + PAD}
+            y={block.y + PAD}
+            width={block.width - PAD * 2}
+            text={heading}
+            fontSize={titleSize}
+            fontStyle={headingWeight}
+            fontFamily={FONT}
+            fill={headingFill}
+          />
+          {updated ? (
+            <Text
+              x={block.x + PAD}
+              y={block.y + PAD + titleSize}
+              width={block.width - PAD * 2}
+              text={`Редакция от ${updated}`}
+              fontSize={bodySize}
+              fontFamily={MONO}
+              fill={tokens.textSecondary}
+            />
+          ) : null}
+          <Rect
+            x={block.x + PAD}
+            y={top + titleSize + (updated ? 8 : 0)}
+            width={block.width - PAD * 2}
+            height={Math.max(30, h - PAD * 2 - titleSize - (updated ? 8 : 0))}
+            fill={tokens.panel}
+            stroke={tokens.border}
+            strokeWidth={1}
+            cornerRadius={8}
+          />
+          <Text
+            x={block.x + PAD + 14}
+            y={top + titleSize + (updated ? 8 : 0) + 12}
+            width={block.width - PAD * 2 - 28}
+            height={Math.max(20, h - PAD * 2 - titleSize - 40)}
+            text={body}
+            fontSize={bodySize}
+            fontFamily={FONT}
+            fill={tokens.textPrimary}
+            wrap="word"
+            ellipsis
+          />
+        </Group>
+      );
+    }
+
+    case 'legal.requisites': {
+      /*
+       * Реквизиты строкой по полям: ИНН, ОГРН и адрес должны читаться
+       * подряд, а не прятаться в абзац — их проверяют при закупке.
+       */
+      const heading = prop(block, 'heading', 'Реквизиты');
+      const rows = ([
+        ['Наименование', prop(block, 'name', 'Наименование организации')],
+        ['ИНН', prop(block, 'inn', '0000000000')],
+        ['ОГРН', prop(block, 'ogrn', '')],
+        ['Адрес', prop(block, 'address', 'Адрес')],
+        ['Почта', prop(block, 'email', '')],
+      ] as [string, string | undefined][]).filter(
+        (pair): pair is [string, string] => Boolean(pair[1]),
+      );
+      const top = block.y + PAD + titleSize + 10;
+      const rowHeight = Math.max(18, (h - PAD * 2 - titleSize - 10) / rows.length);
+
+      return (
+        <Group listening={false}>
+          <Text
+            x={block.x + PAD}
+            y={block.y + PAD}
+            width={block.width - PAD * 2}
+            text={heading}
+            fontSize={titleSize}
+            fontStyle={headingWeight}
+            fontFamily={FONT}
+            fill={headingFill}
+          />
+          {rows.map(([label, value], i) => (
+            <Group key={`${block.id}-r${i}`}>
+              <Text
+                x={block.x + PAD}
+                y={top + i * rowHeight}
+                width={120}
+                text={label}
+                fontSize={bodySize}
+                fontFamily={FONT}
+                fill={tokens.textSecondary}
+              />
+              <Text
+                x={block.x + PAD + 124}
+                y={top + i * rowHeight}
+                width={block.width - PAD * 2 - 124}
+                text={value}
+                fontSize={bodySize}
+                fontStyle={label === 'ИНН' || label === 'ОГРН' ? 'bold' : 'normal'}
+                fontFamily={label === 'ИНН' || label === 'ОГРН' ? MONO : FONT}
+                fill={tokens.textPrimary}
+                wrap="word"
+                ellipsis
+              />
+            </Group>
+          ))}
+        </Group>
+      );
+    }
+
+    case 'legal.consent': {
+      /*
+       * Согласие: флажок и текст рядом. Неактивное состояние флажка
+       * нарисовано рамкой, а не галочкой — форма отправляет данные
+       * только с отмеченным флажком, и на макете это должно быть видно.
+       */
+      const text = prop(block, 'text', 'Я согласен на обработку персональных данных');
+      const size = 16;
+      const midY = block.y + h / 2 - size / 2;
+
+      return (
+        <Group listening={false}>
+          <Rect
+            x={block.x + PAD}
+            y={midY}
+            width={size}
+            height={size}
+            fill={tokens.panel}
+            stroke={tokens.textSecondary}
+            strokeWidth={1.5}
+            cornerRadius={3}
+          />
+          <Text
+            x={block.x + PAD + size + 10}
+            y={midY + 1}
+            width={block.width - PAD * 2 - size - 10}
+            height={h - PAD}
+            text={text}
+            fontSize={bodySize}
+            fontFamily={FONT}
+            fill={tokens.textPrimary}
+            wrap="word"
+            ellipsis
+          />
+        </Group>
+      );
+    }
+
+    case 'legal.age-mark': {
+      /*
+       * Возрастная маркировка: знак «18+» в рамке и пояснение.
+       * Рамка обязательна — по ТЗ п.9.6 маркировка должна быть явно
+       * читаемой, а не просто набором цифр в тексте.
+       */
+      const text = prop(block, 'text', '18+');
+      const note = prop(block, 'note', '') ?? '';
+      const boxSize = Math.min(56, h - PAD * 2);
+      const midY = block.y + h / 2 - (note ? boxSize + 8 : 0) / 2;
+
+      return (
+        <Group listening={false}>
+          <Rect
+            x={block.x + PAD}
+            y={midY}
+            width={boxSize}
+            height={boxSize}
+            stroke={tokens.textPrimary}
+            strokeWidth={2}
+            cornerRadius={6}
+          />
+          <Text
+            x={block.x + PAD}
+            y={midY + boxSize / 2 - 13}
+            width={boxSize}
+            align="center"
+            text={text}
+            fontSize={Math.min(22, boxSize * 0.44)}
+            fontStyle="bold"
+            fontFamily={MONO}
+            fill={tokens.textPrimary}
+          />
+          {note ? (
+            <Text
+              x={block.x + PAD}
+              y={midY + boxSize + 6}
+              width={block.width - PAD * 2}
+              text={note}
+              fontSize={bodySize}
+              fontFamily={FONT}
+              fill={tokens.textSecondary}
+              wrap="word"
+              ellipsis
+            />
+          ) : null}
+        </Group>
+      );
+    }
+
+    case 'legal.ad-mark': {
+      /*
+       * Маркировка рекламы: рамка вокруг пометки. По ТЗ п.9.5 пометка
+       * должна отделяться от контента, иначе её невозможно отличить от
+       * обычной подписи.
+       */
+      const text = prop(block, 'text', 'Реклама');
+      const href = prop(block, 'href', '') ?? '';
+      const label = prop(block, 'label', '') ?? '';
+      const boxHeight = 34;
+      const boxWidth = Math.min(block.width - PAD * 2, Math.max(120, text.length * 9 + 40));
+
+      return (
+        <Group listening={false}>
+          <Rect
+            x={block.x + PAD}
+            y={block.y + h / 2 - boxHeight / 2}
+            width={boxWidth}
+            height={boxHeight}
+            fill={tokens.panelSunken}
+            stroke={tokens.border}
+            strokeWidth={1}
+            cornerRadius={6}
+          />
+          <Text
+            x={block.x + PAD + 12}
+            y={block.y + h / 2 - 9}
+            width={boxWidth - 24}
+            text={href && label ? `${text} · ${label}` : text}
+            fontSize={bodySize}
+            fontFamily={FONT}
+            fill={tokens.textSecondary}
+          />
+        </Group>
+      );
+    }
+
+    case 'trust.logos': {
+      /*
+       * Логотипы клиентов. Плейсхолдеры с подписями: файлов на стенде
+       * нет, а рамка с названием честнее подменённой картинки.
+       */
+      const heading = prop(block, 'heading', 'Нам доверяют');
+      const items = listProp(block, 'items', 4, ['Клиент', 'Клиент', 'Клиент']);
+      const muted = block.props?.['grayscale'] !== false;
+      const top = block.y + PAD + titleSize + 10;
+      const area = Math.max(30, h - PAD * 2 - titleSize - 10);
+      const cellW = (block.width - PAD * 2 - 12 * (items.length - 1)) / Math.max(items.length, 1);
+
+      return (
+        <Group listening={false}>
+          <Text
+            x={block.x + PAD}
+            y={block.y + PAD}
+            width={block.width - PAD * 2}
+            text={heading}
+            fontSize={titleSize}
+            fontStyle={headingWeight}
+            fontFamily={FONT}
+            fill={headingFill}
+          />
+          {items.map((item, i) => (
+            <Group key={`${block.id}-l${i}`}>
+              <Rect
+                x={block.x + PAD + i * (cellW + 12)}
+                y={top}
+                width={cellW}
+                height={area}
+                fill={tokens.panelSunken}
+                stroke={tokens.border}
+                strokeWidth={1}
+                cornerRadius={8}
+              />
+              <Text
+                x={block.x + PAD + i * (cellW + 12) + 8}
+                y={top + area / 2 - 8}
+                width={cellW - 16}
+                align="center"
+                text={item}
+                fontSize={bodySize}
+                fontFamily={FONT}
+                fill={muted ? tokens.textSecondary : tokens.textPrimary}
+                ellipsis
+              />
+            </Group>
+          ))}
+        </Group>
+      );
+    }
+
+    case 'trust.review': {
+      /*
+       * Отзыв: оценка звёздами, текст и автор. Звёзды рисуются
+       * символами, а не иконками: их видно на любом масштабе холста и
+       * в выгрузке без шрифтовых файлов.
+       */
+      const author = prop(block, 'author', 'Покупатель');
+      const rating = Math.max(1, Math.min(5, Number(block.props?.['rating'] ?? 5)));
+      const body = prop(block, 'text', 'Отзыв покупателя о работе магазина.');
+      const top = block.y + PAD;
+
+      return (
+        <Group listening={false}>
+          <Text
+            x={block.x + PAD}
+            y={top}
+            width={block.width - PAD * 2}
+            text={'★'.repeat(rating) + '☆'.repeat(5 - rating)}
+            fontSize={Math.min(18, titleSize * 0.8)}
+            fontFamily={FONT}
+            fill={tokens.selectionBorder}
+          />
+          <Text
+            x={block.x + PAD}
+            y={top + 26}
+            width={block.width - PAD * 2}
+            height={Math.max(20, h - PAD * 2 - 52)}
+            text={body}
+            fontSize={bodySize}
+            fontFamily={FONT}
+            fill={tokens.textPrimary}
+            wrap="word"
+            ellipsis
+          />
+          <Text
+            x={block.x + PAD}
+            y={block.y + h - PAD - 14}
+            width={block.width - PAD * 2}
+            text={author}
+            fontSize={bodySize}
+            fontStyle="bold"
+            fontFamily={FONT}
+            fill={tokens.textSecondary}
+          />
+        </Group>
+      );
+    }
+
+    case 'trust.rating': {
+      /*
+       * Рейтинг: крупная оценка, число отзывов и, если задан,
+       * источник. Оценка набрана моноширинным шрифтом — рядом стоящие
+       * цифры в обычном шрифте разъезжаются.
+       */
+      const value = prop(block, 'value', '4.8') ?? '4.8';
+      const count = prop(block, 'count', '120') ?? '120';
+      const source = prop(block, 'source', '') ?? '';
+      const rating = Math.max(0, Math.min(5, Number(value) || 0));
+      const stars = '★'.repeat(Math.round(rating)) + '☆'.repeat(5 - Math.round(rating));
+
+      return (
+        <Group listening={false}>
+          <Text
+            x={block.x + PAD}
+            y={block.y + h / 2 - titleSize / 2 - 8}
+            width={120}
+            text={value}
+            fontSize={Math.max(28, titleSize * 1.4)}
+            fontStyle="bold"
+            fontFamily={MONO}
+            fill={tokens.selectionBorder}
+          />
+          <Text
+            x={block.x + PAD + 124}
+            y={block.y + h / 2 - 22}
+            width={block.width - PAD * 2 - 124}
+            text={stars}
+            fontSize={Math.min(16, bodySize)}
+            fontFamily={FONT}
+            fill={tokens.selectionBorder}
+          />
+          <Text
+            x={block.x + PAD + 124}
+            y={block.y + h / 2 - 2}
+            width={block.width - PAD * 2 - 124}
+            text={`${count} отзывов${source ? ` · ${source}` : ''}`}
+            fontSize={bodySize}
+            fontFamily={FONT}
+            fill={tokens.textSecondary}
+            ellipsis
+          />
         </Group>
       );
     }

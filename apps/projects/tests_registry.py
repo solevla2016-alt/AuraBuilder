@@ -121,6 +121,12 @@ class SchemaTests(APITestCase):
             # в выгрузке.
             'section.accordion', 'section.tabs', 'section.gallery',
             'section.timeline', 'section.steps',
+            # Юридические и доверительные модули: без них сайт нельзя
+            # опубликовать в РФ (ТЗ п.9.5, п.9.6), поэтому схемы
+            # описаны вместе с представлениями на холсте.
+            'legal.offer', 'legal.policy', 'legal.requisites',
+            'legal.consent', 'legal.age-mark', 'legal.ad-mark',
+            'trust.logos', 'trust.review', 'trust.rating',
         }
         self.assertEqual(set(SCHEMAS), expected)
         self.assertEqual(SCHEMA_IDS, frozenset(expected))

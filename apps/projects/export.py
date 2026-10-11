@@ -151,18 +151,43 @@ def _text(block: dict, name: str, fallback: str = '') -> str:
 
 
 
+def _own(block: dict, name: str, fallback: str = '') -> str:
+    """Значение свойства без подстановки подписи блока.
+
+    _text для большинства модулей прав: поле «Название» в панели
+    попадает в label, и подпись блока разумно считать заголовком.
+    Но для содержимого это неверно: подпись блока не является текстом
+    оферты, наименованием организации или названием компании из
+    логотипов. Без этого выгрузка подставляла «Блок» вместо
+    содержимого — тихо и очень заметно на готовом сайте.
+    """
+    value = _props(block).get(name)
+    if isinstance(value, str) and value.strip():
+        return value
+    if isinstance(value, bool):
+        return 'да' if value else 'нет'
+    if isinstance(value, (int, float)):
+        return str(value)
+    return fallback
+
+
 def _items(block: dict, name: str, fallback: list[str]) -> list[str]:
     """Пункты многострочного свойства: список строк без пустых.
 
-    Значение хранится одной строкой с переводами строк — так список
-    занимает одно поле панели свойств, а не двадцать. Если свойство
-    не задано, берутся значения по умолчанию: пустая секция в
-    выгрузке выглядит как ошибка сборки, хотя собрана верно.
+    Значение хранится одной строкой — так список занимает одно поле
+    панели свойств, а не двадцать.
+
+    Разделителей два: перевод строки и точка с запятой. Второй нужен
+    для значения по умолчанию: оно записывается в документе схем в одну
+    строку, и перевод строки туда не помещается. Если принимать только
+    переводы строк, список из трёх пунктов пришлось бы хранить одним
+    словом «Клиент».
     """
-    raw = _text(block, name, '')
+    raw = _own(block, name, '')
     if not raw:
         return list(fallback)
-    parts = [line.strip() for line in raw.splitlines() if line.strip()]
+    parts = [item.strip() for chunk in raw.splitlines() for item in chunk.split(';')]
+    parts = [item for item in parts if item]
     return parts or list(fallback)
 
 def _align(block: dict) -> str:
@@ -512,16 +537,36 @@ def _render_age_mark(block: dict) -> str:
     """Знак возрастной маркировки (ТЗ п.9.2).
 
     Текст обязателен законом и не должен пропасть при экспорте: без
-    него площадка может отклонить публикацию.
+    него площадка может отклонить публикацию. Рамка вокруг знака
+    обязательна тоже — маркировка должна читаться явно.
     """
-    text = _text(block, 'text', _text(block, 'label', '18+'))
-    return f'<div class="legal age-mark">{esc(text)}</div>'
+    text = _own(block, 'text', '18+')
+    note = _own(block, 'note', '')
+    tail = f'<small>{esc(note)}</small>' if note else ''
+    return (
+        '<div class="legal age-mark">'
+        f'<span class="legal age-mark__sign" role="img" aria-label="{esc(text)}">{esc(text)}</span>'
+        f'{tail}</div>'
+    )
 
 
 def _render_ad_mark(block: dict) -> str:
-    label = _text(block, 'label', 'Реклама')
-    href = _text(block, 'link', '')
-    body = f'<a href="{esc(href)}">{esc(label)}</a>' if href else esc(label)
+    """Маркировка рекламы (ТЗ п.9.5).
+
+    Имена свойств приведены к схеме: раньше читались label и link,
+    которых в схеме нет, — вместо них были text, href и label. Из-за
+    этого пометка выводилась подписью блока, а надпись о маркировке
+    до выгрузки не доходила вовсе.
+
+    Пометка отделяется рамкой: по ТЗ её должно быть видно, что это
+    реклама, а не часть контента.
+    """
+    text = _own(block, 'text', 'Реклама')
+    href = _own(block, 'href', '')
+    label = _own(block, 'label', '')
+
+    inner = esc(f'{text} · {label}') if label else esc(text)
+    body = f'<a href="{esc(href)}">{inner}</a>' if href else inner
     return f'<div class="legal ad-mark">{body}</div>'
 
 
@@ -530,24 +575,33 @@ def _render_consent(block: dict) -> str:
 
     Ссылка обязательна: без неё форма отправляет данные без правового
     основания, и это останавливает публикацию магазина.
+
+    Флажок обязателен по умолчанию: свойство required снимает его явно,
+    и молчаливое отсутствие галочки было бы нарушением закона.
     """
-    text = _text(block, 'text', 'Я согласен на обработку персональных данных')
-    href = _text(block, 'link', '/privacy')
+    text = _own(block, 'text', 'Я согласен на обработку персональных данных')
+    href = _own(block, 'link', '/privacy-policy')
+    required = _props(block).get('required') is not False
+    flag = '<input type="checkbox" required>' if required else '<input type="checkbox">'
     return (
         '<p class="legal consent">'
-        f'<label><input type="checkbox" required> {esc(text)} '
+        f'<label>{flag} {esc(text)} '
         f'<a href="{esc(href)}">политика</a></label></p>'
     )
 
 
 def _render_review(block: dict) -> str:
-    """Отзыв: оценка, имя, текст."""
-    raw = _text(block, 'items') or _text(block, 'text')
-    parts = [p.strip() for p in raw.split('|') if p.strip()]
-    author = parts[0] if parts else 'Покупатель'
-    rating = parts[1] if len(parts) > 1 else '5'
-    body = parts[2] if len(parts) > 2 else 'Отзыв покупателя'
-    stars = '★' * max(0, min(5, int(rating) if str(rating).isdigit() else 5))
+    """Отзыв: оценка, текст, автор.
+
+    Раньше всё три поля читались из одного свойства через разделитель
+    «|», которого нет в схеме: author, rating и text настраивались
+    по отдельности и в выгрузку не попадали.
+    """
+    author = _own(block, 'author', '')
+    body = _own(block, 'text', '')
+    rating = _props(block).get('rating')
+    rating = int(rating) if isinstance(rating, (int, float)) else 5
+    stars = '★' * max(0, min(5, rating))
     return (
         '<figure class="review block">'
         f'<blockquote>{esc(body)}</blockquote>'
@@ -556,46 +610,109 @@ def _render_review(block: dict) -> str:
 
 
 def _render_rating(block: dict) -> str:
-    raw = _text(block, 'items') or _text(block, 'text')
-    parts = [p.strip() for p in raw.split('|') if p.strip()]
-    value = parts[0] if parts else '4.8'
-    count = parts[1] if len(parts) > 1 else '120'
+    """Рейтинг: оценка, число отзывов, источник."""
+    value = _props(block).get('value')
+    value = value if isinstance(value, (int, float)) else 4.8
+    count = _props(block).get('count')
+    count = int(count) if isinstance(count, (int, float)) else 120
+    source = _own(block, 'source', '')
+    tail = f' отзывов' + (f' · {esc(source)}' if source else '')
     return (
-        '<div class="rating block">'
-        f'<b>{esc(value)}</b> · {esc(count)} отзывов</div>'
+        f'<div class="rating block"><b>{value}</b> · {count}{tail}</div>'
     )
 
 
 def _render_logos(block: dict) -> str:
-    raw = _text(block, 'items') or _text(block, 'text')
-    items = [line.strip() for line in raw.split('\n') if line.strip()] or ['Логотип']
-    cells = ''.join(
+    """Логотипы клиентов: названия плейсхолдером."""
+    heading = _text(block, 'heading', 'Нам доверяют')
+    items = _items(block, 'items', ['Клиент', 'Клиент', 'Клиент'])
+    cells = "".join(
         f'<div class="logos__item media__placeholder">{esc(item)}</div>' for item in items
     )
-    return f'<div class="logos">{cells}</div>'
+    return (
+        '<section class="section section--trust section--logos">'
+        + (f'<h2>{esc(heading)}</h2>' if heading else '')
+        + f'<div class="logos">{cells}</div></section>'
+    )
+
+
+def _render_legal_document(block: dict, kind: str) -> str:
+    """Юридический документ: оферта или политика конфиденциальности.
+
+    Раньше здесь выводилась строка «Текст оферты.» / «Текст политики.»:
+    пользователь вставлял документ в редакторе, а в выгрузку попадала
+    заглушка. Для юридического документа это хуже всего — на сайте
+    заказчика оказывался чужой текст, который выглядит настоящим.
+
+    Текст выводится по абзацам: переводы строк сохраняются, иначе
+    документ слипся бы в одну простыню.
+    """
+    default_heading = 'Публичная оферта' if kind == 'offer' else 'Политика конфиденциальности'
+    heading = _text(block, 'heading', default_heading)
+    body = _own(block, 'body', '')
+    updated = _own(block, 'updated', '')
+
+    paragraphs = [
+        f'<p>{esc(chunk.strip())}</p>'
+        for chunk in body.splitlines()
+        if chunk.strip()
+    ]
+
+    return (
+        f'<section class="section section--legal" id="{kind}">'
+        f'<h2>{esc(heading)}</h2>'
+        + (f'<p class="legal__updated">Редакция от {esc(updated)}</p>' if updated else '')
+        + ("".join(paragraphs) or f'<p>{esc(_default_legal_text(kind))}</p>')
+        + '</section>'
+    )
+
+
+def _default_legal_text(kind: str) -> str:
+    """Текст-заглушка с явным упоминанием, что его надо заменить."""
+    if kind == 'offer':
+        return 'Текст оферты не заполнен. Заполните поле «Текст оферты» в редакторе.'
+    return (
+        'Текст политики конфиденциальности не заполнен. '
+        'Заполните поле в редакторе до публикации.'
+    )
 
 
 def _render_offer(block: dict) -> str:
-    heading = _text(block, 'heading', 'Публичная оферта')
-    return (
-        '<section class="section section--legal"><h2>'
-        f'{esc(heading)}</h2><p>Текст оферты.</p></section>'
-    )
+    return _render_legal_document(block, 'offer')
 
 
 def _render_policy(block: dict) -> str:
-    heading = _text(block, 'heading', 'Политика конфиденциальности')
-    return (
-        '<section class="section section--legal"><h2>'
-        f'{esc(heading)}</h2><p>Текст политики.</p></section>'
-    )
+    return _render_policy_document(block)
+
+
+def _render_policy_document(block: dict) -> str:
+    return _render_legal_document(block, 'policy')
 
 
 def _render_requisites(block: dict) -> str:
+    """Реквизиты: строкой по полям, без абзаца прозы.
+
+    ИНН, ОГРН и адрес проверяют при закупке, и в абзаце их не найти.
+    Пустые строки пропускаются: пустой ОГРН — это отсутствие ОГРН,
+    а не «ОГРН: —».
+    """
     heading = _text(block, 'heading', 'Реквизиты')
+    rows = [
+        ('Наименование', _own(block, 'name', '')),
+        ('ИНН', _own(block, 'inn', '')),
+        ('ОГРН', _own(block, 'ogrn', '')),
+        ('Адрес', _own(block, 'address', '')),
+        ('Почта', _own(block, 'email', '')),
+    ]
+    body = "".join(
+        f'<div class="requisites__row"><dt>{esc(label)}</dt><dd>{esc(value)}</dd></div>'
+        for label, value in rows
+        if value
+    )
     return (
-        '<section class="section section--legal"><h2>'
-        f'{esc(heading)}</h2><p>Наименование, ИНН, ОГРН, адрес.</p></section>'
+        '<section class="section section--legal section--requisites">'
+        f'<h2>{esc(heading)}</h2>'
+        f'<dl class="requisites">{body}</dl></section>'
     )
 
 

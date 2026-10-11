@@ -46,19 +46,53 @@ def parse_limits(prop_type: str, raw: str) -> dict:
     if prop_type == 'select':
         limits['options'] = [o.strip() for o in text.split(',') if o.strip()]
     elif prop_type == 'number':
-        parts = [p.strip() for p in text.split(',')]
-        for part in parts:
-            if '–' in part or '-' in part:
+        # Два формата записи, потому что в документе встречаются оба:
+        #
+        #   240–960, шаг 40        — диапазон и шаг словами;
+        #   min: 240, max: 960, step: 40
+        #
+        # Раньше распознавался только первый, а документ был записан во
+        # втором. Ограничения не превращались в min/max, а проверка в
+        # сериализаторе молча ничего не проверяла: значение 9999 в поле
+        # с «max: 960» проходило как есть.
+        for part in (p.strip() for p in text.split(',')):
+            low = part.lower()
+            if not part:
+                continue
+            if low.startswith(('min:', 'min =', 'мин:')):
+                value = _number(part.split(':', 1)[-1] if ':' in part else part.split('=', 1)[-1])
+                if value is not None:
+                    limits['min'] = value
+            elif low.startswith(('max:', 'max =', 'макс:')):
+                value = _number(part.split(':', 1)[-1] if ':' in part else part.split('=', 1)[-1])
+                if value is not None:
+                    limits['max'] = value
+            elif low.startswith(('step:', 'шаг')):
+                rest = part.split(':', 1)[-1] if ':' in part else part.split()[1]
+                value = _number(rest)
+                if value is not None:
+                    limits['step'] = value
+            elif '–' in part or '-' in part:
                 lo, _, hi = part.replace('–', '-').partition('-')
-                if lo.strip().isdigit():
-                    limits['min'] = int(lo.strip())
-                if hi.strip().isdigit():
-                    limits['max'] = int(hi.strip())
-            elif part.startswith('шаг'):
-                step = part.split()[1]
-                if step.isdigit():
-                    limits['step'] = int(step)
+                if lo.strip():
+                    limits['min'] = _number(lo)
+                if hi.strip():
+                    limits['max'] = _number(hi)
     return limits
+
+
+def _number(raw: str):
+    """Число из строки: целое или с дробной частью.
+
+    Дробный шаг нужен для оценки рейтинга: 4.8 — обычное значение, и
+    int('4.8') бросил бы исключение прямо при генерации реестра.
+    """
+    text = raw.strip()
+    try:
+        value = float(text)
+    except ValueError:
+        return None
+    return int(value) if value.is_integer() else value
 
 
 def parse_default(prop_type: str, raw: str) -> object | None:
@@ -66,7 +100,11 @@ def parse_default(prop_type: str, raw: str) -> object | None:
     if text in ('', '—'):
         return None
     if prop_type == 'number':
-        return int(text) if text.isdigit() else None
+        # Дробные значения нужны оценке рейтинга: 4.8 — обычное
+        # значение, и int('4.8') бросил бы исключение. Раньше
+        # возвращался None, а обязательное свойство без значения
+        # по умолчанию останавливало генерацию.
+        return _number(text)
     if prop_type == 'boolean':
         return text.lower() in ('да', 'true', '1')
     return text

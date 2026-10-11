@@ -189,7 +189,11 @@
           "type": "number",
           "required": false,
           "default": 3,
-          "limits": {},
+          "limits": {
+            "min": 2,
+            "max": 4,
+            "step": 1
+          },
           "description": "Сколько карточек показывать"
         }
       ]
@@ -277,6 +281,8 @@
           "required": false,
           "default": 3,
           "limits": {
+            "min": 2,
+            "max": 4,
             "step": 1
           },
           "description": "Сколько вкладок показывать"
@@ -300,6 +306,8 @@
           "required": false,
           "default": 3,
           "limits": {
+            "min": 2,
+            "max": 5,
             "step": 1
           },
           "description": "Сколько изображений в ряд"
@@ -310,6 +318,8 @@
           "required": false,
           "default": 16,
           "limits": {
+            "min": 4,
+            "max": 48,
             "step": 4
           },
           "description": "Промежуток между кадрами, px"
@@ -341,6 +351,8 @@
           "required": false,
           "default": 2,
           "limits": {
+            "min": 1,
+            "max": 10,
             "step": 1
           },
           "description": "Разница между годами"
@@ -351,6 +363,8 @@
           "required": false,
           "default": 4,
           "limits": {
+            "min": 2,
+            "max": 8,
             "step": 1
           },
           "description": "Сколько событий показать"
@@ -383,6 +397,295 @@
           "default": true,
           "limits": {},
           "description": "Показывать номера шагов"
+        }
+      ]
+    },
+    {
+      "id": "legal.offer",
+      "props": [
+        {
+          "name": "heading",
+          "type": "text",
+          "required": true,
+          "default": "Публичная оферта",
+          "limits": {},
+          "description": "Заголовок документа"
+        },
+        {
+          "name": "body",
+          "type": "textarea",
+          "required": true,
+          "default": "Текст оферты размещается здесь.",
+          "limits": {},
+          "description": "Полный текст документа"
+        },
+        {
+          "name": "updated",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Дата редакции документа"
+        }
+      ]
+    },
+    {
+      "id": "legal.policy",
+      "props": [
+        {
+          "name": "heading",
+          "type": "text",
+          "required": true,
+          "default": "Политика конфиденциальности",
+          "limits": {},
+          "description": "Заголовок документа"
+        },
+        {
+          "name": "body",
+          "type": "textarea",
+          "required": true,
+          "default": "Текст политики размещается здесь.",
+          "limits": {},
+          "description": "Полный текст документа"
+        },
+        {
+          "name": "updated",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Дата редакции документа"
+        }
+      ]
+    },
+    {
+      "id": "legal.requisites",
+      "props": [
+        {
+          "name": "heading",
+          "type": "text",
+          "required": false,
+          "default": "Реквизиты",
+          "limits": {},
+          "description": "Заголовок блока"
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "default": "Наименование организации",
+          "limits": {},
+          "description": "Полное наименование с организационно-правовой формой"
+        },
+        {
+          "name": "inn",
+          "type": "text",
+          "required": true,
+          "default": "0000000000",
+          "limits": {},
+          "description": "ИНН"
+        },
+        {
+          "name": "ogrn",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "ОГРН или ОГРНИП"
+        },
+        {
+          "name": "address",
+          "type": "text",
+          "required": true,
+          "default": "Адрес",
+          "limits": {},
+          "description": "Юридический адрес"
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Почта для обращений"
+        }
+      ]
+    },
+    {
+      "id": "legal.consent",
+      "props": [
+        {
+          "name": "text",
+          "type": "text",
+          "required": true,
+          "default": "Я согласен на обработку персональных данных",
+          "limits": {},
+          "description": "Текст согласия рядом с флажком"
+        },
+        {
+          "name": "link",
+          "type": "text",
+          "required": true,
+          "default": "/privacy-policy",
+          "limits": {},
+          "description": "Адрес политики конфиденциальности"
+        },
+        {
+          "name": "required",
+          "type": "boolean",
+          "required": false,
+          "default": true,
+          "limits": {},
+          "description": "Обязательный флажок"
+        }
+      ]
+    },
+    {
+      "id": "legal.age-mark",
+      "props": [
+        {
+          "name": "text",
+          "type": "text",
+          "required": true,
+          "default": "18+",
+          "limits": {},
+          "description": "Надпись маркировки"
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Пояснение под маркировкой"
+        }
+      ]
+    },
+    {
+      "id": "legal.ad-mark",
+      "props": [
+        {
+          "name": "text",
+          "type": "text",
+          "required": true,
+          "default": "Реклама",
+          "limits": {},
+          "description": "Надпись маркировки рекламы"
+        },
+        {
+          "name": "href",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Адрес сведений о рекламе"
+        },
+        {
+          "name": "label",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Надпись ссылки"
+        }
+      ]
+    },
+    {
+      "id": "trust.logos",
+      "props": [
+        {
+          "name": "heading",
+          "type": "text",
+          "required": false,
+          "default": "Нам доверяют",
+          "limits": {},
+          "description": "Заголовок блока"
+        },
+        {
+          "name": "items",
+          "type": "textarea",
+          "required": true,
+          "default": "Клиент;Клиент;Клиент",
+          "limits": {},
+          "description": "Названия компаний по одному в строке"
+        },
+        {
+          "name": "grayscale",
+          "type": "boolean",
+          "required": false,
+          "default": true,
+          "limits": {},
+          "description": "Приглушать логотипы"
+        }
+      ]
+    },
+    {
+      "id": "trust.review",
+      "props": [
+        {
+          "name": "author",
+          "type": "text",
+          "required": true,
+          "default": "Покупатель",
+          "limits": {},
+          "description": "Имя автора отзыва"
+        },
+        {
+          "name": "rating",
+          "type": "number",
+          "required": true,
+          "default": 5,
+          "limits": {
+            "min": 1,
+            "max": 5,
+            "step": 1
+          },
+          "description": "Оценка"
+        },
+        {
+          "name": "text",
+          "type": "textarea",
+          "required": true,
+          "default": "Отзыв покупателя о работе магазина.",
+          "limits": {},
+          "description": "Текст отзыва"
+        }
+      ]
+    },
+    {
+      "id": "trust.rating",
+      "props": [
+        {
+          "name": "value",
+          "type": "number",
+          "required": true,
+          "default": 4.8,
+          "limits": {
+            "min": 0,
+            "max": 5,
+            "step": 0.1
+          },
+          "description": "Средняя оценка"
+        },
+        {
+          "name": "count",
+          "type": "number",
+          "required": true,
+          "default": 120,
+          "limits": {
+            "min": 0,
+            "max": 100000,
+            "step": 1
+          },
+          "description": "Сколько отзывов учтено"
+        },
+        {
+          "name": "source",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Источник оценок"
         }
       ]
     },
@@ -444,7 +747,11 @@
           "type": "number",
           "required": false,
           "default": 6,
-          "limits": {},
+          "limits": {
+            "min": 1,
+            "max": 24,
+            "step": 1
+          },
           "description": "Сколько записей показывать"
         }
       ]
@@ -507,7 +814,11 @@
           "type": "number",
           "required": false,
           "default": 10,
-          "limits": {},
+          "limits": {
+            "min": 1,
+            "max": 50,
+            "step": 1
+          },
           "description": "Сколько строк показывать"
         }
       ]
@@ -549,7 +860,11 @@
           "type": "number",
           "required": false,
           "default": 10,
-          "limits": {},
+          "limits": {
+            "min": 1,
+            "max": 50,
+            "step": 1
+          },
           "description": "Записей на страницу"
         }
       ]

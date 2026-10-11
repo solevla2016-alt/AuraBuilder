@@ -1706,6 +1706,23 @@ const key = async (letter, code, modifiers = 0) => {
      * выражение молча не выполняется: таймаут вместо внятной ошибки.
      */
     const items = ['Первый вопрос', 'Второй вопрос', 'Третий вопрос'].join(String.fromCharCode(10));
+    // Юридический блок ставится рядом: он проверяет не только
+    // отрисовку, но и то, что содержимое дошло до макета — раньше
+    // выгрузка подставляла «Текст оферты» вместо введённого текста.
+    blocks.push({
+      id: 'stage5-offer',
+      module: 'legal.offer',
+      x: 40,
+      y: 1200,
+      width: 640,
+      height: 300,
+      label: 'Оферта',
+      props: {
+        heading: 'Публичная оферта',
+        body: 'Продавец обязуется передать товар покупателю.',
+        updated: '01.10.2026',
+      },
+    });
     blocks.push({
       id: 'stage5-sections',
       module: 'section.accordion',
@@ -1742,6 +1759,29 @@ const key = async (letter, code, modifiers = 0) => {
   results.push([
     `секция аккордеона нарисована макетом, а не заглушкой (${sectionStats?.distinct ?? 0} оттенков)`,
     sectionsAdded?.ok === true && (sectionStats?.distinct ?? 0) >= 4,
+  ]);
+
+  /*
+   * Юридический блок рисуется отдельно: у него на холсте есть
+   * заголовок, дата редакции и полотно текста, и по пикселям видно,
+   * что полотно одно, а не пустая рамка-заглушка.
+   */
+  await evalAsync(page, `
+    const holder = document.querySelector('.canvas');
+    if (holder) holder.scrollTop = holder.scrollHeight - 60;
+    return true;
+  `);
+  await new Promise((r) => setTimeout(r, 900));
+  const legalShot = await page.send('Page.captureScreenshot', { format: 'png' });
+  const legalStats = regionStats(decodePng(Buffer.from(legalShot.data, 'base64')), {
+    x: Math.round(box.x + 40),
+    y: Math.round(box.y + 40),
+    width: Math.min(640, Math.round(box.width) - 80),
+    height: 200,
+  });
+  results.push([
+    `юридический блок отрисован с содержимым (${legalStats?.distinct ?? 0} оттенков)`,
+    sectionsAdded?.ok === true && (legalStats?.distinct ?? 0) >= 3,
   ]);
 
   /*

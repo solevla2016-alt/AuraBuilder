@@ -174,7 +174,7 @@ export const SCHEMAS: ModuleSchema[] = [
   ] },
   { moduleId: 'section.cards', props: [
     { name: 'heading', type: 'text', required: false, default: "Подборка", limits: {}, description: 'Заголовок секции карточек' },
-    { name: 'columns', type: 'number', required: false, default: 3, limits: {}, description: 'Сколько карточек показывать' }
+    { name: 'columns', type: 'number', required: false, default: 3, limits: {"min":2,"max":4,"step":1}, description: 'Сколько карточек показывать' }
   ] },
   { moduleId: 'section.cta', props: [
     { name: 'heading', type: 'text', required: false, default: "Остались вопросы?", limits: {}, description: 'Заголовок призыва к действию' },
@@ -189,23 +189,70 @@ export const SCHEMAS: ModuleSchema[] = [
   { moduleId: 'section.tabs', props: [
     { name: 'heading', type: 'text', required: false, default: "Как это работает", limits: {}, description: 'Заголовок секции' },
     { name: 'tabs', type: 'textarea', required: true, default: "Подготовка;Проверка;Доставка", limits: {}, description: 'Подписи вкладок по одной в строке' },
-    { name: 'columns', type: 'number', required: false, default: 3, limits: {"step":1}, description: 'Сколько вкладок показывать' }
+    { name: 'columns', type: 'number', required: false, default: 3, limits: {"min":2,"max":4,"step":1}, description: 'Сколько вкладок показывать' }
   ] },
   { moduleId: 'section.gallery', props: [
     { name: 'heading', type: 'text', required: false, default: "Работы", limits: {}, description: 'Заголовок галереи' },
-    { name: 'columns', type: 'number', required: false, default: 3, limits: {"step":1}, description: 'Сколько изображений в ряд' },
-    { name: 'gap', type: 'number', required: false, default: 16, limits: {"step":4}, description: 'Промежуток между кадрами, px' }
+    { name: 'columns', type: 'number', required: false, default: 3, limits: {"min":2,"max":5,"step":1}, description: 'Сколько изображений в ряд' },
+    { name: 'gap', type: 'number', required: false, default: 16, limits: {"min":4,"max":48,"step":4}, description: 'Промежуток между кадрами, px' }
   ] },
   { moduleId: 'section.timeline', props: [
     { name: 'heading', type: 'text', required: false, default: "История", limits: {}, description: 'Заголовок секции' },
     { name: 'year', type: 'text', required: true, default: "2019", limits: {}, description: 'Год у первого события' },
-    { name: 'stepYears', type: 'number', required: false, default: 2, limits: {"step":1}, description: 'Разница между годами' },
-    { name: 'events', type: 'number', required: false, default: 4, limits: {"step":1}, description: 'Сколько событий показать' }
+    { name: 'stepYears', type: 'number', required: false, default: 2, limits: {"min":1,"max":10,"step":1}, description: 'Разница между годами' },
+    { name: 'events', type: 'number', required: false, default: 4, limits: {"min":2,"max":8,"step":1}, description: 'Сколько событий показать' }
   ] },
   { moduleId: 'section.steps', props: [
     { name: 'heading', type: 'text', required: false, default: "Три шага", limits: {}, description: 'Заголовок секции' },
     { name: 'steps', type: 'textarea', required: true, default: "Заявка;Согласование;Работа", limits: {}, description: 'Названия шагов по одному в строке' },
     { name: 'showNumbers', type: 'boolean', required: false, default: true, limits: {}, description: 'Показывать номера шагов' }
+  ] },
+  { moduleId: 'legal.offer', props: [
+    { name: 'heading', type: 'text', required: true, default: "Публичная оферта", limits: {}, description: 'Заголовок документа' },
+    { name: 'body', type: 'textarea', required: true, default: "Текст оферты размещается здесь.", limits: {}, description: 'Полный текст документа' },
+    { name: 'updated', type: 'text', required: false, default: null, limits: {}, description: 'Дата редакции документа' }
+  ] },
+  { moduleId: 'legal.policy', props: [
+    { name: 'heading', type: 'text', required: true, default: "Политика конфиденциальности", limits: {}, description: 'Заголовок документа' },
+    { name: 'body', type: 'textarea', required: true, default: "Текст политики размещается здесь.", limits: {}, description: 'Полный текст документа' },
+    { name: 'updated', type: 'text', required: false, default: null, limits: {}, description: 'Дата редакции документа' }
+  ] },
+  { moduleId: 'legal.requisites', props: [
+    { name: 'heading', type: 'text', required: false, default: "Реквизиты", limits: {}, description: 'Заголовок блока' },
+    { name: 'name', type: 'text', required: true, default: "Наименование организации", limits: {}, description: 'Полное наименование с организационно-правовой формой' },
+    { name: 'inn', type: 'text', required: true, default: "0000000000", limits: {}, description: 'ИНН' },
+    { name: 'ogrn', type: 'text', required: false, default: null, limits: {}, description: 'ОГРН или ОГРНИП' },
+    { name: 'address', type: 'text', required: true, default: "Адрес", limits: {}, description: 'Юридический адрес' },
+    { name: 'email', type: 'text', required: false, default: null, limits: {}, description: 'Почта для обращений' }
+  ] },
+  { moduleId: 'legal.consent', props: [
+    { name: 'text', type: 'text', required: true, default: "Я согласен на обработку персональных данных", limits: {}, description: 'Текст согласия рядом с флажком' },
+    { name: 'link', type: 'text', required: true, default: "/privacy-policy", limits: {}, description: 'Адрес политики конфиденциальности' },
+    { name: 'required', type: 'boolean', required: false, default: true, limits: {}, description: 'Обязательный флажок' }
+  ] },
+  { moduleId: 'legal.age-mark', props: [
+    { name: 'text', type: 'text', required: true, default: "18+", limits: {}, description: 'Надпись маркировки' },
+    { name: 'note', type: 'text', required: false, default: null, limits: {}, description: 'Пояснение под маркировкой' }
+  ] },
+  { moduleId: 'legal.ad-mark', props: [
+    { name: 'text', type: 'text', required: true, default: "Реклама", limits: {}, description: 'Надпись маркировки рекламы' },
+    { name: 'href', type: 'text', required: false, default: null, limits: {}, description: 'Адрес сведений о рекламе' },
+    { name: 'label', type: 'text', required: false, default: null, limits: {}, description: 'Надпись ссылки' }
+  ] },
+  { moduleId: 'trust.logos', props: [
+    { name: 'heading', type: 'text', required: false, default: "Нам доверяют", limits: {}, description: 'Заголовок блока' },
+    { name: 'items', type: 'textarea', required: true, default: "Клиент;Клиент;Клиент", limits: {}, description: 'Названия компаний по одному в строке' },
+    { name: 'grayscale', type: 'boolean', required: false, default: true, limits: {}, description: 'Приглушать логотипы' }
+  ] },
+  { moduleId: 'trust.review', props: [
+    { name: 'author', type: 'text', required: true, default: "Покупатель", limits: {}, description: 'Имя автора отзыва' },
+    { name: 'rating', type: 'number', required: true, default: 5, limits: {"min":1,"max":5,"step":1}, description: 'Оценка' },
+    { name: 'text', type: 'textarea', required: true, default: "Отзыв покупателя о работе магазина.", limits: {}, description: 'Текст отзыва' }
+  ] },
+  { moduleId: 'trust.rating', props: [
+    { name: 'value', type: 'number', required: true, default: 4.8, limits: {"min":0,"max":5,"step":0.1}, description: 'Средняя оценка' },
+    { name: 'count', type: 'number', required: true, default: 120, limits: {"min":0,"max":100000,"step":1}, description: 'Сколько отзывов учтено' },
+    { name: 'source', type: 'text', required: false, default: null, limits: {}, description: 'Источник оценок' }
   ] },
   { moduleId: 'action.button', props: [
     { name: 'label', type: 'text', required: true, default: "Кнопка", limits: {}, description: 'Текст на кнопке' },
@@ -217,7 +264,7 @@ export const SCHEMAS: ModuleSchema[] = [
   ] },
   { moduleId: 'data.collection', props: [
     { name: 'source', type: 'text', required: false, default: null, limits: {}, description: 'Идентификатор источника данных; пусто — источник не выбран' },
-    { name: 'limit', type: 'number', required: false, default: 6, limits: {}, description: 'Сколько записей показывать' }
+    { name: 'limit', type: 'number', required: false, default: 6, limits: {"min":1,"max":24,"step":1}, description: 'Сколько записей показывать' }
   ] },
   { moduleId: 'data.single', props: [
     { name: 'source', type: 'text', required: false, default: null, limits: {}, description: 'Идентификатор источника данных; пусто — источник не выбран' }
@@ -229,7 +276,7 @@ export const SCHEMAS: ModuleSchema[] = [
   ] },
   { moduleId: 'data.list', props: [
     { name: 'source', type: 'text', required: false, default: null, limits: {}, description: 'Идентификатор источника данных; пусто — источник не выбран' },
-    { name: 'limit', type: 'number', required: false, default: 10, limits: {}, description: 'Сколько строк показывать' }
+    { name: 'limit', type: 'number', required: false, default: 10, limits: {"min":1,"max":50,"step":1}, description: 'Сколько строк показывать' }
   ] },
   { moduleId: 'data.search', props: [
     { name: 'source', type: 'text', required: false, default: null, limits: {}, description: 'Идентификатор источника данных; пусто — источник не выбран' },
@@ -237,7 +284,7 @@ export const SCHEMAS: ModuleSchema[] = [
   ] },
   { moduleId: 'data.pagination', props: [
     { name: 'source', type: 'text', required: false, default: null, limits: {}, description: 'Идентификатор источника данных; пусто — источник не выбран' },
-    { name: 'limit', type: 'number', required: false, default: 10, limits: {}, description: 'Записей на страницу' }
+    { name: 'limit', type: 'number', required: false, default: 10, limits: {"min":1,"max":50,"step":1}, description: 'Записей на страницу' }
   ] },
 ];
 
