@@ -302,6 +302,62 @@ SCHEMAS: dict[str, ModuleSchema] = {
         Prop('source', 'text', False, None, {}, 'Источник оценок'),
         ),
     ),
+    'data.count': ModuleSchema(
+        'data.count',
+        (
+        Prop('source', 'text', False, None, {}, 'Идентификатор источника данных; пусто — источник не выбран'),
+        Prop('label', 'text', False, "Всего", {}, 'Подпись над числом'),
+        Prop('field', 'text', False, None, {}, 'Ключ поля; пусто — считаются все записи'),
+        ),
+    ),
+    'data.aggregate': ModuleSchema(
+        'data.aggregate',
+        (
+        Prop('source', 'text', False, None, {}, 'Идентификатор источника данных; пусто — источник не выбран'),
+        Prop('field', 'text', True, "title", {}, 'Ключ поля, по которому считается итог'),
+        Prop('op', 'select', True, "sum", {"options":["sum","avg","min","max","count"]}, 'Что именно считается'),
+        Prop('label', 'text', False, "Итого", {}, 'Подпись к значению'),
+        Prop('suffix', 'text', False, None, {}, 'Единица измерения после значения'),
+        ),
+    ),
+    'data.filter': ModuleSchema(
+        'data.filter',
+        (
+        Prop('source', 'text', False, None, {}, 'Идентификатор источника данных; пусто — источник не выбран'),
+        Prop('field', 'text', True, "title", {}, 'Ключ поля, по которому отбираются записи'),
+        Prop('operator', 'select', True, "eq", {"options":["eq","contains","gt","lt"]}, 'Условие отбора'),
+        Prop('value', 'text', False, None, {}, 'Значение для сравнения; пусто — отбираются непустые'),
+        Prop('label', 'text', False, None, {}, 'Надпись над результатом'),
+        ),
+    ),
+    'data.sort': ModuleSchema(
+        'data.sort',
+        (
+        Prop('source', 'text', False, None, {}, 'Идентификатор источника данных; пусто — источник не выбран'),
+        Prop('field', 'text', True, "title", {}, 'Ключ поля для сортировки'),
+        Prop('direction', 'select', True, "asc", {"options":["asc","desc"]}, 'Направление сортировки'),
+        Prop('limit', 'number', False, 10, {"min":1,"max":100,"step":1}, 'Сколько записей показать'),
+        ),
+    ),
+    'data.related': ModuleSchema(
+        'data.related',
+        (
+        Prop('source', 'text', False, None, {}, 'Идентификатор источника данных; пусто — источник не выбран'),
+        Prop('field', 'text', False, None, {}, 'Ключ поля, по которому ищутся связанные записи'),
+        Prop('titleField', 'text', False, None, {}, 'Ключ поля для заголовка карточки'),
+        Prop('limit', 'number', False, 4, {"min":1,"max":24,"step":1}, 'Сколько связанных записей показать'),
+        ),
+    ),
+    'data.form': ModuleSchema(
+        'data.form',
+        (
+        Prop('source', 'text', False, None, {}, 'Идентификатор источника данных; пусто — источник не выбран'),
+        Prop('heading', 'text', False, "Форма", {}, 'Заголовок формы'),
+        Prop('fields', 'textarea', True, "Имя;Телефон", {}, 'Поля формы по одному в строке'),
+        Prop('submitLabel', 'text', False, "Отправить", {}, 'Надпись на кнопке'),
+        Prop('note', 'text', False, None, {}, 'Пояснение под формой'),
+        ),
+    ),
     'action.button': ModuleSchema(
         'action.button',
         (

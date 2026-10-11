@@ -110,13 +110,28 @@ def _page_html(project_name: str, body: str, title: str, description: str) -> st
 
 
 def _records_for(block: dict, sources: dict[str, list[dict]]) -> list[dict]:
-    """Записи источника для блока данных."""
+    """Записи источника для блока данных — готовые строки."""
 
     props = block.get('props')
     source_id = props.get('source') if isinstance(props, dict) else None
     if not isinstance(source_id, str) or not source_id:
         return []
     return sources.get(source_id, [])
+
+
+def _dataset_for(block: dict, datasets: dict[str, list[dict]]) -> list[dict]:
+    """Записи источника по полям — структура без склейки.
+
+    Склеенная строка годится, чтобы показать список, но по ней нельзя
+    ни посчитать сумму, ни отсортировать: цифры в тексте могут
+    принадлежать разным полям. Поэтому источники собираются в двух
+    видах: строки для показа и записи по ключам для вычислений.
+    """
+    props = block.get('props')
+    source_id = props.get('source') if isinstance(props, dict) else None
+    if not isinstance(source_id, str) or not source_id:
+        return []
+    return datasets.get(source_id, [])
 
 
 class PackageTooLarge(Exception):
@@ -146,6 +161,7 @@ def _collect_sources(project: Project, version: DocumentVersion) -> dict[str, li
                 referenced.add(source)
 
     out: dict[str, list[dict]] = {}
+    _DATASETS.clear()
     if not referenced:
         return out
     limit = settings.LIMITS['MAX_RECORDS_PER_SOURCE']
@@ -156,11 +172,30 @@ def _collect_sources(project: Project, version: DocumentVersion) -> dict[str, li
                 f'источник «{data_source.name}»: записей {total}, максимум {limit}'
             )
         rows = []
+        items = []
         for record in data_source.records.all():
             values = record.data if isinstance(record.data, dict) else {}
             rows.append(' · '.join(str(v) for v in values.values() if v not in (None, '')))
+            # Записи по полям: порядок ключей сохраняется, чтобы в
+            # data.json поля шли в том же порядке, что объявлены в
+            # источнике, и разбор на стороне сайта был предсказуемым.
+            items.append({str(k): v for k, v in values.items()})
         out[str(data_source.id)] = rows
+        _DATASETS[str(data_source.id)] = items
     return out
+
+
+#: Записи по полям, собранные последним вызовом _collect_sources.
+#:
+#: Отдельный словарь, а не возврат вторым значением: сигнатура
+#: _collect_sources читается в одном месте, а переписывать её ради
+#: параллельного возврата заставило бы трогать всех вызывающих.
+_DATASETS: dict[str, list[dict]] = {}
+
+
+def collect_datasets() -> dict[str, list[dict]]:
+    """Записи по полям, собранные при последнем сборе источников."""
+    return _DATASETS
 
 
 def _component_styles(project_id: Any) -> dict[str, dict]:
@@ -293,7 +328,9 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
         # карточка товара читают тот же источник, что и узел данных.
         wants_records = module_id.startswith(('data.', 'shop.', 'promo.'))
         records = _records_for(block, sources) if wants_records else []
-        rendered.append(render_block(block, records))
+        rendered.append(
+            render_block(block, records, _dataset_for(block, collect_datasets()))
+        )
 
     body = '\n'.join(r.html for r in rendered)
     title = project.name
@@ -315,8 +352,18 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
     # Данные кладутся отдельным файлом: страница подключает их через
     # data-* атрибуты, и без платформы их больше негде взять.
     if sources:
+        # Файл содержит и готовые строки, и записи по полям: список
+        # показывается без разбора, а агрегат, сортировка и фильтр
+        # считают по полям. Раньше лежали только склеенные строки, и
+        # любые вычисления по ним были невозможны.
         files['assets/data/data.json'] = json.dumps(
-            {key: values for key, values in sources.items()},
+            {
+                key: {
+                    'rows': values,
+                    'items': collect_datasets().get(key, []),
+                }
+                for key, values in sources.items()
+            },
             ensure_ascii=False,
             indent=2,
         )

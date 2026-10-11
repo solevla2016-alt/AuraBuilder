@@ -768,11 +768,27 @@ def _render_field(block: dict, records: list[dict] | None = None) -> str:
     )
 
 
-def _render_count(block: dict, records: list[dict] | None = None) -> str:
-    """Счётчик записей источника."""
+def _render_count(block: dict, records: list[dict] | None = None,
+                 dataset: list[dict] | None = None) -> str:
+    """Счётчик записей или значений одного поля.
+
+    Пустое поле означает «столько записей», заполненное — «столько
+    записей, где это поле заполнено». Второе полезно для блока, где
+    показывают готовые записи: считать все подряд нельзя.
+    """
+    field = _own(block, 'field', '')
+    label = _own(block, 'label', 'Всего')
+    rows = dataset or list(records or [])
+
+    if field:
+        total = sum(1 for row in rows if field in row and str(row.get(field) or '').strip())
+    else:
+        total = len(rows)
+
     return (
         '<section class="section section--data">'
-        f'<p class="data__count">{len(records or [])}</p></section>'
+        f'<p class="data__count"><span class="data__count-value">{total}</span>'
+        f'<span class="data__count-label">{esc(label)}</span></p></section>'
     )
 
 
@@ -783,79 +799,223 @@ def _render_price(block: dict, records: list[dict] | None = None) -> str:
     return f'<p class="price block">{esc(value)}</p>'
 
 
-def _render_aggregate(block: dict, records: list[dict] | None = None) -> str:
-    """Итог по источнику: сумма чисел, которые в нём нашлись."""
-    total = 0.0
-    found = False
-    for row in records or []:
-        for part in str(row).split(' \u00b7 '):
-            cleaned = ''.join(c for c in part if c.isdigit() or c in '.,-')
-            if not cleaned:
-                continue
-            try:
-                total += float(cleaned.replace(',', '.'))
-                found = True
-            except ValueError:
-                continue
-    label = _text(block, 'label', 'Итого')
-    value = f'{total:.2f}'.rstrip('0').rstrip('.') if found else '\u2014'
+def _numbers(values: list[Any]) -> list[float]:
+    """Числа из значений поля: строки разбираются, мусор пропускается."""
+    out: list[float] = []
+    for value in values:
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            out.append(float(value))
+            continue
+        text = str(value).strip().replace('\u00a0', '').replace(' ', '')
+        if not text:
+            continue
+        cleaned = ''.join(c for c in text if c.isdigit() or c in '.,-')
+        if not cleaned or cleaned in ('-', '.', ','):
+            continue
+        try:
+            out.append(float(cleaned.replace(',', '.')))
+        except ValueError:
+            continue
+    return out
+
+
+def _format_number(value: float) -> str:
+    """Число без лишних нулей: 12 вместо 12.00, 12.5 вместо 12.50."""
+    text = f'{value:.2f}'.rstrip('0').rstrip('.')
+    return text or '0'
+
+
+def _dataset_rows(dataset: list[dict], field: str, rows: list[dict]) -> list[dict]:
+    """Записи по полю. Пустой ключ означает «все записи»."""
+    if not field:
+        return list(rows)
+    return [row for row in dataset if field in row]
+
+
+def _render_aggregate(block: dict, records: list[dict] | None = None,
+                      dataset: list[dict] | None = None) -> str:
+    """Итог по полю источника.
+
+    Раньше суммировались все цифры во всех полях записи: телефон
+    +7 999 прибавлялся к сумме заказа. Считать нужно по конкретному
+    полю, и значения берутся из записей по ключам, а не из текста.
+    """
+    field = _own(block, 'field', 'title')
+    op = _own(block, 'op', 'sum')
+    label = _own(block, 'label', 'Итого')
+    suffix = _own(block, 'suffix', '')
+
+    values = _numbers([row.get(field) for row in (dataset or [])])
+
+    if op == 'count' or not field:
+        result = float(len(dataset or []))
+    elif not values:
+        result = None
+    elif op == 'avg':
+        result = sum(values) / len(values)
+    elif op == 'min':
+        result = min(values)
+    elif op == 'max':
+        result = max(values)
+    else:
+        result = sum(values)
+
+    if result is None:
+        shown = '\u2014'
+    else:
+        shown = _format_number(result) + (f' {suffix}' if suffix else '')
+
     return (
         f'<p class="aggregate block"><span class="aggregate__label">{esc(label)}</span>'
-        f'<span class="aggregate__value">{esc(value)}</span></p>'
+        f'<span class="aggregate__value">{esc(shown)}</span></p>'
     )
 
 
-def _render_data_sort(block: dict, records: list[dict] | None = None) -> str:
-    """Сортировка фиксируется в пакете: рантайма, который её применял бы, нет."""
-    return _render_data(block, records)
+def _render_data_sort(block: dict, records: list[dict] | None = None,
+                      dataset: list[dict] | None = None) -> str:
+    """Сортировка фиксируется в пакете: рантайма нет.
 
-
-def _render_data_related(block: dict, records: list[dict] | None = None) -> str:
-    """Связанные записи: список без раскрытия связей."""
-    return _render_data(block, records)
-
-
-def _render_data_filter(block: dict, records: list[dict] | None = None) -> str:
-    """Фильтр статичен.
-
-    Без рантайма фильтровать нечем, поэтому показывается весь набор и
-    прямая подпись о том, что фильтр заработает с бэкендом. Рисовать
-    «отфильтрованный» вид значило бы соврать о данных.
+    Порядок записей вычисляется при сборке, и в пакет попадает уже
+    отсортированный список. На статическом сайте иначе некуда.
     """
-    items = ''.join(f'<li>{esc(row)}</li>' for row in records or [])
+    field = _own(block, 'field', 'title')
+    direction = _own(block, 'direction', 'asc')
+    props = _props(block)
+    limit = props.get('limit')
+    limit = int(limit) if isinstance(limit, (int, float)) else 10
+    limit = max(1, min(100, limit))
+
+    rows = list(dataset if dataset is not None else [])
+    numeric = _numbers([row.get(field) for row in rows])
+    by_number = len(numeric) == len([r for r in rows if r.get(field) not in (None, '')])
+
+    if by_number:
+        rows.sort(key=lambda row: _numbers([row.get(field)]) or [0.0])
+    else:
+        rows.sort(key=lambda row: str(row.get(field, '')).lower())
+
+    if direction == 'desc':
+        rows.reverse()
+
+    shown = rows[:limit]
+    items = ''.join(
+        '<li>' + esc(' · '.join(str(v) for v in row.values() if v not in (None, ''))) + '</li>'
+        for row in shown
+    )
     body = f'<ul class="data">{items}</ul>' if items else '<p class="data__empty">Нет записей</p>'
     return (
-        '<section class="section section--data">'
-        '<p class="data__filter-note">Фильтр применится после подключения бэкенда.</p>'
-        f'{body}</section>'
+        '<section class="section section--data" data-sort="'
+        f"{esc(field)} {esc(direction)}>"
+        + f"{body}"
+        f'<p class="data__note">Показано {len(shown)} из {len(rows)}</p>'
+        '</section>'
     )
 
 
-def _render_data_form(block: dict, records: list[dict] | None = None) -> str:
+def _render_data_related(block: dict, records: list[dict] | None = None,
+                        dataset: list[dict] | None = None) -> str:
+    """Связанные записи: карточки с заголовком из одного поля."""
+    field = _own(block, 'field', '')
+    title_field = _own(block, 'titleField', '')
+    props = _props(block)
+    limit = props.get('limit')
+    limit = int(limit) if isinstance(limit, (int, float)) else 4
+    limit = max(1, min(24, limit))
+
+    rows = list(dataset if dataset is not None else [])
+    if field:
+        keys = {str(row.get(field) or '').strip() for row in rows if row.get(field)}
+        rows = [row for row in rows if not keys or str(row.get(field) or '').strip() in keys]
+
+    shown = rows[:limit]
+    cards = ''.join(
+        f'<article class="related__card"><h3>{esc(row.get(title_field) or "Запись")}</h3>'
+        f'<p>{esc(" · ".join(str(v) for v in row.values() if v not in (None, "")))}</p></article>'
+        for row in shown
+    )
+    body = cards if cards else '<p class="data__empty">Нет записей</p>'
+    return f'<section class="section section--data">{body}</section>' 
+
+
+def _render_data_filter(block: dict, records: list[dict] | None = None,
+                       dataset: list[dict] | None = None) -> str:
+    """Фильтр по полю: в статике отбор выполняется при сборке.
+
+    Раньше фильтр не работал вовсе и печатал подпись о том, что
+    «заработает после подключения бэкенда». Условие известно на этапе
+    сборки, выполнять его на сервере не нужно: пакет и есть результат.
+    """
+    field = _own(block, 'field', 'title')
+    operator = _own(block, 'operator', 'eq')
+    value = _own(block, 'value', '')
+    label = _own(block, 'label', '')
+
+    rows = list(dataset if dataset is not None else [])
+
+    def keep(row: dict) -> bool:
+        current = str(row.get(field, '') or '')
+        if operator == 'contains':
+            return value in current
+        if operator == 'gt':
+            left, right = _numbers([current]), _numbers([value])
+            return bool(left and right and left[0] > right[0])
+        if operator == 'lt':
+            left, right = _numbers([current]), _numbers([value])
+            return bool(left and right and left[0] < right[0])
+        if not value:
+            return current != ''
+        return current == value
+
+    selected = [row for row in rows if keep(row)]
+    items = ''.join(
+        '<li>' + esc(' · '.join(str(v) for v in row.values() if v not in (None, ''))) + '</li>'
+        for row in selected
+    )
+    heading = f'<h2>{esc(label)}</h2>' if label else ''
+    body = f'<ul class="data">{items}</ul>' if items else '<p class="data__empty">Нет записей</p>'
+    condition = esc(f'{field} {operator} {value}'.strip())
+    return (
+        '<section class="section section--data" data-filter="'
+        f"{condition}>"
+        f'{heading}{body}'
+        f'<p class="data__filter-note">Отобрано {len(selected)} из {len(rows)}</p>'
+        '</section>'
+    )
+
+
+def _render_data_form(block: dict, records: list[dict] | None = None,
+                      dataset: list[dict] | None = None) -> str:
     """Форма записи из узла данных.
 
     Обработчика нет: отправлять значения некуда, поэтому форма только
     собирает их, а подпись говорит об этом прямо.
+
+    Поля берутся из свойства fields, а не из первой записи: имена
+    полей в источнике — это ключи (title, price), а в форме нужны
+    подписи, которые задаёт пользователь.
     """
-    fields = _props(block).get('fields')
-    names: list[str] = []
-    if isinstance(fields, list):
-        for item in fields:
-            if isinstance(item, dict):
-                names.append(str(item.get('label') or item.get('name') or 'Поле'))
-    rows = records or []
-    names = names or (rows[0].split(' \u00b7 ') if rows else ['Значение'])
+    heading = _own(block, 'heading', 'Форма')
+    submit = _own(block, 'submitLabel', 'Отправить')
+    note = _own(block, 'note', '')
+    names = _items(block, 'fields', ['Имя', 'Телефон'])
+
+    rows = list(dataset if dataset is not None else [])
     inputs = ''.join(
         f'<label class="field">{esc(name)}<input name="f{index}" '
-        f'data-source-field="{esc(index)}"></label>'
+        f'required></label>'
         for index, name in enumerate(names)
+    )
+    tail = (
+        f'<p class="data__note">{esc(note)}</p>' if note
+        else '<p class="data__note">Отправка заработает после подключения бэкенда.</p>'
     )
     return (
         '<section class="section section--data"><h2>'
-        f'{esc(_text(block, "label", "Форма"))}</h2>'
-        f'<form class="form" method="post">{inputs}</form>'
-        '<p class="data__note">Отправка заработает после подключения бэкенда.</p>'
-        '</section>'
+        f'{esc(heading)}</h2>'
+        f'<form class="form" method="post">{inputs}'
+        f'<button type="submit">{esc(submit)}</button></form>{tail}</section>'
     )
 
 
@@ -1031,7 +1191,22 @@ RENDERERS = {
 }
 
 
-def render_block(block: dict, records: list[dict] | None = None) -> RenderedBlock:
+#: Модули, которые вычисляют по полям: агрегат, фильтр, сортировка,
+#: счётчик и связанные записи. Им нужны записи целиком, а не строки.
+DATASET_MODULES = frozenset({
+    'data.aggregate',
+    'data.filter',
+    'data.sort',
+    'data.count',
+    'data.related',
+})
+
+
+def render_block(
+    block: dict,
+    records: list[dict] | None = None,
+    dataset: list[dict] | None = None,
+) -> RenderedBlock:
     """Один блок дерева в HTML.
 
     Неизвестный модуль считается ошибкой, а не пропуском: пакет без
@@ -1049,7 +1224,16 @@ def render_block(block: dict, records: list[dict] | None = None) -> RenderedBloc
     # тот же источник, и без записей они выводили бы пустую заглушку
     # на месте реального товара.
     needs_records = module_id.startswith('data.') or module_id.startswith(('shop.', 'promo.'))
-    body = renderer(block, records or []) if needs_records else renderer(block)
+    # Модулям, которые считают и сортируют, нужны записи по полям, а не
+    # готовые строки. Список задан явно: передавать третий аргумент
+    # всем нельзя — рендереры без него сломались бы, а разбирать
+    # сигнатуру на лету избыточно.
+    if module_id in DATASET_MODULES:
+        body = renderer(block, records or [], dataset or [])
+    elif needs_records:
+        body = renderer(block, records or [])
+    else:
+        body = renderer(block)
     return RenderedBlock(block_id=str(block.get('id', '')), module_id=module_id, html=body)
 
 

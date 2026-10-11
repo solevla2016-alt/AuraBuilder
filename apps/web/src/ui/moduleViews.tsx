@@ -168,6 +168,20 @@ function columns(block: Block, count: number, gap = 16) {
  * поля читаются из первой записи: этого хватает для заголовка и двух
  * значений под ним.
  */
+/**
+ * Строки записей для показа: значения полей через разделитель.
+ *
+ * recordFields возвращает имена полей, а нужны сами значения: на
+ * макете модулей вычислений видно, какие записи попадут в выгрузку.
+ */
+function recordLines(rows: DataRecord[]): string[] {
+  return rows.map((row) =>
+    Object.values(row.data ?? {})
+      .filter((v) => v !== null && v !== '')
+      .join(' \u00b7 '),
+  );
+}
+
 function recordFields(block: Block, rows: DataRecord[]): string[] {
   const declared = block.props?.field;
   if (typeof declared === 'string' && declared !== '') return [declared];
@@ -1752,6 +1766,340 @@ export function modulePreview(
             fontFamily={FONT}
             fill={tokens.textSecondary}
             ellipsis
+          />
+        </Group>
+      );
+    }
+
+    case 'data.count': {
+      /*
+       * Счётчик: крупное число и подпись под ним. Число моноширинным
+       * шрифтом — иначе соседние разряды разъезжаются, а на макете
+       * это заметно сильнее, чем в обычном тексте.
+       */
+      const label = prop(block, 'label', 'Всего');
+      const count = records.length;
+
+      return (
+        <Group listening={false}>
+          <Text
+            x={block.x + PAD}
+            y={block.y + h / 2 - titleSize}
+            width={block.width - PAD * 2}
+            align="center"
+            text={String(count)}
+            fontSize={Math.max(32, titleSize * 1.6)}
+            fontStyle="bold"
+            fontFamily={MONO}
+            fill={tokens.selectionBorder}
+          />
+          <Text
+            x={block.x + PAD}
+            y={block.y + h / 2 + titleSize * 0.7}
+            width={block.width - PAD * 2}
+            align="center"
+            text={label}
+            fontSize={bodySize}
+            fontFamily={FONT}
+            fill={tokens.textSecondary}
+          />
+        </Group>
+      );
+    }
+
+    case 'data.aggregate': {
+      /*
+       * Итог: подпись и значение. Значение вычисляется на сервере при
+       * сборке, поэтому на холсте показывается то, что приедет в
+       * выгрузку, а не пересчёт в браузере.
+       */
+      const label = prop(block, 'label', 'Итого');
+      const suffix = prop(block, 'suffix', '');
+
+      return (
+        <Group listening={false}>
+          <Text
+            x={block.x + PAD}
+            y={block.y + h / 2 - bodySize / 2 - 8}
+            width={block.width - PAD * 2}
+            text={label}
+            fontSize={bodySize}
+            fontFamily={FONT}
+            fill={tokens.textSecondary}
+          />
+          <Text
+            x={block.x + PAD}
+            y={block.y + h / 2 + 4}
+            width={block.width - PAD * 2}
+            text={prop(block, 'preview', '—')}
+            fontSize={Math.max(24, titleSize)}
+            fontStyle="bold"
+            fontFamily={MONO}
+            fill={tokens.textPrimary}
+          />
+          {suffix ? (
+            <Text
+              x={block.x + PAD + Math.max(80, titleSize * 4)}
+              y={block.y + h / 2 + titleSize * 0.4}
+              width={block.width - PAD * 2}
+              text={suffix}
+              fontSize={bodySize}
+              fontFamily={FONT}
+              fill={tokens.textSecondary}
+            />
+          ) : null}
+        </Group>
+      );
+    }
+
+    case 'data.filter': {
+      /*
+       * Фильтр: условие сверху и подходящие записи под ним.
+       *
+       * Условие показано словами, а не полем ввода: в статическом
+       * пакете отбора нет, и рисовать элемент управления значило бы
+       * обещать функцию, которой не будет.
+       */
+      const field = prop(block, 'field', 'title');
+      const operator = prop(block, 'operator', 'eq');
+      const value = prop(block, 'value', '');
+      const label = prop(block, 'label', '');
+      const rows = recordLines(records);
+      const top = block.y + PAD + (label ? titleSize + 8 : 0);
+
+      return (
+        <Group listening={false}>
+          {label ? (
+            <Text
+              x={block.x + PAD}
+              y={block.y + PAD}
+              width={block.width - PAD * 2}
+              text={label}
+              fontSize={titleSize}
+              fontStyle={headingWeight}
+              fontFamily={FONT}
+              fill={headingFill}
+            />
+          ) : null}
+          <Rect
+            x={block.x + PAD}
+            y={top}
+            width={block.width - PAD * 2}
+            height={26}
+            fill={tokens.panelSunken}
+            cornerRadius={6}
+          />
+          <Text
+            x={block.x + PAD + 10}
+            y={top + 6}
+            width={block.width - PAD * 2 - 20}
+            text={`${field} ${operator} ${value}`.trim()}
+            fontSize={bodySize}
+            fontFamily={MONO}
+            fill={tokens.textSecondary}
+            ellipsis
+          />
+          {rows.length ? (
+            <Text
+              x={block.x + PAD}
+              y={top + 36}
+              width={block.width - PAD * 2}
+              height={Math.max(18, h - PAD * 2 - titleSize - 50)}
+              text={rows.slice(0, 3).join('\n')}
+              fontSize={bodySize}
+              fontFamily={FONT}
+              fill={tokens.textPrimary}
+              lineHeight={1.4}
+            />
+          ) : (
+            <Text
+              x={block.x + PAD}
+              y={top + 36}
+              width={block.width - PAD * 2}
+              text="Источник не выбран"
+              fontSize={bodySize}
+              fontFamily={FONT}
+              fill={tokens.textSecondary}
+            />
+          )}
+        </Group>
+      );
+    }
+
+    case 'data.sort': {
+      /*
+       * Сортировка: заголовок с направлением и порядок записей.
+       * Направление показывается явно — по убыванию и по возрастанию
+       * выглядят одинаково, если знать только столбик цифр.
+       */
+      const field = prop(block, 'field', 'title');
+      const direction = prop(block, 'direction', 'asc');
+      const limit = Number(block.props?.['limit'] ?? 10);
+      const rows = recordLines(records);
+
+      return (
+        <Group listening={false}>
+          <Text
+            x={block.x + PAD}
+            y={block.y + PAD}
+            width={block.width - PAD * 2}
+            text={`${field} ${direction === 'desc' ? '↓' : '↑'}`}
+            fontSize={titleSize}
+            fontStyle={headingWeight}
+            fontFamily={FONT}
+            fill={headingFill}
+          />
+          <Text
+            x={block.x + PAD}
+            y={block.y + PAD + titleSize + 8}
+            width={block.width - PAD * 2}
+            text={rows.length ? rows.slice(0, limit).join('\n') : 'Источник не выбран'}
+            fontSize={bodySize}
+            fontFamily={FONT}
+            fill={tokens.textPrimary}
+            lineHeight={1.4}
+          />
+        </Group>
+      );
+    }
+
+    case 'data.related': {
+      /*
+       * Связанные записи: карточки с заголовком и подписью. Пока
+       * связь не задана, видно пустой каркас — и это честно: молча
+       * показать случайные записи значило бы выдать их за связанные.
+       */
+      const titleField = prop(block, 'titleField', '');
+      const limit = Number(block.props?.['limit'] ?? 4);
+      const rows = recordLines(records);
+      const shown = rows.slice(0, limit);
+      const cellW = (block.width - PAD * 2 - 12 * (shown.length - 1)) / Math.max(shown.length, 1);
+      const top = block.y + PAD + titleSize + 10;
+      const cellH = Math.max(30, h - PAD * 2 - titleSize - 10);
+
+      return (
+        <Group listening={false}>
+          <Text
+            x={block.x + PAD}
+            y={block.y + PAD}
+            width={block.width - PAD * 2}
+            text={titleField ? `По полю ${titleField}` : 'Связанные записи'}
+            fontSize={titleSize}
+            fontStyle={headingWeight}
+            fontFamily={FONT}
+            fill={headingFill}
+          />
+          {shown.length ? (
+            shown.map((row, i) => (
+              <Group key={`${block.id}-r${i}`}>
+                <Rect
+                  x={block.x + PAD + i * (cellW + 12)}
+                  y={top}
+                  width={cellW}
+                  height={cellH}
+                  fill={tokens.panel}
+                  stroke={tokens.border}
+                  strokeWidth={1}
+                  cornerRadius={10}
+                />
+                <Text
+                  x={block.x + PAD + i * (cellW + 12) + 12}
+                  y={top + 12}
+                  width={cellW - 24}
+                  height={cellH - 24}
+                  text={row}
+                  fontSize={bodySize}
+                  fontFamily={FONT}
+                  fill={tokens.textPrimary}
+                  wrap="word"
+                  ellipsis
+                />
+              </Group>
+            ))
+          ) : (
+            <Rect
+              x={block.x + PAD}
+              y={top}
+              width={block.width - PAD * 2}
+              height={cellH}
+              fill={tokens.panelSunken}
+              stroke={tokens.border}
+              strokeWidth={1}
+              strokeDash={[6, 4]}
+              cornerRadius={10}
+            />
+          )}
+        </Group>
+      );
+    }
+
+    case 'data.form': {
+      /*
+       * Форма записи: поля из свойства fields и кнопка отправки.
+       * Кнопка нарисована, но не работает: без рантайма отправлять
+       * некуда, и подпись под формой об этом говорит прямо.
+       */
+      const heading = prop(block, 'heading', 'Форма');
+      const submit = prop(block, 'submitLabel', 'Отправить');
+      const fields = listProp(block, 'fields', 6, ['Имя', 'Телефон']);
+      const top = block.y + PAD + titleSize + 10;
+      const gap = 8;
+      const fieldHeight = Math.max(24, (h - PAD * 2 - titleSize - 10 - 40 - gap * fields.length) / fields.length);
+
+      return (
+        <Group listening={false}>
+          <Text
+            x={block.x + PAD}
+            y={block.y + PAD}
+            width={block.width - PAD * 2}
+            text={heading}
+            fontSize={titleSize}
+            fontStyle={headingWeight}
+            fontFamily={FONT}
+            fill={headingFill}
+          />
+          {fields.map((name, i) => (
+            <Group key={`${block.id}-f${i}`}>
+              <Text
+                x={block.x + PAD}
+                y={top + i * (fieldHeight + gap)}
+                width={120}
+                text={name}
+                fontSize={bodySize}
+                fontFamily={FONT}
+                fill={tokens.textSecondary}
+                ellipsis
+              />
+              <Rect
+                x={block.x + PAD + 124}
+                y={top + i * (fieldHeight + gap) - 2}
+                width={block.width - PAD * 2 - 124}
+                height={fieldHeight}
+                fill={tokens.panel}
+                stroke={tokens.border}
+                strokeWidth={1}
+                cornerRadius={6}
+              />
+            </Group>
+          ))}
+          <Rect
+            x={block.x + PAD}
+            y={block.y + h - PAD - 30}
+            width={Math.max(120, submit.length * 8 + 36)}
+            height={30}
+            fill={tokens.selectionBorder}
+            cornerRadius={6}
+          />
+          <Text
+            x={block.x + PAD}
+            y={block.y + h - PAD - 21}
+            width={Math.max(120, submit.length * 8 + 36)}
+            align="center"
+            text={submit}
+            fontSize={bodySize}
+            fontStyle="bold"
+            fontFamily={FONT}
+            fill={tokens.canvas}
           />
         </Group>
       );

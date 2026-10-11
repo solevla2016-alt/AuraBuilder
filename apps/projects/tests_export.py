@@ -220,7 +220,12 @@ class DataExportTests(ExportTestCase):
         self.assertIn('assets/data/data.json', files)
         payload = json.loads(files['assets/data/data.json'])
         self.assertIn(str(source.id), payload)
-        self.assertEqual(payload[str(source.id)], ['Роза'])
+        # Файл составной: строки для показа и записи по полям для
+        # вычислений. Одних склеенных строк недостаточно — по ним
+        # нельзя ни посчитать сумму, ни отсортировать.
+        entry = payload[str(source.id)]
+        self.assertEqual(entry['rows'], ['Роза'])
+        self.assertEqual(entry['items'], [{'title': 'Роза'}])
 
     def test_unreferenced_source_is_not_exported(self):
         # Выгружать все источники проекта значило бы положить в

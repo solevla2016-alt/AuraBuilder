@@ -234,11 +234,36 @@ class DataModuleTests(SimpleTestCase):
         rendered = render_block(block_for('data.collection'), [])
         self.assertIn('Нет записей', rendered.html)
 
-    def test_aggregate_sums_numbers(self):
+    def test_aggregate_sums_one_field(self):
+        """Суммируется конкретное поле, а не все цифры подряд.
+
+        По склеенным строкам телефон +7 999 прибавлялся к сумме
+        заказа. Теперь итог считается по полю price.
+        """
         rendered = render_block(
-            block_for('data.aggregate'), ['Роза \· 1200', 'Тюльпан \· 900']
+            {**block_for('data.aggregate'), 'props': {'field': 'price', 'op': 'sum'}},
+            ['Роза \u00b7 1200', 'Тюльпан \u00b7 900'],
+            [{'title': 'Роза', 'price': 1200}, {'title': 'Тюльпан', 'price': 900}],
         )
         self.assertIn('2100', rendered.html.replace(' ', ''))
+
+    def test_aggregate_ignores_other_fields(self):
+        """Цифры других полей не попадают в итог."""
+        rendered = render_block(
+            {**block_for('data.aggregate'), 'props': {'field': 'price', 'op': 'sum'}},
+            [],
+            [{'title': 'Роза', 'phone': '999', 'price': 10}],
+        )
+        self.assertNotIn('1009', rendered.html.replace(' ', ''))
+        self.assertIn('10', rendered.html)
+
+    def test_aggregate_averages(self):
+        rendered = render_block(
+            {**block_for('data.aggregate'), 'props': {'field': 'price', 'op': 'avg'}},
+            [],
+            [{'price': 100}, {'price': 200}],
+        )
+        self.assertIn('150', rendered.html.replace(' ', ''))
 
     def test_count_reports_records(self):
         rendered = render_block(block_for('data.count'), ['a', 'b', 'c'])

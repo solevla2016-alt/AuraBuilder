@@ -690,6 +690,272 @@
       ]
     },
     {
+      "id": "data.count",
+      "props": [
+        {
+          "name": "source",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Идентификатор источника данных; пусто — источник не выбран"
+        },
+        {
+          "name": "label",
+          "type": "text",
+          "required": false,
+          "default": "Всего",
+          "limits": {},
+          "description": "Подпись над числом"
+        },
+        {
+          "name": "field",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Ключ поля; пусто — считаются все записи"
+        }
+      ]
+    },
+    {
+      "id": "data.aggregate",
+      "props": [
+        {
+          "name": "source",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Идентификатор источника данных; пусто — источник не выбран"
+        },
+        {
+          "name": "field",
+          "type": "text",
+          "required": true,
+          "default": "title",
+          "limits": {},
+          "description": "Ключ поля, по которому считается итог"
+        },
+        {
+          "name": "op",
+          "type": "select",
+          "required": true,
+          "default": "sum",
+          "limits": {
+            "options": [
+              "sum",
+              "avg",
+              "min",
+              "max",
+              "count"
+            ]
+          },
+          "description": "Что именно считается"
+        },
+        {
+          "name": "label",
+          "type": "text",
+          "required": false,
+          "default": "Итого",
+          "limits": {},
+          "description": "Подпись к значению"
+        },
+        {
+          "name": "suffix",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Единица измерения после значения"
+        }
+      ]
+    },
+    {
+      "id": "data.filter",
+      "props": [
+        {
+          "name": "source",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Идентификатор источника данных; пусто — источник не выбран"
+        },
+        {
+          "name": "field",
+          "type": "text",
+          "required": true,
+          "default": "title",
+          "limits": {},
+          "description": "Ключ поля, по которому отбираются записи"
+        },
+        {
+          "name": "operator",
+          "type": "select",
+          "required": true,
+          "default": "eq",
+          "limits": {
+            "options": [
+              "eq",
+              "contains",
+              "gt",
+              "lt"
+            ]
+          },
+          "description": "Условие отбора"
+        },
+        {
+          "name": "value",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Значение для сравнения; пусто — отбираются непустые"
+        },
+        {
+          "name": "label",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Надпись над результатом"
+        }
+      ]
+    },
+    {
+      "id": "data.sort",
+      "props": [
+        {
+          "name": "source",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Идентификатор источника данных; пусто — источник не выбран"
+        },
+        {
+          "name": "field",
+          "type": "text",
+          "required": true,
+          "default": "title",
+          "limits": {},
+          "description": "Ключ поля для сортировки"
+        },
+        {
+          "name": "direction",
+          "type": "select",
+          "required": true,
+          "default": "asc",
+          "limits": {
+            "options": [
+              "asc",
+              "desc"
+            ]
+          },
+          "description": "Направление сортировки"
+        },
+        {
+          "name": "limit",
+          "type": "number",
+          "required": false,
+          "default": 10,
+          "limits": {
+            "min": 1,
+            "max": 100,
+            "step": 1
+          },
+          "description": "Сколько записей показать"
+        }
+      ]
+    },
+    {
+      "id": "data.related",
+      "props": [
+        {
+          "name": "source",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Идентификатор источника данных; пусто — источник не выбран"
+        },
+        {
+          "name": "field",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Ключ поля, по которому ищутся связанные записи"
+        },
+        {
+          "name": "titleField",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Ключ поля для заголовка карточки"
+        },
+        {
+          "name": "limit",
+          "type": "number",
+          "required": false,
+          "default": 4,
+          "limits": {
+            "min": 1,
+            "max": 24,
+            "step": 1
+          },
+          "description": "Сколько связанных записей показать"
+        }
+      ]
+    },
+    {
+      "id": "data.form",
+      "props": [
+        {
+          "name": "source",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Идентификатор источника данных; пусто — источник не выбран"
+        },
+        {
+          "name": "heading",
+          "type": "text",
+          "required": false,
+          "default": "Форма",
+          "limits": {},
+          "description": "Заголовок формы"
+        },
+        {
+          "name": "fields",
+          "type": "textarea",
+          "required": true,
+          "default": "Имя;Телефон",
+          "limits": {},
+          "description": "Поля формы по одному в строке"
+        },
+        {
+          "name": "submitLabel",
+          "type": "text",
+          "required": false,
+          "default": "Отправить",
+          "limits": {},
+          "description": "Надпись на кнопке"
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Пояснение под формой"
+        }
+      ]
+    },
+    {
       "id": "action.button",
       "props": [
         {

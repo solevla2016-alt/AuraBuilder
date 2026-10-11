@@ -127,6 +127,10 @@ class SchemaTests(APITestCase):
             'legal.offer', 'legal.policy', 'legal.requisites',
             'legal.consent', 'legal.age-mark', 'legal.ad-mark',
             'trust.logos', 'trust.review', 'trust.rating',
+            # Модули вычислений: им нужны записи по полям, а не
+            # склеенные строки, поэтому схемы описаны вместе с ними.
+            'data.count', 'data.aggregate', 'data.filter',
+            'data.sort', 'data.related', 'data.form',
         }
         self.assertEqual(set(SCHEMAS), expected)
         self.assertEqual(SCHEMA_IDS, frozenset(expected))
