@@ -36,7 +36,7 @@ from datetime import UTC, datetime
 from io import BytesIO
 from typing import Any
 
-from .module_registry import MODULE_IDS
+from .module_registry import MODULE_IDS, MODULES_BY_ID
 from .palette_tokens import THEMES
 
 #: Версия формата пакета. Меняется, когда меняется структура каталогов
@@ -1400,6 +1400,31 @@ def _render_data_form(block: dict, records: list[dict] | None = None,
     )
 
 
+def _render_needs_runtime(block: dict, records: list[dict] | None = None) -> str:
+    """Модуль, которому нужен рантайм: честная заглушка вместо вида работы.
+
+    Корзина, оформление и поиск держат состояние между страницами и
+    запросами, а статический пакет бэкенда не содержит (ТЗ п.16.4,
+    ADR-0005). Раньше они выводились общими функциями и выглядели
+    рабочими: список товаров на месте «корзины», форма на месте
+    «оформления». Нажимать было некуда, и это выглядело как ошибка
+    платформы, а не как отсутствие сервера. Элементов управления нет
+    намеренно — подпись объясняет, что подключать.
+    """
+    module = MODULES_BY_ID.get(str(block.get('module', '')))
+    title = module.name if module else 'Модуль'
+    return (
+        '<section class="section section--needs-runtime">'
+        f'<h2>{esc(title)}</h2>'
+        '<p class="data__note">Модулю нужен рантайм: он хранит состояние '
+        'между страницами и запросами. Статический пакет сервера не '
+        'содержит (ТЗ п.16.4).</p>'
+        '<p class="data__note">Подключите рантайм на своём хостинге — '
+        'модуль заработает автоматически (ТЗ п.16.5, ADR-0005).</p>'
+        '</section>'
+    )
+
+
 def _render_order(block: dict, records: list[dict] | None = None) -> str:
     """Форма заявки.
 
@@ -1596,13 +1621,15 @@ RENDERERS = {
     'shop.catalog': _render_catalog,
     'shop.reviews': _render_reviews,
     'shop.price': _render_price,
+    'shop.compare': _render_compare,
+    'shop.stock': _render_stock,
+    'shop.order': _render_order,
     'promo.pricing': _render_pricing,
     'promo.banner': _render_promo_banner,
     'shop.order': _render_order,
-    'shop.cart': _render_data,
-    'shop.stock': _render_stock,
-    'shop.search': _render_form,
-    'shop.checkout': _render_form,
+    'shop.cart': _render_needs_runtime,
+    'shop.search': _render_needs_runtime,
+    'shop.checkout': _render_needs_runtime,
     'shop.compare': _render_compare,
 }
 
@@ -1802,6 +1829,11 @@ body {{
 .field input {{ padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font: inherit; }}
 .form button {{ padding: 12px 24px; border: 0; border-radius: 8px; background: var(--accent); color: var(--on-accent); font: inherit; cursor: pointer; }}
 .consent {{ margin: 0; color: var(--text-muted); }}
+
+/* Модуль, которому нужен рантайм: рамка пунктиром, чтобы заглушка
+   читалась как «здесь будет блок», а не как готовый пустой блок. */
+.section--needs-runtime {{ border: 1px dashed var(--border); }}
+.section--needs-runtime h2 {{ margin: 0 0 8px; font-size: 20px; }}
 
 @media (prefers-color-scheme: dark) {{
   :root {{

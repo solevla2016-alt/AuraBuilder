@@ -216,3 +216,42 @@ class OrderTests(SimpleTestCase):
         """Статическая форма не отправляет заявку — и это сказано."""
         html = html_for('shop.order', {})
         self.assertIn('рантайм', html)
+
+
+class NeedsRuntimeTests(SimpleTestCase):
+    """Корзина, оформление и поиск: честная заглушка вместо вида работы.
+
+    Раньше они выводились общими функциями и выглядели рабочими: список
+    товаров на месте корзины, форма на месте оформления. Нажимать
+    было некуда, и это выглядело как ошибка платформы, а не как
+    отсутствие сервера (ADR-0005).
+    """
+
+    MODULES = ('shop.cart', 'shop.checkout', 'shop.search')
+
+    def test_explains_why_module_is_empty(self):
+        for module in self.MODULES:
+            html = html_for(module, {})
+            self.assertIn('section--needs-runtime', html, module)
+            self.assertIn('рантайм', html, module)
+
+    def test_no_controls_to_click(self):
+        """Кнопка, на которую нельзя нажать, хуже её отсутствия."""
+        for module in self.MODULES:
+            html = html_for(module, {})
+            self.assertNotIn('<button', html, module)
+            self.assertNotIn('<form', html, module)
+            self.assertNotIn('<input', html, module)
+
+    def test_module_name_is_shown(self):
+        self.assertIn('Корзина', html_for('shop.cart', {}))
+        self.assertIn('Оформление', html_for('shop.checkout', {}))
+        self.assertIn('Поиск', html_for('shop.search', {}))
+
+    def test_records_do_not_matter(self):
+        """Даже с записями источника блок остаётся заглушкой."""
+        html = render_block(block_for('shop.cart', {'source': 'src-1'}), [], [
+            {'name': 'Роза', 'cost': 1200},
+        ]).html
+        self.assertIn('section--needs-runtime', html)
+        self.assertNotIn('Роза', html)
