@@ -22,6 +22,10 @@ from django.db import models
 KIND_FS = 'fs'
 KIND_FTP = 'ftp'
 
+# Куда кладётся рантайм, если заказчик не выбрал путь: каталог с
+# точкой, чтобы его не спутали с содержимым сайта.
+DEFAULT_RUNTIME_DIR = '.aurabuilder'
+
 KIND_CHOICES = (
     (KIND_FS, 'Папка на диске'),
     (KIND_FTP, 'FTP'),
@@ -104,6 +108,18 @@ class HostingProfile(models.Model):
         if not path.startswith('/'):
             path = '/' + path
         return path if path.endswith('/') else path + '/'
+
+    @property
+    def runtime_relative_path(self) -> str:
+        """Каталог рантайма относительно корня сайта.
+
+        Именно относительный: корнем сайта занимается транспорт, и
+        абсолютный путь профиля здесь сложился бы с корнем повторно.
+        На Windows повтор не виден — путь начинается с буквы диска, —
+        и дефект жил бы до первого прогона на сервере.
+        """
+        path = (self.runtime_path or '').strip().strip('/\\')
+        return (path or DEFAULT_RUNTIME_DIR).replace('\\', '/')
 
     def public_dict(self) -> dict:
         """Представление для интерфейса: без секрета."""

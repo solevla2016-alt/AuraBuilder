@@ -35,10 +35,6 @@ from .transports import DeployError, build_transport
 # считать мусором. Рантайм хранит там состояние магазина.
 KEEP_ON_SERVER = ('.aurabuilder/', 'runtime/data/')
 
-# Куда кладётся рантайм, если заказчик не выбрал путь.
-DEFAULT_RUNTIME_DIR = '.aurabuilder'
-
-
 @dataclass
 class DeployResult:
     ok: bool
@@ -175,7 +171,9 @@ def deploy(
         result.files_uploaded = uploaded
         result.files_removed = removed
 
-        runtime_dir = profile.runtime_target_path.strip('/') or DEFAULT_RUNTIME_DIR
+        # Каталог рантайма — относительный: абсолютный путь профиля
+        # сложился бы с корнем сайта повторно.
+        runtime_dir = profile.runtime_relative_path
         pack = runtime_files(
             project_name=project.name,
             domain=urlparse(site_url).netloc if site_url else '',

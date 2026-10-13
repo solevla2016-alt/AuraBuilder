@@ -143,6 +143,36 @@ class ProfileTests(DeployCase):
         self.assertNotIn('очень-секретный-пароль', json.dumps(public))
 
 
+class RuntimePathTests(DeployCase):
+    def test_runtime_path_is_relative_to_site(self):
+        """Путь рантайма относителен: абсолютный путь профиля сложился
+        бы с корнем сайта повторно.
+
+        На Windows повтор не виден: путь начинается с буквы диска и
+        перестаёт быть относительным. Дефект жил бы до первого прогона
+        на сервере с настоящими путями.
+        """
+        self.profile.save()
+        self.assertEqual(self.profile.runtime_relative_path, '.aurabuilder')
+        self.assertFalse(
+            self.profile.runtime_relative_path.startswith('/'),
+            'путь рантайма должен быть относительным',
+        )
+
+    def test_custom_runtime_path_is_used_as_is(self):
+        self.profile.runtime_path = '/tools/runtime'
+        self.profile.save()
+        self.assertEqual(self.profile.runtime_relative_path, 'tools/runtime')
+
+    def test_runtime_lands_inside_site_root(self):
+        deploy(self.project, self.version, self.profile, verify=False)
+        self.assertTrue((self.root / '.aurabuilder' / 'run.sh').exists())
+        # Каталог не должен появиться рядом с сайтом: это означало бы,
+        # что путь профиля сложился с корнем дважды.
+        siblings = [p.name for p in Path(self.tmp.name).iterdir()]
+        self.assertEqual(sorted(siblings), ['site'], siblings)
+
+
 class DeployTests(DeployCase):
     def test_site_files_are_uploaded(self):
         result = deploy(self.project, self.version, self.profile, verify=False)
