@@ -16,6 +16,9 @@ from pathlib import Path
 
 DEFAULTS = {
     'version': 1,
+    # Адрес данных пакета на том же сервере. Пусто — каталог загружает
+    # заказчик вручную через POST /catalog.
+    'catalogUrl': '',
     # Пустой список означает «любой origin»: режим удобен на первом
     # запуске, но в конфигурации заказчику лучше указать свой домен.
     'allowedOrigins': [],
@@ -35,6 +38,7 @@ class Config:
         self.data = data
         self.version = int(data.get('version') or DEFAULTS['version'])
         self.site_key = str(data.get('siteKey') or '')
+        self.catalog_url = str(data.get('catalogUrl') or '')
         self.secret = str(data.get('secret') or '')
         self.allowed_origins = [
             str(item).rstrip('/') for item in data.get('allowedOrigins') or []

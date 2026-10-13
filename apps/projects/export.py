@@ -976,7 +976,7 @@ def _price_of(row: dict, field: str) -> str:
 
 def _product_card(row: dict, title_field: str, price_field: str,
                   image_field: str, detail_field: str, button: str,
-                  price_prefix: str) -> str:
+                  price_prefix: str, item_id: str = '') -> str:
     """Карточка товара из одной записи.
 
     Ключи полей задаёт пользователь: в источнике имена произвольны, и
@@ -1000,12 +1000,24 @@ def _product_card(row: dict, title_field: str, price_field: str,
     detail_html = f'<p class="product__detail">{esc(detail)}</p>' if detail else ''
     label = esc(button) if button else ''
 
+    # Кнопка появляется только вместе с идентификатором товара: без
+    # него нажатие некуда отправить, и кнопка была бы обещанием.
+    if item_id:
+        add = (
+            f'<button type="button" class="product__action" data-rt-add="{esc(item_id)}">'
+            f'{label or "В корзину"}</button>'
+        )
+    elif label:
+        add = f'<span class="product__action">{label}</span>'
+    else:
+        add = ''
+
     return (
         '<article class="product">'
         f'{picture}<h3 class="product__title">{esc(title)}</h3>'
         f'{price_html}{detail_html}'
-        + (f'<span class="product__action">{label}</span>' if label else '')
-        + '</article>'
+        f'{add}'
+        '</article>'
     )
 
 
@@ -1099,9 +1111,15 @@ def _render_catalog(block: dict, records: list[dict] | None = None,
 
     rows = list(dataset if dataset is not None else [])
     shown = rows[:limit]
+    # Идентификатор товара — его номер в источнике начиная с 1: он
+    # должен совпасть с тем, что рантайм загрузит в каталог
+    # (docs/RUNTIME.md). Номер считается по полному списку, а не по
+    # обрезанному: иначе limit сдвинул бы идентификаторы и «В корзину»
+    # отправила бы несуществующий товар.
     cards = ''.join(
-        _product_card(row, title_field, price_field, image_field, '', '', '')
-        for row in shown
+        _product_card(row, title_field, price_field, image_field, '', '',
+                      '', item_id=f't{index + 1}')
+        for index, row in enumerate(rows[:limit])
     )
     if not cards:
         cards = '<p class="data__empty">Каталог пуст.</p>'
@@ -1134,7 +1152,7 @@ def _render_card(block: dict, records: list[dict] | None = None,
     return (
         '<section class="section section--product">'
         + _product_card(rows[0], title_field, price_field, image_field,
-                        detail_field, button, prefix)
+                        detail_field, button, prefix, item_id='t1')
         + '</section>'
     )
 
@@ -1400,27 +1418,77 @@ def _render_data_form(block: dict, records: list[dict] | None = None,
     )
 
 
+RUNTIME_KINDS = {
+    'shop.cart': 'cart',
+    'shop.checkout': 'checkout',
+    'shop.search': 'search',
+}
+
+# Разметка рабочего блока кладётся в статику сразу, но скрыта: без
+# рантайма её нечем наполнить, и пустой список товаров выглядел бы
+# как «магазин пуст». Клиент показывает её, только убедившись, что
+# сервер отвечает (docs/RUNTIME.md).
+_RUNTIME_TEMPLATES = {
+    'cart': (
+        '<div class="rt-cart" hidden>'
+        '<ul class="rt-cart__items"></ul>'
+        '<p class="rt-cart__total">Итого: <span class="rt-cart__total-value">—</span></p>'
+        '<p class="rt-note" role="status"></p>'
+        '</div>'
+    ),
+    'checkout': (
+        '<form class="rt-form" hidden>'
+        '<label class="rt-field"><span>Имя</span><input name="name" required></label>'
+        '<label class="rt-field"><span>Телефон</span><input name="phone" type="tel" required></label>'
+        '<label class="rt-field"><span>Комментарий</span><textarea name="comment" rows="3"></textarea></label>'
+        '<label class="rt-consent"><input type="checkbox" name="consent" required>'
+        '<span>Согласен на обработку персональных данных</span></label>'
+        '<p class="rt-note" role="status"></p>'
+        '<button type="submit" class="rt-btn rt-btn--primary">Оформить</button>'
+        '</form>'
+    ),
+    'search': (
+        '<form class="rt-search" hidden>'
+        '<input type="search" name="q" placeholder="Поиск по каталогу">'
+        '<button type="submit" class="rt-btn rt-btn--primary">Найти</button>'
+        '<ul class="rt-search__results"></ul>'
+        '</form>'
+    ),
+}
+
+
 def _render_needs_runtime(block: dict, records: list[dict] | None = None) -> str:
-    """Модуль, которому нужен рантайм: честная заглушка вместо вида работы.
+    """Модуль, которому нужен рантайм: заглушка и скрытый рабочий блок.
 
     Корзина, оформление и поиск держат состояние между страницами и
     запросами, а статический пакет бэкенда не содержит (ТЗ п.16.4,
     ADR-0005). Раньше они выводились общими функциями и выглядели
     рабочими: список товаров на месте «корзины», форма на месте
     «оформления». Нажимать было некуда, и это выглядело как ошибка
-    платформы, а не как отсутствие сервера. Элементов управления нет
-    намеренно — подпись объясняет, что подключать.
+    платформы, а не как отсутствие сервера.
+
+    Видимая часть — честная заглушка. Рабочий блок лежит рядом и
+    открывается клиенту только после того, как рантайм ответил.
     """
-    module = MODULES_BY_ID.get(str(block.get('module', '')))
+
+    module_id = str(block.get('module', ''))
+    module = MODULES_BY_ID.get(module_id)
     title = module.name if module else 'Модуль'
+    kind = RUNTIME_KINDS.get(module_id, '')
+    template = _RUNTIME_TEMPLATES.get(kind, '')
     return (
-        '<section class="section section--needs-runtime">'
-        f'<h2>{esc(title)}</h2>'
+        '<section class="section section--runtime"'
+        f' data-runtime="{esc(kind)}">'
+        f'<h2 class="section__title">{esc(title)}</h2>'
+        f'{template}'
+        '<div class="rt-placeholder">'
         '<p class="data__note">Модулю нужен рантайм: он хранит состояние '
         'между страницами и запросами. Статический пакет сервера не '
         'содержит (ТЗ п.16.4).</p>'
-        '<p class="data__note">Подключите рантайм на своём хостинге — '
-        'модуль заработает автоматически (ТЗ п.16.5, ADR-0005).</p>'
+        '<p class="data__note">Подключите рантайм на своём хостинге и '
+        'укажите его в runtime.json — модуль заработает сам '
+        '(ТЗ п.16.5, ADR-0005).</p>'
+        '</div>'
         '</section>'
     )
 
@@ -1724,7 +1792,7 @@ def build_css(styles: dict[str, dict]) -> str:
     ]
 
     return f""":root {{
-  {'\n  '.join(variables)}
+  {'\n  '.join(var.rstrip().rstrip(';') + ';' for var in variables)}
 }}
 
 * {{ box-sizing: border-box; }}
@@ -1829,6 +1897,29 @@ body {{
 .field input {{ padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font: inherit; }}
 .form button {{ padding: 12px 24px; border: 0; border-radius: 8px; background: var(--accent); color: var(--on-accent); font: inherit; cursor: pointer; }}
 .consent {{ margin: 0; color: var(--text-muted); }}
+
+/* Блоки корзины, оформления и поиска. Разметка лежит в статике
+   всегда, но видна только после ответа рантайма. */
+.rt-placeholder {{ color: var(--text-muted); }}
+.rt-cart__items {{ list-style: none; margin: 0 0 12px; padding: 0; }}
+.rt-cart__row {{ display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }}
+.rt-cart__name {{ flex: 1; }}
+.rt-cart__qty {{ display: inline-flex; align-items: center; gap: 8px; }}
+.rt-btn {{ padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px; background: transparent; font: inherit; cursor: pointer; }}
+.rt-btn--primary {{ background: var(--accent); color: var(--on-accent); border-color: transparent; }}
+.rt-btn--ghost {{ padding: 4px 10px; }}
+.rt-btn:disabled {{ opacity: 0.6; cursor: default; }}
+.rt-form {{ display: grid; gap: 12px; max-width: 420px; }}
+.rt-field {{ display: grid; gap: 4px; }}
+.rt-field input, .rt-field textarea, .rt-search input {{ padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font: inherit; }}
+.rt-consent {{ display: flex; gap: 8px; align-items: flex-start; color: var(--text-muted); }}
+.rt-search {{ display: flex; gap: 8px; flex-wrap: wrap; }}
+.rt-search input {{ flex: 1; min-width: 200px; }}
+.rt-search__results {{ list-style: none; margin: 12px 0 0; padding: 0; width: 100%; }}
+.rt-search__row {{ display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }}
+.rt-search__empty {{ color: var(--text-muted); }}
+.rt-note {{ margin: 8px 0 0; color: var(--text-muted); }}
+.rt-note--error {{ color: #8A1F1F; }}
 
 /* Модуль, которому нужен рантайм: рамка пунктиром, чтобы заглушка
    читалась как «здесь будет блок», а не как готовый пустой блок. */

@@ -8,7 +8,9 @@
 import hashlib
 import io
 import json
+import re
 import zipfile
+from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -16,7 +18,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from data_sources.models import DataRecord, DataSource
-from projects.export import ExportError, esc, slugify
+from projects.export import FORBIDDEN_HOSTS, ExportError, esc, slugify
 from projects.models import DocumentVersion, Project, default_tree
 from projects.package import build_package, package_zip, validate_files
 
@@ -88,6 +90,81 @@ class PackageStructureTests(ExportTestCase):
         manifest = self.build(self.snapshot())['manifest']
         self.assertIn('section.hero', manifest['modules'])
         self.assertEqual(manifest['blocks'], len(self.project.tree['blocks']))
+
+
+class RuntimePackageTests(ExportTestCase):
+    """Клиент и настройка рантайма в пакете.
+
+    Рантайм ставится отдельно (ТЗ п.16.4), но код, который с ним
+    говорит, должен ехать вместе с сайтом: иначе заказчик получает
+    модули, которые нельзя включить, и выясняет об этом на сервере.
+    """
+
+    def test_package_ships_client_and_config(self):
+        files = self.build(self.snapshot())['files']
+        self.assertIn('assets/js/runtime.js', files)
+        self.assertIn('runtime.json', files)
+
+    def test_page_loads_client(self):
+        html = self.build(self.snapshot())['files']['index.html']
+        self.assertIn('assets/js/runtime.js', html)
+        # defer: иначе скрипт отработал бы до разметки модулей и не
+        # нашёл бы ни одного блока.
+        self.assertIn('defer', html)
+
+    def test_config_is_empty_until_runtime_is_connected(self):
+        """Адрес рантайма знает только заказчик: он стоит на его хостинге."""
+        config = json.loads(self.build(self.snapshot())['files']['runtime.json'])
+        self.assertEqual(config['endpoint'], '')
+        self.assertEqual(config['siteKey'], '')
+        self.assertEqual(config['version'], 1)
+
+    def test_client_makes_no_foreign_requests(self):
+        client = self.build(self.snapshot())['files']['assets/js/runtime.js']
+        for host in FORBIDDEN_HOSTS:
+            self.assertNotIn(host, client)
+        self.assertNotIn('http://', client)
+
+    def test_client_is_the_file_from_repository(self):
+        """Клиент кладут как есть: в пакете и в репозитории должен быть
+        один и тот же код, иначе непонятно, что именно уедет к заказчику."""
+        files = self.build(self.snapshot())['files']
+        source = Path(__file__).resolve().parent / 'assets' / 'runtime.js'
+        self.assertEqual(files['assets/js/runtime.js'],
+                         source.read_text(encoding='utf-8'))
+
+
+class StylesheetTests(ExportTestCase):
+    """Стили пакета должны работать, а не только существовать.
+
+    Дефект, который стоил этого класса: переменные в `:root` склеивались
+    без точки с запятой, весь `var(--…)` в пакете не разрешался, и сайт
+    открывался неоформленным текстом. Проверки видели, что файл есть и
+    внешних ссылок нет, — и были довольны.
+    """
+
+    def test_every_used_variable_is_defined(self):
+        css = self.build(self.snapshot())['files']['assets/css/site.css']
+        used = set(re.findall(r'var\((--[a-z-]+)\)', css))
+        defined = set(re.findall(r'(--[a-z-]+)\s*:', css))
+        self.assertEqual(used - defined, set())
+
+    def test_root_declarations_are_separated(self):
+        css = self.build(self.snapshot())['files']['assets/css/site.css']
+        root = css.split(':root {', 1)[1].split('}', 1)[0]
+        for line in root.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            self.assertTrue(stripped.endswith(';'),
+                            f'объявление без точки с запятой: {stripped}')
+
+    def test_accent_variable_is_usable(self):
+        """Значение обязано разрешаться в цвет, а не оставаться текстом."""
+        css = self.build(self.snapshot())['files']['assets/css/site.css']
+        match = re.search(r'--accent:\s*([^;]+);', css)
+        self.assertIsNotNone(match, 'переменная --accent не объявлена')
+        self.assertRegex(match.group(1).strip(), r'^#[0-9A-Fa-f]{3,8}$')
 
 
 class AutonomousTests(ExportTestCase):

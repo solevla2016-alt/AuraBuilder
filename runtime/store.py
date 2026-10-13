@@ -59,6 +59,65 @@ def fold(value: Any) -> str:
     return str(value or '').strip().casefold()
 
 
+def catalog_items_from_package(payload: dict) -> list[dict[str, Any]]:
+    """Каталог из `assets/data/data.json` пакета.
+
+    Файл собирает платформа, но рантайм не обязан знать её формат
+    целиком: здесь разбирается только устройство данных — источники с
+    записями. Идентификаторы t1, t2… совпадают с теми, что ставит
+    кнопка «В корзину», потому что оба считаются от порядка записей
+    в источнике.
+
+    Строки склеиваются для показа, а записи по полям нужны для поиска и
+    цены, поэтому берутся `items`, а `rows` — только если их нет.
+    """
+    items: list[dict[str, Any]] = []
+    sources = payload.values() if isinstance(payload, dict) else []
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        records = source.get('items')
+        if not isinstance(records, list) or not records:
+            rows = source.get('rows')
+            if isinstance(rows, list) and rows:
+                records = [{'name': row} for row in rows]
+            else:
+                continue
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            name, price, search = _product_fields(record)
+            items.append({'id': f't{len(items) + 1}', 'name': name,
+                          'price': price, 'search': search})
+    return items
+
+
+def _product_fields(record: dict[str, Any]) -> tuple[str, float, str]:
+    """Название, цена и поисковая строка из записи источника.
+
+    Имена полей в источнике задаёт пользователь, поэтому берутся по
+    очереди понятные имена. Цена должна быть числом: иначе корзина
+    сложила бы строки.
+    """
+    name = ''
+    price = 0.0
+    search_parts: list[str] = []
+    for key, value in record.items():
+        folded = fold(key)
+        if not name and folded in ('name', 'title', 'название', 'товар'):
+            name = str(value or '')
+            continue
+        if folded in ('price', 'cost', 'цена', 'стоимость', 'amount'):
+            try:
+                price = float(str(value).replace(' ', '').replace(',', '.'))
+            except (TypeError, ValueError):
+                price = 0.0
+            continue
+        if value not in (None, ''):
+            search_parts.append(str(value))
+    return name or 'Товар', price, ' '.join([name] + search_parts)
+
+
 def new_id(size: int = 6) -> str:
     """Короткий идентификатор заказа: вводится человеком вручную."""
     return secrets.token_hex(size // 2)

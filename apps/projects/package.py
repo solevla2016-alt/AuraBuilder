@@ -15,6 +15,7 @@ import zipfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from io import BytesIO
+from pathlib import Path
 from typing import Any
 
 from django.conf import settings
@@ -104,6 +105,7 @@ def _page_html(project_name: str, body: str, title: str, description: str) -> st
 <main class="page">
 {body}
 </main>
+<script src="assets/js/runtime.js" defer></script>
 </body>
 </html>
 """
@@ -308,6 +310,30 @@ def validate_files(files: dict[str, str], base_url: str = '') -> ValidationRepor
     return report
 
 
+# Версия протокола рантайма (docs/RUNTIME.md). Кладётся в runtime.json,
+# и клиент отказывается подключаться при несовпадении с сервером.
+RUNTIME_PROTOCOL_VERSION = 1
+
+# Клиент лежит в репозитории файлом, а не строкой в коде: его читают
+# и правят как обычный скрипт, и в нём видно, что именно отправляется
+# на сервер. В пакет попадает как есть.
+RUNTIME_CLIENT = Path(__file__).resolve().parent / 'assets' / 'runtime.js'
+
+
+def runtime_config() -> str:
+    """Публичная часть настройки рантайма.
+
+    Endpoint пустой: адрес рантайма знает только заказчик, у которого
+    он стоит на своём хостинге. Пока поле пустое, клиент ничего не
+    делает и три модуля остаются заглушками.
+    """
+    return json.dumps(
+        {'version': RUNTIME_PROTOCOL_VERSION, 'endpoint': '', 'siteKey': ''},
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
 def build_package(project: Project, version: DocumentVersion, base_url: str = '') -> dict:
     """Файлы пакета и манифест. Бросает ExportError при сбое."""
 
@@ -347,6 +373,11 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
         'assets/css/site.css': build_css(styles),
         'robots.txt': _robots_txt(base_url),
         'sitemap.xml': _sitemap_xml(base_url, ['index.html']),
+        # Клиент и настройка кладутся всегда, а не только когда есть
+        # блоки корзины: страница могла быть собрана без них, и
+        # добавить блок после сборки — обычное дело.
+        'assets/js/runtime.js': RUNTIME_CLIENT.read_text(encoding='utf-8'),
+        'runtime.json': runtime_config(),
     }
 
     # Данные кладутся отдельным файлом: страница подключает их через

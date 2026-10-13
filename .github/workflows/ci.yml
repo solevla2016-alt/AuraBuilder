@@ -269,6 +269,62 @@ jobs:
           test -f /tmp/runtime-check/runtime.db
           test -f /tmp/runtime-check/runtime.json
 
+  # --- Путь покупателя по пакету ---------------------------------------
+  # Корзина, оформление и поиск работают только втроём: файлы пакета,
+  # живой рантайм и браузер. Тесты рантайма проверяют сервер, тесты
+  # выгрузки — разметку; собранный сайт проверяет только браузер.
+  runtime-site:
+    name: Собранный сайт и рантайм в браузере
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Установить зависимости
+        run: npm ci
+
+      - name: Установить зависимости Control Plane
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -r requirements.txt
+
+      - name: Поднять собранный сайт с рантаймом
+        env:
+          USE_SQLITE: '1'
+          DJANGO_SECRET_KEY: ci-secret-key-0123456789abcdefghijklmnop
+          DJANGO_ALLOWED_HOSTS: '*'
+        run: |
+          .venv/bin/python -u tools/check_runtime.py > /tmp/site.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q 'сайт и рантайм подняты' /tmp/site.log; then
+              break
+            fi
+            sleep 1
+          done
+          cat /tmp/site.log
+          grep -q 'сайт и рантайм подняты' /tmp/site.log
+
+      - name: Путь покупателя
+        run: |
+          PORT=$(grep -o '127.0.0.1:[0-9]*' /tmp/site.log | head -1 | cut -d: -f2)
+          node tools/probe-runtime.mjs "http://127.0.0.1:$PORT/"
+
+      - name: Снимок страницы
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-site
+          path: runtime-site.png
+          if-no-files-found: warn
+
   # --- Браузерные проверки --------------------------------------------------
   # Холст Konva и автосохранение не проверяются ни типами, ни тестами
   # Django: ошибка в них видна только в настоящем браузере. Именно так

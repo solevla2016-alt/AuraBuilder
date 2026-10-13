@@ -43,3 +43,9 @@ editor.png
 editor-props.png
 *.local.png
 commerce-modules.png
+
+# Проверка рантайма: собранный сайт, состояние и снимок страницы
+.runtime-check/
+.rt-check.log
+.rt-check.err
+runtime-site.png

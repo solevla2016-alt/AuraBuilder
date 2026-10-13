@@ -219,12 +219,16 @@ class OrderTests(SimpleTestCase):
 
 
 class NeedsRuntimeTests(SimpleTestCase):
-    """Корзина, оформление и поиск: честная заглушка вместо вида работы.
+    """Корзина, оформление и поиск: заглушка и скрытый рабочий блок.
 
     Раньше они выводились общими функциями и выглядели рабочими: список
-    товаров на месте корзины, форма на месте оформления. Нажимать
-    было некуда, и это выглядело как ошибка платформы, а не как
-    отсутствие сервера (ADR-0005).
+    товаров на месте корзины, форма на месте оформления. Нажимать было
+    некуда, и это выглядело как ошибка платформы, а не как отсутствие
+    сервера (ADR-0005).
+
+    Теперь в статике лежит и заглушка, и разметка настоящего блока.
+    Видна заглушка: рабочий блок без сервера наполнять нечем, и пустой
+    список товаров читался бы как «магазин пуст».
     """
 
     MODULES = ('shop.cart', 'shop.checkout', 'shop.search')
@@ -232,16 +236,21 @@ class NeedsRuntimeTests(SimpleTestCase):
     def test_explains_why_module_is_empty(self):
         for module in self.MODULES:
             html = html_for(module, {})
-            self.assertIn('section--needs-runtime', html, module)
+            self.assertIn('section--runtime', html, module)
+            self.assertIn('rt-placeholder', html, module)
             self.assertIn('рантайм', html, module)
 
-    def test_no_controls_to_click(self):
-        """Кнопка, на которую нельзя нажать, хуже её отсутствия."""
+    def test_working_block_is_hidden_without_runtime(self):
+        """Клиент открывает его только после ответа сервера."""
         for module in self.MODULES:
             html = html_for(module, {})
-            self.assertNotIn('<button', html, module)
-            self.assertNotIn('<form', html, module)
-            self.assertNotIn('<input', html, module)
+            self.assertIn('hidden', html, module)
+
+    def test_block_is_found_by_client(self):
+        for module, kind in (('shop.cart', 'cart'), ('shop.checkout', 'checkout'),
+                             ('shop.search', 'search')):
+            html = html_for(module, {})
+            self.assertIn(f'data-runtime="{kind}"', html, module)
 
     def test_module_name_is_shown(self):
         self.assertIn('Корзина', html_for('shop.cart', {}))
@@ -253,5 +262,12 @@ class NeedsRuntimeTests(SimpleTestCase):
         html = render_block(block_for('shop.cart', {'source': 'src-1'}), [], [
             {'name': 'Роза', 'cost': 1200},
         ]).html
-        self.assertIn('section--needs-runtime', html)
+        self.assertIn('rt-placeholder', html)
         self.assertNotIn('Роза', html)
+
+    def test_consent_is_in_checkout_markup(self):
+        """Согласие есть в разметке: без него сервер всё равно откажет,
+        но человек не должен узнавать об этом только после отправки."""
+        html = html_for('shop.checkout', {})
+        self.assertIn('name="consent"', html)
+        self.assertIn('type="checkbox"', html)

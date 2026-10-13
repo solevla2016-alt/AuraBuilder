@@ -15,8 +15,9 @@ import unittest
 from pathlib import Path
 
 from runtime.app import COOKIE, create_app
+from runtime.catalog import CatalogLoader
 from runtime.config import Config, load
-from runtime.store import Store
+from runtime.store import Store, catalog_items_from_package
 
 
 class Client:
@@ -175,14 +176,31 @@ class CartTests(RuntimeTestCase):
         _, body = self.client.call('GET', '/cart')
         self.assertEqual(body['cart']['items'][0]['price'], 1200)
 
+    def test_qty_is_an_addition(self):
+        """qty — прибавка, а не итоговое количество: об этом сказано в
+        docs/RUNTIME.md, и клиент отправляет разницу."""
+        self.add('t1', 2)
+        self.add('t1', 1)
+        _, body = self.client.call('GET', '/cart')
+        self.assertEqual(body['cart']['items'][0]['qty'], 3)
+        self.assertEqual(body['cart']['total'], 3600)
+
+    def test_negative_qty_removes_one(self):
+        self.add('t1', 3)
+        self.add('t1', -1)
+        _, body = self.client.call('GET', '/cart')
+        self.assertEqual(body['cart']['items'][0]['qty'], 2)
+
     def test_zero_qty_removes_item(self):
         self.add('t1', 2)
         self.add('t1', 0)
         _, body = self.client.call('GET', '/cart')
         self.assertEqual(body['cart']['items'], [])
 
-    def test_negative_qty_is_refused(self):
-        status, body = self.add('t1', -1)
+    def test_absurd_decrease_is_refused(self):
+        """−999 в одном запросе — это не «убрать одну позицию», а мусор."""
+        self.add('t1', 2)
+        status, body = self.add('t1', -999)
         self.assertEqual(status, 400)
         self.assertEqual(body['error'], 'bad_qty')
 
@@ -358,6 +376,96 @@ class RoutingTests(RuntimeTestCase):
 
         self.app(app_environ, start_response)
         self.assertEqual(status['code'], 400)
+
+
+class CatalogFromPackageTests(unittest.TestCase):
+    """Каталог берётся из данных пакета.
+
+    Заказчик не должен вести список товаров параллельно сборке сайта,
+    а идентификаторы обязаны совпадать с кнопками «В корзину».
+    """
+
+    PACKAGE = {
+        'src-1': {
+            'rows': ['Роза · 1200'],
+            'items': [
+                {'name': 'Роза', 'cost': 1200},
+                {'name': 'Тюльпан', 'cost': 900},
+            ],
+        },
+    }
+
+    def test_ids_match_add_buttons(self):
+        items = catalog_items_from_package(self.PACKAGE)
+        self.assertEqual([i['id'] for i in items], ['t1', 't2'])
+
+    def test_name_and_price_are_found(self):
+        items = catalog_items_from_package(self.PACKAGE)
+        self.assertEqual(items[0]['name'], 'Роза')
+        self.assertEqual(items[0]['price'], 1200)
+
+    def test_comma_is_read_as_decimal_separator(self):
+        items = catalog_items_from_package({
+            's': {'items': [{'название': 'Роза', 'цена': '1200,50'}]},
+        })
+        self.assertEqual(items[0]['price'], 1200.50)
+
+    def test_price_text_does_not_break_cart(self):
+        """Нечисловая цена обнуляется, а не роняет сервис: иначе одна
+        строка в источнике ломала бы счёт корзины."""
+        items = catalog_items_from_package({
+            's': {'items': [{'name': 'X', 'price': 'по запросу'}]},
+        })
+        self.assertEqual(items[0]['price'], 0.0)
+
+    def test_rows_are_used_when_items_missing(self):
+        items = catalog_items_from_package({'s': {'rows': ['Роза', 'Тюльпан']}})
+        self.assertEqual([i['name'] for i in items], ['Роза', 'Тюльпан'])
+
+    def test_empty_package_gives_empty_catalog(self):
+        self.assertEqual(catalog_items_from_package({}), [])
+        self.assertEqual(catalog_items_from_package({'s': {}}), [])
+
+
+class CatalogLoaderTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.store = Store(str(Path(self.tmp.name) / 'runtime.db'))
+        self.addCleanup(self.store.close)
+
+    def test_unreachable_url_keeps_catalog(self):
+        """Сайт должен жить и с устаревшим каталогом."""
+        self.store.replace_catalog([{'id': 't1', 'name': 'Роза', 'price': 100}])
+        loader = CatalogLoader('http://127.0.0.1:9/нет-такого.json', self.store)
+        self.assertEqual(loader.load(), 0)
+        self.assertEqual(self.store.item('t1')['name'], 'Роза')
+
+    def test_package_is_loaded_over_http(self):
+        import http.server
+        import threading
+
+        body = json.dumps(CatalogFromPackageTests.PACKAGE).encode('utf-8')
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+
+        url = f'http://127.0.0.1:{server.server_port}/assets/data/data.json'
+        count = CatalogLoader(url, self.store).load()
+        self.assertEqual(count, 2)
+        self.assertEqual(self.store.item('t2')['name'], 'Тюльпан')
 
 
 class ConfigTests(unittest.TestCase):

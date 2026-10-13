@@ -233,9 +233,11 @@ class App:
             qty = int(payload.get('qty', 1))
         except (TypeError, ValueError):
             return self.bad(start, 'bad_qty', 'Количество должно быть числом')
-        if qty < 0:
-            return self.bad(start, 'bad_qty',
-                            'Отрицательное количество означало бы минус к оплате')
+        if qty <= -MAX_QTY:
+            # Прибавка отрицательная — это «убрать одну позицию», но
+            # −999 в одном запросе не уменьшение количества, а мусор:
+            # раньше такие значения упирались бы в min() молча.
+            return self.bad(start, 'bad_qty', 'Слишком большое уменьшение')
 
         sid = self.sid_from(_cookie(environ, COOKIE)) or new_sid()
         items = [i for i in self.store.cart(sid).get('items', [])
@@ -249,14 +251,22 @@ class App:
                 return self.bad(start, 'unknown_item', 'Товар не найден в каталоге')
             entry = next((i for i in items if i.get('id') == item_id), None)
             if entry is None:
+                if qty < 0:
+                    # Уменьшать нечего: молчаливый отказ выглядел бы
+                    # как «корзина не изменилась из-за ошибки».
+                    return self.bad(start, 'unknown_item', 'Товара нет в корзине')
                 entry = {'id': found['id'], 'name': found['name'],
                          'price': found['price'], 'qty': 0}
                 items.append(entry)
-            entry['qty'] = min(MAX_QTY, int(entry.get('qty') or 0) + qty)
-            # Цена и название берутся из каталога, а не из запроса:
-            # иначе покупатель присылал бы свою цену.
-            entry['price'] = found['price']
-            entry['name'] = found['name']
+            left = int(entry.get('qty') or 0) + qty
+            if left <= 0:
+                items = [i for i in items if i.get('id') != item_id]
+            else:
+                entry['qty'] = min(MAX_QTY, left)
+                # Цена и название берутся из каталога, а не из запроса:
+                # иначе покупатель присылал бы свою цену.
+                entry['price'] = found['price']
+                entry['name'] = found['name']
 
         self.store.save_cart(sid, items)
         return self.ok(start, {'cart': self.cart_payload(sid)},

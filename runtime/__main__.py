@@ -13,10 +13,12 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import threading
 from pathlib import Path
 from wsgiref.simple_server import make_server
 
 from .app import create_app
+from .catalog import CatalogLoader
 from .config import load
 from .store import Store
 
@@ -26,7 +28,9 @@ BANNER = """Рантайм AuraBuilder.
   Состояние:    {dir}
   siteKey:      {site_key}
 
-Положите каталог товаров:
+Каталог товаров подтягивается из данных пакета, если в конфигурации
+задан catalogUrl. Свой каталог можно загрузить вручную:
+
   curl -X POST http://{host}:{port}/catalog \\
        -H 'Content-Type: application/json' \\
        -d '{{"siteKey": "{site_key}", "items": [{{"id": "t1", "name": "Роза", "price": 1200}}]}}'
@@ -64,8 +68,18 @@ def main(argv: list[str] | None = None) -> int:
     if not config.ready:
         print('ВНИМАНИЕ: в конфигурации нет siteKey или secret — заказы не принимаются.\n')
 
+    # Каталог подтягивается из данных пакета на том же сервере:
+    # идентификаторы товаров совпадают с кнопками «В корзину», и
+    # заказчику не нужно вести список параллельно сборке сайта.
+    loader = None
+    if config.catalog_url:
+        loader = CatalogLoader(config.catalog_url, store)
+        loader.load(quiet=True)
+
     try:
         with make_server(args.host, args.port, app) as server:
+            if loader is not None:
+                threading.Thread(target=loader.run, daemon=True).start()
             server.serve_forever()
     except KeyboardInterrupt:
         print('\nостановлен')
