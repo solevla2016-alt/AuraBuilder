@@ -489,6 +489,26 @@ class ConfigTests(unittest.TestCase):
             path.write_text(json.dumps({'siteKey': 'k', 'secret': 's'}), encoding='utf-8')
             config = load(path)
             self.assertEqual(config.site_key, 'k')
+            self.assertEqual(config.secret, 's')
+
+    def test_missing_secret_is_generated_on_server(self):
+        """Файл с сервера приезжает с siteKey, но без секрета: секрет
+        знает только машина заказчика. Пока его нет, рантайм отвечает
+        ready: false и не берёт заказы — а не подписывает cookie пустой
+        строкой."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'runtime.json'
+            path.write_text(json.dumps({'siteKey': 'k', 'secret': ''}), encoding='utf-8')
+            before = Config({'siteKey': 'k', 'secret': ''})
+            self.assertFalse(before.ready)
+
+            config = load(path)
+            self.assertTrue(config.ready)
+            self.assertTrue(config.secret)
+            # Значение дописано в файл: при перезапуске меняться не должно.
+            self.assertEqual(
+                json.loads(path.read_text(encoding='utf-8'))['secret'], config.secret
+            )
 
 
 if __name__ == '__main__':

@@ -234,7 +234,7 @@ jobs:
         # только там, где они названы, и молча пропустил бы новые
         # приложения — ровно тот случай, когда проверка зеленая, а код
         # не запускался.
-        run: python manage.py test projects accounts data_sources component_library --verbosity 2
+        run: python manage.py test projects accounts data_sources component_library deploying --verbosity 2
 
   # --- Рантайм ---------------------------------------------------------------
   # Рантайм поставляется заказчику отдельно и не делит код с платформой
@@ -253,6 +253,12 @@ jobs:
 
       - name: Тесты
         run: python -m unittest discover -s tests -p 'test_runtime*.py' --verbose
+
+      - name: Деплой на хостинг заказчика
+        # Сценарий 3 (ТЗ п.16.5): файлы доезжают, рантайм отвечает, и
+        # деплой сам себя подтверждает. Отдельно от остальных проверок,
+        # потому что здесь поднимаются сервер и рантайм.
+        run: python tools/check_deploy.py
 
       - name: Рантайм поднимается и отвечает
         # Проверяется то, что заказчик получит на сервере: команда

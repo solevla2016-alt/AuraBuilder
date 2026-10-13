@@ -41,7 +41,16 @@ function pythonBin() {
   const candidates = [
     join(root, '.venv', 'Scripts', 'python.exe'),
     join(root, '.venv', 'bin', 'python'),
-  ];
+  {
+    // Деплой проверяется отдельно от остального: он поднимает сервер,
+    // рантайм и делает HTTP-запросы к самому себе. В общем прогоне
+    // такие проверки прячутся за чужими ошибками.
+    name: 'Деплой на хостинг',
+    cmd: () => pythonBin(),
+    args: () => [join(root, 'tools', 'check_deploy.py')],
+    env: { DJANGO_DEBUG: '0', DJANGO_SECURE_SSL_REDIRECT: '0' },
+  },
+];
   for (const c of candidates) if (existsSync(c)) return c;
   return 'python';
 }
@@ -107,7 +116,10 @@ const steps = [
     // редирект снимается только на время тестов.
     name: 'Тесты Control Plane',
     cmd: () => pythonBin(),
-    args: () => ['manage.py', 'test', 'projects', 'accounts', 'data_sources', 'component_library'],
+    args: () => [
+      'manage.py', 'test',
+      'projects', 'accounts', 'data_sources', 'component_library', 'deploying',
+    ],
     cwd: apps,
     env: { DJANGO_DEBUG: '0', DJANGO_SECURE_SSL_REDIRECT: '0' },
   },

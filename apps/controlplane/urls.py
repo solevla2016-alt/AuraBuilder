@@ -33,6 +33,10 @@ urlpatterns = [
     # api/auth/login/ не должен попадать под <str:project_id>.
     path('api/auth/', include('accounts.urls')),
     path('api/projects/', include('projects.urls')),
+    # Деплой на хостинг заказчика (ТЗ п.16.5): профили доступа и
+    # сама выкладка. Объявлено после проектов, потому что все пути
+    # начинаются с api/projects/.
+    path('api/', include('deploying.urls')),
     # Узлы данных: часть источников адресуется через проект, часть —
     # напрямую, поэтому маршруты объявлены отдельным включением.
     path('api/', include('data_sources.urls')),

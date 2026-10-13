@@ -98,6 +98,7 @@ INSTALLED_APPS = [
     'accounts',
     'data_sources',
     'component_library',
+    'deploying',
 ]
 
 MIDDLEWARE = [

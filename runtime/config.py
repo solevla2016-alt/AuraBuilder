@@ -65,10 +65,21 @@ class Config:
 
 
 def load(path: str | Path) -> Config:
-    """Читает конфигурацию, создавая её при первом запуске."""
+    """Читает конфигурацию, создавая её при первом запуске.
+
+    Отдельно дополняется пустой секрет: файл мог приехать с сервера
+    платформы вместе с siteKey, но без секрета — его знать должна
+    только машина заказчика. Пока секрета нет, рантайм отвечает на
+    /health с ready: false и не принимает заказы, а не берёт пустую
+    подпись и подставляет проверяемого покупателя к чужой корзине.
+    """
     target = Path(path)
     if target.exists():
-        return Config(json.loads(target.read_text(encoding='utf-8')))
+        data = json.loads(target.read_text(encoding='utf-8'))
+        if not data.get('secret'):
+            data['secret'] = secrets.token_urlsafe(32)
+            _save(target, data)
+        return Config(data)
 
     data = dict(DEFAULTS)
     data.update(
@@ -77,8 +88,12 @@ def load(path: str | Path) -> Config:
             'secret': secrets.token_urlsafe(32),
         }
     )
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(
+    _save(target, data)
+    return Config(data)
+
+
+def _save(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
         json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8'
     )
-    return Config(data)
