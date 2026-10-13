@@ -236,6 +236,39 @@ jobs:
         # не запускался.
         run: python manage.py test projects accounts data_sources component_library --verbosity 2
 
+  # --- Рантайм ---------------------------------------------------------------
+  # Рантайм поставляется заказчику отдельно и не делит код с платформой
+  # (ADR-0005). Его тесты не требуют ни базы, ни Django: протокол из
+  # docs/RUNTIME.md проверяется целиком на стандартной библиотеке, и
+  # именно поэтому он запускается сам по себе, а не внутри job выше.
+  runtime:
+    name: Тесты рантайма
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Тесты
+        run: python -m unittest discover -s tests -p 'test_runtime*.py' --verbose
+
+      - name: Рантайм поднимается и отвечает
+        # Проверяется то, что заказчик получит на сервере: команда
+        # запуска из README должна работать без единой зависимости.
+        run: |
+          python -m runtime --dir /tmp/runtime-check --port 8099 &
+          for i in $(seq 1 20); do
+            if curl -sf http://127.0.0.1:8099/health > /dev/null; then
+              break
+            fi
+            sleep 0.5
+          done
+          curl -sf http://127.0.0.1:8099/health
+          test -f /tmp/runtime-check/runtime.db
+          test -f /tmp/runtime-check/runtime.json
+
   # --- Браузерные проверки --------------------------------------------------
   # Холст Konva и автосохранение не проверяются ни типами, ни тестами
   # Django: ошибка в них видна только в настоящем браузере. Именно так
