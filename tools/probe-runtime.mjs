@@ -17,7 +17,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,18 +30,41 @@ const TIMEOUT = 15000;
 const profile = mkdtempSync(join(tmpdir(), 'aurabuilder-rt-'));
 const port = 9200 + Math.floor(Math.random() * 500);
 
-const chrome = spawn(
-  process.env.CHROME ?? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-  [
-    '--headless=new',
-    '--disable-gpu',
-    '--no-first-run',
-    `--remote-debugging-port=${port}`,
-    `--user-data-dir=${profile}`,
-    'about:blank',
-  ],
-  { stdio: 'ignore' },
-);
+/*
+ * Путь к Chrome разный на Windows и Linux, а проверка должна идти
+ * и в локальном прогоне, и в CI. Переменная CHROME переопределяет всё:
+ * на машине разработчика браузер может стоять не в стандартном месте.
+ */
+const CHROME_CANDIDATES = [
+  process.env.CHROME,
+  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+  'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+  '/usr/bin/google-chrome',
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser',
+].filter(Boolean);
+
+const chromeBinary = CHROME_CANDIDATES.find((path) => {
+  try {
+    return existsSync(path);
+  } catch {
+    return false;
+  }
+});
+
+if (!chromeBinary) {
+  console.error('Chrome не найден. Укажите путь в переменной CHROME.');
+  process.exit(1);
+}
+
+const chrome = spawn(chromeBinary, [
+  '--headless=new',
+  '--disable-gpu',
+  '--no-first-run',
+  `--remote-debugging-port=${port}`,
+  `--user-data-dir=${profile}`,
+  'about:blank',
+], { stdio: 'ignore' });
 
 const cleanup = () => {
   try {
