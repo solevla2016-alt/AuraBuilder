@@ -139,6 +139,10 @@ class SchemaTests(APITestCase):
             # Каталог, карточка и цена: строятся на узле данных, им не
             # нужен рантайм, в отличие от корзины и оформления заказа.
             'shop.catalog', 'shop.card', 'shop.price',
+            # Остальные статические коммерческие: корзина, оформление
+            # и поиск ждут рантайма, и схемы для них пока нет.
+            'promo.banner', 'promo.pricing', 'shop.compare',
+            'shop.reviews', 'shop.stock', 'shop.order',
         }
         self.assertEqual(set(SCHEMAS), expected)
         self.assertEqual(SCHEMA_IDS, frozenset(expected))

@@ -614,7 +614,7 @@
     },
     {
       "id": "shop.order",
-      "name": "Заказ",
+      "name": "Заявка",
       "category": "commerce",
       "categoryLabel": "Коммерческие модули",
       "kind": "text",

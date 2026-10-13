@@ -2698,6 +2698,559 @@ export function modulePreview(
       );
     }
 
+    case 'promo.banner': {
+      /*
+       * Промо-баннер: акцентная подложка во всю ширину, заголовок,
+       * текст и кнопка. Отличие от обычной секции — заливка и кнопка:
+       * без них это ещё один блок с текстом, и посетитель не видит,
+       * что перед ним предложение.
+       */
+      const heading = text(block, 'heading', 'Лето со скидками');
+      const body = text(block, 'text', 'Скидка 20% до конца месяца');
+      const button = prop(block, 'buttonLabel', 'Смотреть каталог');
+      const align = prop(block, 'align', 'left');
+      const alignRight = align === 'right';
+      const alignCenter = align === 'center';
+      // Кнопка всегда справа, а текст занимает оставшуюся ширину.
+      // Ставить её по центру значит наложить её на заголовок, когда
+      // блок широкий, а надпись короткая.
+      // Кнопка справа от текста, а в узком блоке — под ним: иначе на
+      // две трети ширины остаётся кнопка, а заголовок ломается на
+      // четыре строки и наезжает на подпись.
+      const wide = block.width >= 380;
+      const buttonW = wide ? Math.min(220, block.width * 0.36) : Math.min(180, block.width - PAD * 2);
+      const buttonX = wide ? block.x + block.width - PAD - buttonW : block.x + PAD;
+      const buttonY = wide
+        ? block.y + h / 2 - 20
+        : block.y + h - PAD - 40;
+      const textW = wide && button ? block.width - PAD * 2 - buttonW - 20 : block.width - PAD * 2;
+      const textAlign = alignRight ? 'right' : alignCenter ? 'center' : 'left';
+      const textX = block.x + PAD;
+      // Заголовку отдаются две строки, и текст сдвигается под них.
+      // Раньше он стоял на фиксированном месте, и длинный заголовок
+      // наезжал на текст.
+      const headH = wide ? titleSize * 2.4 : h - PAD * 2 - 84;
+      const headY = wide ? block.y + h / 2 - headH / 2 - bodySize / 2 : block.y + PAD;
+
+      return (
+        <Group listening={false}>
+          <Rect
+            x={block.x}
+            y={block.y}
+            width={block.width}
+            height={h}
+            fill={tokens.accentSurfaceSubtle}
+            cornerRadius={12}
+          />
+          <Text
+            x={textX}
+            y={headY}
+            width={textW}
+            align={textAlign}
+            text={heading}
+            fontSize={titleSize}
+            fontStyle="bold"
+            lineHeight={1.2}
+            fontFamily={FONT}
+            fill={tokens.textPrimary}
+            ellipsis
+          />
+          <Text
+            x={textX}
+            y={headY + headH}
+            width={textW}
+            align={textAlign}
+            text={body}
+            fontSize={bodySize}
+            fontFamily={FONT}
+            fill={tokens.textSecondary}
+            ellipsis
+          />
+          {button ? (
+            <>
+              <Rect
+                x={buttonX}
+                y={buttonY}
+                width={buttonW}
+                height={40}
+                fill={tokens.selectionBorder}
+                cornerRadius={20}
+              />
+              <Text
+                x={buttonX + 12}
+                y={buttonY + 12}
+                width={buttonW - 24}
+                align="center"
+                text={button}
+                fontSize={bodySize}
+                fontStyle="bold"
+                fontFamily={FONT}
+                fill={tokens.panel}
+                ellipsis
+              />
+            </>
+          ) : null}
+        </Group>
+      );
+    }
+
+    case 'promo.pricing': {
+      /*
+       * Тарифы: карточки в ряд, в каждой название, цена, период и
+       * список включений. Основной тариф обведён акцентом — так же,
+       * как в выгрузке, поэтому холст показывает то же, что увидит
+       * посетитель.
+       */
+      const titleField = prop(block, 'titleField', 'title');
+      const priceField = prop(block, 'priceField', 'price');
+      const periodField = prop(block, 'periodField', '');
+      const featuresField = prop(block, 'featuresField', '');
+      const highlightField = prop(block, 'highlight', '');
+
+      if (!records.length) {
+        return (
+          <Text
+            key={`${block.id}-empty`}
+            x={block.x + PAD}
+            y={block.y + h / 2}
+            width={block.width - PAD * 2}
+            align="center"
+            text="Тарифы не заданы: источник не выбран или в нём нет записей"
+            fontSize={bodySize}
+            fontFamily={FONT}
+            fill={tokens.textSecondary}
+          />
+        );
+      }
+
+      const shown = records.slice(0, 4);
+      const gap = 12;
+      const cardW = (block.width - PAD * 2 - gap * (shown.length - 1)) / shown.length;
+      const area = Math.max(40, h - PAD * 2);
+
+      return (
+        <Group listening={false}>
+          {shown.map((row, i) => {
+            const x = block.x + PAD + i * (cardW + gap);
+            const top = block.y + PAD;
+            const flag = highlightField ? row.data?.[highlightField] : null;
+            const mark = flag !== null && flag !== undefined && flag !== '' &&
+              ['1', '1.0', 'true', 'да'].includes(String(flag).toLowerCase());
+            const features = featuresField
+              ? String(row.data?.[featuresField] ?? '')
+                  .split(/[;\n]/)
+                  .map((part) => part.trim())
+                  .filter(Boolean)
+              : [];
+            const price = priceField ? String(row.data?.[priceField] ?? '') : '';
+            const period = periodField ? String(row.data?.[periodField] ?? '') : '';
+
+            return (
+              <Group key={`${block.id}-plan${i}`}>
+                <Rect
+                  x={x}
+                  y={top}
+                  width={cardW}
+                  height={area}
+                  fill={tokens.panel}
+                  stroke={mark ? tokens.selectionBorder : tokens.border}
+                  strokeWidth={mark ? 2 : 1}
+                  cornerRadius={10}
+                />
+                <Text
+                  x={x + 12}
+                  y={top + 12}
+                  width={cardW - 24}
+                  text={String(row.data?.[titleField] ?? 'Тариф')}
+                  fontSize={bodySize}
+                  fontStyle="bold"
+                  fontFamily={FONT}
+                  fill={tokens.textPrimary}
+                  ellipsis
+                />
+                <Text
+                  x={x + 12}
+                  y={top + 12 + bodySize + 8}
+                  width={cardW - 24}
+                  text={period ? `${price} / ${period}` : price}
+                  fontSize={Math.max(16, titleSize * 0.7)}
+                  fontFamily={MONO}
+                  fill={mark ? tokens.selectionBorder : tokens.textPrimary}
+                  ellipsis
+                />
+                {features.slice(0, 4).map((item, j) => (
+                  <Text
+                    key={`${block.id}-f${i}-${j}`}
+                    x={x + 12}
+                    y={top + 12 + bodySize * 2 + 18 + j * (bodySize + 6)}
+                    width={cardW - 24}
+                    text={`\u2022 ${item}`}
+                    fontSize={bodySize}
+                    fontFamily={FONT}
+                    fill={tokens.textSecondary}
+                    ellipsis
+                  />
+                ))}
+              </Group>
+            );
+          })}
+        </Group>
+      );
+    }
+
+    case 'shop.compare': {
+      /*
+       * Сравнение: таблица с линиями. Порядок столбцов задан настройкой
+       * и сохраняется: сравнивать товары по случайным признакам
+       * бессмысленно.
+       */
+      const keys = listProp(block, 'fields', 3, ['price', 'weight']).filter(
+        // listProp дополняет список до count заглушками, а сравнению
+        // лишняя колонка «Пункт 3» ничего не объясняет: столбцов
+        // ровно столько, сколько задано.
+        (key) => !/^Пункт \d+$/.test(key),
+      );
+      const titleField = prop(block, 'titleField', 'title');
+      const limit = Math.max(2, Number(prop(block, 'limit', '4')) || 4);
+      const shown = records.slice(0, limit);
+      const keyW = Math.min(150, block.width / (keys.length + 1.6));
+      const nameW = Math.max(80, block.width - keyW * keys.length - PAD * 2);
+      const rowH = Math.max(22, (h - PAD * 2 - bodySize - 8) / Math.max(1, shown.length + 1));
+      const headY = block.y + PAD;
+      const bodyY = headY + rowH;
+
+      return (
+        <Group listening={false}>
+          <Rect
+            x={block.x + PAD}
+            y={headY}
+            width={block.width - PAD * 2}
+            height={rowH}
+            fill={tokens.panelSunken}
+            cornerRadius={[6, 6, 0, 0]}
+          />
+          <Text
+            x={block.x + PAD + 8}
+            y={headY + (rowH - bodySize) / 2}
+            width={nameW}
+            text="товар"
+            fontSize={bodySize}
+            fontStyle="bold"
+            fontFamily={FONT}
+            fill={tokens.textSecondary}
+          />
+          {keys.map((key, i) => (
+            <Text
+              key={`${block.id}-h${i}`}
+              x={block.x + PAD + nameW + i * keyW + 8}
+              y={headY + (rowH - bodySize) / 2}
+              width={keyW - 12}
+              text={key}
+              fontSize={bodySize}
+              fontStyle="bold"
+              fontFamily={FONT}
+              fill={tokens.textSecondary}
+              ellipsis
+            />
+          ))}
+          {shown.map((row, r) => (
+            <Group key={`${block.id}-r${r}`}>
+              <Line
+                points={[block.x + PAD, bodyY + rowH * (r + 1), block.x + block.width - PAD, bodyY + rowH * (r + 1)]}
+                stroke={tokens.border}
+                strokeWidth={1}
+              />
+              <Text
+                x={block.x + PAD + 8}
+                y={bodyY + rowH * r + (rowH - bodySize) / 2}
+                width={nameW - 12}
+                text={String(row.data?.[titleField] ?? 'Товар')}
+                fontSize={bodySize}
+                fontFamily={FONT}
+                fill={tokens.textPrimary}
+                ellipsis
+              />
+              {keys.map((key, i) => (
+                <Text
+                  key={`${block.id}-c${r}-${i}`}
+                  x={block.x + PAD + nameW + i * keyW + 8}
+                  y={bodyY + rowH * r + (rowH - bodySize) / 2}
+                  width={keyW - 12}
+                  text={cellText(row.data?.[key])}
+                  fontSize={bodySize}
+                  fontFamily={MONO}
+                  fill={tokens.textPrimary}
+                  ellipsis
+                />
+              ))}
+            </Group>
+          ))}
+          {shown.length === 0 ? (
+            <Text
+              x={block.x + PAD}
+              y={block.y + h / 2}
+              width={block.width - PAD * 2}
+              align="center"
+              text="Сравнивать нечего: выберите источник"
+              fontSize={bodySize}
+              fontFamily={FONT}
+              fill={tokens.textSecondary}
+            />
+          ) : null}
+        </Group>
+      );
+    }
+
+    case 'shop.reviews': {
+      /*
+       * Отзывы: оценка звёздами, текст и имя. Раньше отзыв был строкой
+       * без автора — покупатель не мог понять, чьё это мнение.
+       */
+      const authorField = prop(block, 'authorField', 'author');
+      const textField = prop(block, 'textField', 'text');
+      const ratingField = prop(block, 'ratingField', 'rating');
+      const limit = Math.max(1, Number(prop(block, 'limit', '10')) || 10);
+      const shown = records.slice(0, limit);
+
+      if (!shown.length) {
+        return (
+          <Text
+            key={`${block.id}-empty`}
+            x={block.x + PAD}
+            y={block.y + h / 2}
+            width={block.width - PAD * 2}
+            align="center"
+            text="Отзывов нет"
+            fontSize={bodySize}
+            fontFamily={FONT}
+            fill={tokens.textSecondary}
+          />
+        );
+      }
+
+      const area = Math.max(40, h - PAD * 2);
+      const cardH = area / Math.min(shown.length, 3);
+
+      return (
+        <Group listening={false}>
+          {shown.slice(0, 3).map((row, i) => {
+            const y = block.y + PAD + i * cardH;
+            const raw = ratingField ? Number(row.data?.[ratingField] ?? 0) : 0;
+            const stars = Number.isFinite(raw) ? Math.max(0, Math.min(5, Math.round(raw))) : 0;
+            return (
+              <Group key={`${block.id}-rev${i}`}>
+                <Rect
+                  x={block.x + PAD}
+                  y={y}
+                  width={block.width - PAD * 2}
+                  height={cardH - 10}
+                  fill={tokens.panel}
+                  stroke={tokens.border}
+                  strokeWidth={1}
+                  cornerRadius={10}
+                />
+                <Text
+                  x={block.x + PAD + 14}
+                  y={y + 10}
+                  width={block.width - PAD * 2 - 28}
+                  text={'\u2605'.repeat(stars) + '\u2606'.repeat(5 - stars)}
+                  fontSize={bodySize}
+                  fontFamily={FONT}
+                  fill={tokens.selectionBorder}
+                />
+                <Text
+                  x={block.x + PAD + 14}
+                  y={y + 10 + bodySize + 6}
+                  width={block.width - PAD * 2 - 28}
+                  text={String(row.data?.[textField] ?? '')}
+                  fontSize={bodySize}
+                  fontFamily={FONT}
+                  fill={tokens.textPrimary}
+                  ellipsis
+                />
+                <Text
+                  x={block.x + PAD + 14}
+                  y={y + cardH - 22}
+                  width={block.width - PAD * 2 - 28}
+                  text={String(row.data?.[authorField] ?? 'Покупатель')}
+                  fontSize={bodySize}
+                  fontFamily={FONT}
+                  fill={tokens.textSecondary}
+                  ellipsis
+                />
+              </Group>
+            );
+          })}
+          {shown.length > 3 ? (
+            <Text
+              x={block.x + PAD}
+              y={block.y + h - 14}
+              width={block.width - PAD * 2}
+              align="right"
+              text={`Показано ${Math.min(shown.length, 3)} из ${shown.length}`}
+              fontSize={bodySize - 2}
+              fontFamily={FONT}
+              fill={tokens.textDisabled}
+            />
+          ) : null}
+        </Group>
+      );
+    }
+
+    case 'shop.stock': {
+      /*
+       * Остаток: крупное число и подпись «на момент публикации».
+       * Подпись обязательна — остаток меняется каждый день, а пакет
+       * собирается один раз, и молчаливое число выдавало бы снимок за
+       * текущий остаток.
+       */
+      const field = prop(block, 'field', 'stock');
+      const label = prop(block, 'label', 'Осталось');
+      const note = prop(block, 'note', 'Данные на момент публикации');
+      const total = records.reduce((sum, row) => {
+        const value = Number(row.data?.[field]);
+        return sum + (Number.isFinite(value) ? value : 0);
+      }, 0);
+
+      return (
+        <Group listening={false}>
+          <Text
+            x={block.x + PAD}
+            y={block.y + h / 2 - titleSize * 1.6}
+            width={block.width - PAD * 2}
+            text={`${total}`}
+            fontSize={Math.max(32, titleSize * 1.8)}
+            fontStyle="bold"
+            fontFamily={MONO}
+            fill={total > 0 ? tokens.textPrimary : tokens.textDisabled}
+          />
+          <Text
+            x={block.x + PAD}
+            y={block.y + h / 2 - 4}
+            width={block.width - PAD * 2}
+            text={label}
+            fontSize={bodySize}
+            fontFamily={FONT}
+            fill={tokens.textPrimary}
+          />
+          <Text
+            x={block.x + PAD}
+            y={block.y + h / 2 + bodySize + 6}
+            width={block.width - PAD * 2}
+            text={note}
+            fontSize={bodySize}
+            fontFamily={FONT}
+            fill={tokens.textDisabled}
+          />
+        </Group>
+      );
+    }
+
+    case 'shop.order': {
+      /*
+       * Форма заявки: поля, обязательное согласие и кнопка. Подпись
+       * под формой говорит, что заявка сохранится только при подключённом
+       * рантайме: статический пакет отправить её некуда.
+       */
+      const heading = text(block, 'heading', 'Заявка');
+      const names = listProp(block, 'fields', 3, ['Имя', 'Телефон', 'Комментарий']);
+      const submit = prop(block, 'submitLabel', 'Отправить');
+      const policyField = prop(block, 'policyField', 'consent');
+      const fieldH = Math.max(28, Math.min(40, (h - PAD * 2 - 70) / Math.max(1, names.length)));
+      const width = Math.min(420, block.width - PAD * 2);
+      // Поля идут друг за другом с шагом «подпись + рамка»: прежде все
+      // они рисовались на одном месте, и вместо трёх полей было одно.
+      const step = bodySize + 6 + fieldH + 8;
+
+      return (
+        <Group listening={false}>
+          <Text
+            x={block.x + PAD}
+            y={block.y + PAD}
+            width={block.width - PAD * 2}
+            text={heading}
+            fontSize={titleSize}
+            fontStyle="bold"
+            fontFamily={FONT}
+            fill={tokens.textPrimary}
+            ellipsis
+          />
+          {names.map((name, i) => {
+            const y = block.y + PAD + titleSize + 14 + i * step;
+            return (
+              <Group key={`${block.id}-in${i}`}>
+                <Text
+                  x={block.x + PAD}
+                  y={y}
+                  width={width}
+                  text={name}
+                  fontSize={bodySize}
+                  fontFamily={FONT}
+                  fill={tokens.textSecondary}
+                  ellipsis
+                />
+                <Rect
+                  x={block.x + PAD}
+                  y={y + bodySize + 6}
+                  width={width}
+                  height={fieldH}
+                  fill={tokens.panel}
+                  stroke={tokens.border}
+                  strokeWidth={1}
+                  cornerRadius={8}
+                />
+              </Group>
+            );
+          })}
+          {policyField ? (
+            <>
+              <Rect
+                x={block.x + PAD}
+                y={block.y + PAD + titleSize + 20 + names.length * step}
+                width={16}
+                height={16}
+                fill={tokens.panel}
+                stroke={tokens.border}
+                strokeWidth={1}
+                cornerRadius={4}
+              />
+              <Text
+                x={block.x + PAD + 26}
+                y={block.y + PAD + titleSize + 20 + names.length * step}
+                width={width - 26}
+                text="Согласен на обработку персональных данных"
+                fontSize={bodySize}
+                fontFamily={FONT}
+                fill={tokens.textSecondary}
+                ellipsis
+              />
+            </>
+          ) : null}
+          {/* Кнопка ниже согласия, а не поверх него: заявку без
+              согласия отправить нельзя, и подпись обязана быть
+              читаемой. */}
+          <Rect
+            x={block.x + PAD}
+            y={block.y + PAD + titleSize + 54 + names.length * step}
+            width={Math.min(200, width)}
+            height={40}
+            fill={tokens.selectionBorder}
+            cornerRadius={8}
+          />
+          <Text
+            x={block.x + PAD + 16}
+            y={block.y + PAD + titleSize + 66 + names.length * step}
+            width={Math.min(200, width) - 32}
+            text={submit}
+            fontSize={bodySize}
+            fontStyle="bold"
+            fontFamily={FONT}
+            fill={tokens.panel}
+          />
+        </Group>
+      );
+    }
+
     default: {
       // Модуль без собственного представления: остаётся подпись с
       // идентификатором, чтобы блок был узнаваем на холсте.

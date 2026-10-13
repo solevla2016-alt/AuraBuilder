@@ -88,7 +88,7 @@ export const MODULES: ModuleDef[] = [
   { id: 'trust.rating', name: 'Рейтинг', category: 'trust', categoryLabel: 'Секции доверия и соответствия', kind: 'text', stages: [5], minStage: 5 },
   { id: 'legal.requisites', name: 'Реквизиты', category: 'trust', categoryLabel: 'Секции доверия и соответствия', kind: 'text', stages: [5], minStage: 5 },
   { id: 'legal.consent', name: 'Согласие на обработку ПДн', category: 'trust', categoryLabel: 'Секции доверия и соответствия', kind: 'text', stages: [5], minStage: 5 },
-  { id: 'shop.order', name: 'Заказ', category: 'commerce', categoryLabel: 'Коммерческие модули', kind: 'text', stages: [6], minStage: 6 },
+  { id: 'shop.order', name: 'Заявка', category: 'commerce', categoryLabel: 'Коммерческие модули', kind: 'text', stages: [6], minStage: 6 },
   { id: 'shop.card', name: 'Карточка товара', category: 'commerce', categoryLabel: 'Коммерческие модули', kind: 'text', stages: [6], minStage: 6 },
   { id: 'shop.catalog', name: 'Каталог', category: 'commerce', categoryLabel: 'Коммерческие модули', kind: 'text', stages: [6], minStage: 6 },
   { id: 'shop.cart', name: 'Корзина', category: 'commerce', categoryLabel: 'Коммерческие модули', kind: 'text', stages: [6], minStage: 6 },
@@ -343,6 +343,51 @@ export const SCHEMAS: ModuleSchema[] = [
     { name: 'prefix', type: 'text', required: false, default: null, limits: {}, description: 'Надпись перед ценой, например «от»' },
     { name: 'suffix', type: 'text', required: false, default: "₽", limits: {}, description: 'Единица измерения после цены' },
     { name: 'showOld', type: 'boolean', required: false, default: false, limits: {}, description: 'Показывать старую цену зачёркнутой' }
+  ] },
+  { moduleId: 'promo.banner', props: [
+    { name: 'heading', type: 'text', required: false, default: "Только до конца недели", limits: {}, description: 'Крупная надпись баннера' },
+    { name: 'text', type: 'textarea', required: false, default: "Скидка 20% на второй заказ.", limits: {}, description: 'Пояснение под надписью' },
+    { name: 'buttonLabel', type: 'text', required: false, default: "Подробнее", limits: {}, description: 'Надпись на кнопке' },
+    { name: 'buttonLink', type: 'text', required: false, default: "#", limits: {}, description: 'Адрес кнопки' },
+    { name: 'align', type: 'select', required: true, default: "left", limits: {"options":["left","center"]}, description: 'Выравнивание текста' },
+    { name: 'background', type: 'select', required: true, default: "light", limits: {"options":["light","accent"]}, description: 'Заливка баннера' }
+  ] },
+  { moduleId: 'promo.pricing', props: [
+    { name: 'source', type: 'text', required: false, default: null, limits: {}, description: 'Идентификатор источника данных; пусто — источник не выбран' },
+    { name: 'titleField', type: 'text', required: true, default: "title", limits: {}, description: 'Ключ поля с названием тарифа' },
+    { name: 'priceField', type: 'text', required: false, default: "price", limits: {}, description: 'Ключ поля со стоимостью' },
+    { name: 'periodField', type: 'text', required: false, default: null, limits: {}, description: 'Ключ поля с периодом: «в месяц», «за год»' },
+    { name: 'featuresField', type: 'text', required: false, default: null, limits: {}, description: 'Ключ поля со списком включений через «;»' },
+    { name: 'highlight', type: 'text', required: false, default: null, limits: {}, description: 'Ключ поля, по которому тариф помечается как основной' }
+  ] },
+  { moduleId: 'shop.compare', props: [
+    { name: 'source', type: 'text', required: false, default: null, limits: {}, description: 'Идентификатор источника данных; пусто — источник не выбран' },
+    { name: 'titleField', type: 'text', required: true, default: "title", limits: {}, description: 'Ключ поля с названием товара' },
+    { name: 'fields', type: 'textarea', required: true, default: "price;weight", limits: {}, description: 'Ключи сравниваемых полей через «;»' },
+    { name: 'priceField', type: 'text', required: false, default: null, limits: {}, description: 'Ключ поля, значение которого выводится как цена' },
+    { name: 'limit', type: 'number', required: false, default: 4, limits: {"min":2,"max":12,"step":1}, description: 'Сколько товаров сравнивать' },
+    { name: 'buttonLabel', type: 'text', required: false, default: "В корзину", limits: {}, description: 'Надпись на кнопке' }
+  ] },
+  { moduleId: 'shop.reviews', props: [
+    { name: 'source', type: 'text', required: false, default: null, limits: {}, description: 'Идентификатор источника данных; пусто — источник не выбран' },
+    { name: 'authorField', type: 'text', required: true, default: "author", limits: {}, description: 'Ключ поля с именем автора' },
+    { name: 'textField', type: 'text', required: true, default: "text", limits: {}, description: 'Ключ поля с текстом отзыва' },
+    { name: 'ratingField', type: 'text', required: false, default: "rating", limits: {}, description: 'Ключ поля с оценкой' },
+    { name: 'limit', type: 'number', required: false, default: 10, limits: {"min":1,"max":50,"step":1}, description: 'Сколько отзывов показать' }
+  ] },
+  { moduleId: 'shop.stock', props: [
+    { name: 'source', type: 'text', required: false, default: null, limits: {}, description: 'Идентификатор источника данных; пусто — источник не выбран' },
+    { name: 'field', type: 'text', required: true, default: "stock", limits: {}, description: 'Ключ поля с остатком' },
+    { name: 'label', type: 'text', required: false, default: "Осталось", limits: {}, description: 'Подпись над числом' },
+    { name: 'lowThreshold', type: 'number', required: false, default: 5, limits: {"min":0,"max":1000,"step":1}, description: 'Ниже этого значения остаток считается низким' },
+    { name: 'note', type: 'text', required: false, default: "Данные на момент публикации", limits: {}, description: 'Пояснение под числом' }
+  ] },
+  { moduleId: 'shop.order', props: [
+    { name: 'heading', type: 'text', required: false, default: "Заявка", limits: {}, description: 'Заголовок формы' },
+    { name: 'fields', type: 'textarea', required: true, default: "Имя;Телефон;Комментарий", limits: {}, description: 'Поля формы по одному в строке' },
+    { name: 'submitLabel', type: 'text', required: false, default: "Отправить", limits: {}, description: 'Надпись на кнопке' },
+    { name: 'policyField', type: 'text', required: false, default: "consent", limits: {}, description: 'Поле согласия на обработку данных' },
+    { name: 'note', type: 'text', required: false, default: null, limits: {}, description: 'Пояснение под формой' }
   ] },
   { moduleId: 'action.button', props: [
     { name: 'label', type: 'text', required: true, default: "Кнопка", limits: {}, description: 'Текст на кнопке' },

@@ -93,7 +93,7 @@ MODULES: tuple[Module, ...] = (
     Module('trust.rating', 'Рейтинг', 'trust', 'Секции доверия и соответствия', 'text', (5,)),
     Module('legal.requisites', 'Реквизиты', 'trust', 'Секции доверия и соответствия', 'text', (5,)),
     Module('legal.consent', 'Согласие на обработку ПДн', 'trust', 'Секции доверия и соответствия', 'text', (5,)),
-    Module('shop.order', 'Заказ', 'commerce', 'Коммерческие модули', 'text', (6,)),
+    Module('shop.order', 'Заявка', 'commerce', 'Коммерческие модули', 'text', (6,)),
     Module('shop.card', 'Карточка товара', 'commerce', 'Коммерческие модули', 'text', (6,)),
     Module('shop.catalog', 'Каталог', 'commerce', 'Коммерческие модули', 'text', (6,)),
     Module('shop.cart', 'Корзина', 'commerce', 'Коммерческие модули', 'text', (6,)),
@@ -435,6 +435,69 @@ SCHEMAS: dict[str, ModuleSchema] = {
         Prop('prefix', 'text', False, None, {}, 'Надпись перед ценой, например «от»'),
         Prop('suffix', 'text', False, "₽", {}, 'Единица измерения после цены'),
         Prop('showOld', 'boolean', False, False, {}, 'Показывать старую цену зачёркнутой'),
+        ),
+    ),
+    'promo.banner': ModuleSchema(
+        'promo.banner',
+        (
+        Prop('heading', 'text', False, "Только до конца недели", {}, 'Крупная надпись баннера'),
+        Prop('text', 'textarea', False, "Скидка 20% на второй заказ.", {}, 'Пояснение под надписью'),
+        Prop('buttonLabel', 'text', False, "Подробнее", {}, 'Надпись на кнопке'),
+        Prop('buttonLink', 'text', False, "#", {}, 'Адрес кнопки'),
+        Prop('align', 'select', True, "left", {"options":["left","center"]}, 'Выравнивание текста'),
+        Prop('background', 'select', True, "light", {"options":["light","accent"]}, 'Заливка баннера'),
+        ),
+    ),
+    'promo.pricing': ModuleSchema(
+        'promo.pricing',
+        (
+        Prop('source', 'text', False, None, {}, 'Идентификатор источника данных; пусто — источник не выбран'),
+        Prop('titleField', 'text', True, "title", {}, 'Ключ поля с названием тарифа'),
+        Prop('priceField', 'text', False, "price", {}, 'Ключ поля со стоимостью'),
+        Prop('periodField', 'text', False, None, {}, 'Ключ поля с периодом: «в месяц», «за год»'),
+        Prop('featuresField', 'text', False, None, {}, 'Ключ поля со списком включений через «;»'),
+        Prop('highlight', 'text', False, None, {}, 'Ключ поля, по которому тариф помечается как основной'),
+        ),
+    ),
+    'shop.compare': ModuleSchema(
+        'shop.compare',
+        (
+        Prop('source', 'text', False, None, {}, 'Идентификатор источника данных; пусто — источник не выбран'),
+        Prop('titleField', 'text', True, "title", {}, 'Ключ поля с названием товара'),
+        Prop('fields', 'textarea', True, "price;weight", {}, 'Ключи сравниваемых полей через «;»'),
+        Prop('priceField', 'text', False, None, {}, 'Ключ поля, значение которого выводится как цена'),
+        Prop('limit', 'number', False, 4, {"min":2,"max":12,"step":1}, 'Сколько товаров сравнивать'),
+        Prop('buttonLabel', 'text', False, "В корзину", {}, 'Надпись на кнопке'),
+        ),
+    ),
+    'shop.reviews': ModuleSchema(
+        'shop.reviews',
+        (
+        Prop('source', 'text', False, None, {}, 'Идентификатор источника данных; пусто — источник не выбран'),
+        Prop('authorField', 'text', True, "author", {}, 'Ключ поля с именем автора'),
+        Prop('textField', 'text', True, "text", {}, 'Ключ поля с текстом отзыва'),
+        Prop('ratingField', 'text', False, "rating", {}, 'Ключ поля с оценкой'),
+        Prop('limit', 'number', False, 10, {"min":1,"max":50,"step":1}, 'Сколько отзывов показать'),
+        ),
+    ),
+    'shop.stock': ModuleSchema(
+        'shop.stock',
+        (
+        Prop('source', 'text', False, None, {}, 'Идентификатор источника данных; пусто — источник не выбран'),
+        Prop('field', 'text', True, "stock", {}, 'Ключ поля с остатком'),
+        Prop('label', 'text', False, "Осталось", {}, 'Подпись над числом'),
+        Prop('lowThreshold', 'number', False, 5, {"min":0,"max":1000,"step":1}, 'Ниже этого значения остаток считается низким'),
+        Prop('note', 'text', False, "Данные на момент публикации", {}, 'Пояснение под числом'),
+        ),
+    ),
+    'shop.order': ModuleSchema(
+        'shop.order',
+        (
+        Prop('heading', 'text', False, "Заявка", {}, 'Заголовок формы'),
+        Prop('fields', 'textarea', True, "Имя;Телефон;Комментарий", {}, 'Поля формы по одному в строке'),
+        Prop('submitLabel', 'text', False, "Отправить", {}, 'Надпись на кнопке'),
+        Prop('policyField', 'text', False, "consent", {}, 'Поле согласия на обработку данных'),
+        Prop('note', 'text', False, None, {}, 'Пояснение под формой'),
         ),
     ),
     'action.button': ModuleSchema(

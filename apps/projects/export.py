@@ -229,7 +229,7 @@ def _render_section(block: dict, records: list[dict] | None = None) -> str:
 
     У заголовка есть запасной источник — подпись блока. Без него секция
     с ненастроенными свойствами выглядела пустой: заголовок первого
-    экрана хранится в панели свойств, а не в содержимо�� блока.
+    экрана хранится в панели свойств, а не в содержимое блока.
     """
 
     parts: list[str] = []
@@ -797,29 +797,84 @@ def _render_requisites(block: dict) -> str:
     )
 
 
-def _render_review_list(block: dict, records: list[dict] | None = None) -> str:
-    """Отзывы из источника."""
-    rows = records or []
+def _render_reviews(block: dict, records: list[dict] | None = None,
+                    dataset: list[dict] | None = None) -> str:
+    """Отзывы о товаре: оценка, текст и автор.
+
+    Раньше выводились готовые строки без автора и оценки: имя
+    покупателя терялось, и отзыв читался как анонимный.
+    """
+    author_field = _own(block, 'authorField', 'author')
+    text_field = _own(block, 'textField', 'text')
+    rating_field = _own(block, 'ratingField', 'rating')
+    limit = _int_prop(block, 'limit', 10, 1, 50)
+
+    rows = list(dataset if dataset is not None else [])[:limit]
     if not rows:
-        return '<section class="section section--data"><p class="data__empty">Нет отзывов</p></section>'
-    items = ''.join(
-        f'<li class="review"><blockquote>{esc(row)}</blockquote></li>' for row in rows
+        return (
+            '<section class="section section--reviews">'
+            '<p class="data__empty">Отзывов нет.</p></section>'
+        )
+
+    items = ''
+    for row in rows:
+        author = str(row.get(author_field) or 'Покупатель')
+        body = str(row.get(text_field) or '')
+        raw_rating = row.get(rating_field) if rating_field else None
+        numbers = _numbers([raw_rating]) if raw_rating is not None else []
+        stars = '★' * max(0, min(5, int(numbers[0]))) if numbers else ''
+        items += (
+            '<li class="review">'
+            f'<blockquote>{esc(body)}</blockquote>'
+            f'<figcaption>{stars} · {esc(author)}</figcaption></li>'
+        )
+
+    return (
+        '<section class="section section--reviews">'
+        f'<ul class="reviews">{items}</ul>'
+        f'<p class="data__note">Показано {len(rows)}</p></section>'
     )
-    return f'<section class="section section--data"><ul class="reviews">{items}</ul></section>'
 
 
-def _render_table_from_records(block: dict, records: list[dict] | None = None) -> str:
-    """Сравнение товаров: значения источника в таблицу."""
-    rows = records or []
+def _render_compare(block: dict, records: list[dict] | None = None,
+                   dataset: list[dict] | None = None) -> str:
+    """Сравнение товаров: товары по строкам, поля по столбцам.
+
+    Порядок полей задан настройкой и сохраняется как есть:
+    разложить признаки случайно значило бы сравнить несравнимое.
+    """
+    title_field = _own(block, 'titleField', 'title')
+    price_field = _own(block, 'priceField', '')
+    keys = _items(block, 'fields', ['price', 'weight'])
+    limit = _int_prop(block, 'limit', 4, 2, 12)
+    button = _own(block, 'buttonLabel', '')
+
+    rows = list(dataset if dataset is not None else [])[:limit]
     if not rows:
-        return '<section class="section section--data"><p class="data__empty">Нет товаров</p></section>'
+        return (
+            '<section class="section section--compare">'
+            '<p class="data__empty">Нечего сравнивать.</p></section>'
+        )
+
+    head = ''.join(f'<th scope="col">{esc(key)}</th>' for key in keys)
+    first_head = '<th scope="col">товар</th>'
+    tail_head = '<th scope="col"></th>' if button else ''
     body = ''
     for row in rows:
-        cells = ''.join(f'<td>{esc(part)}</td>' for part in str(row).split(' \u00b7 '))
-        body += f'<tr>{cells}</tr>'
+        cells = ''.join(
+            f'<td>{esc(_price_of(row, key) if key == price_field else row.get(key, ""))}</td>'
+            for key in keys
+        )
+        name = esc(row.get(title_field) or 'Товар')
+        action = f'<span class="product__action">{esc(button)}</span>' if button else ''
+        body += f'<tr><th scope="row">{name}</th>{cells}{action}</tr>'
+
     return (
-        '<section class="section section--data">'
-        f'<table class="block block--table"><tbody>{body}</tbody></table></section>'
+        '<section class="section section--compare">'
+        '<table class="compare"><thead><tr>'
+        f'{first_head}{head}{tail_head}'
+        '</tr></thead>'
+        f'<tbody>{body}</tbody></table></section>'
     )
 
 
@@ -873,6 +928,35 @@ def _render_count(block: dict, records: list[dict] | None = None,
     )
 
 
+def _render_stock(block: dict, records: list[dict] | None = None,
+                  dataset: list[dict] | None = None) -> str:
+    """Остаток товара на момент публикации.
+
+    Остаток меняется каждый день, а статический пакет собирается
+    один: число честно, но датировано. Подпись под ним обязательна —
+    молчаливое число выглядело бы как актуальный остаток.
+    """
+    field = _own(block, 'field', 'stock')
+    label = _own(block, 'label', 'Осталось')
+    threshold = _int_prop(block, 'lowThreshold', 5, 0, 1000)
+    note = _own(block, 'note', 'Данные на момент публикации')
+
+    rows = list(dataset if dataset is not None else [])
+    values = _numbers([row.get(field) for row in rows])
+    total = int(sum(values)) if values else 0
+
+    classes = 'stock stock--low' if 0 < total <= threshold else 'stock'
+    if total <= 0:
+        classes = 'stock stock--out'
+
+    return (
+        '<section class="section section--stock">'
+        f'<p class="{classes}"><span class="stock__value">{total}</span>'
+        f'<span class="stock__label">{esc(label)}</span></p>'
+        f'<p class="stock__note">{esc(note)}</p></section>'
+    )
+
+
 def _int_prop(block: dict, name: str, fallback: int, low: int, high: int) -> int:
     """Числовое свойство в границах: значение из настроек может быть любым."""
     value = _props(block).get(name)
@@ -922,6 +1006,81 @@ def _product_card(row: dict, title_field: str, price_field: str,
         f'{price_html}{detail_html}'
         + (f'<span class="product__action">{label}</span>' if label else '')
         + '</article>'
+    )
+
+
+def _render_promo_banner(block: dict, records: list[dict] | None = None) -> str:
+    """Промо-баннер.
+
+    Раньше баннер выводился тем же разделом, что первый экран: не
+    было ни кнопки, ни выравнивания, и баннер не отличался от
+    обычной секции. Отличать его должна заливка — иначе посетитель
+    не видит, что перед ним предложение, а не содержимое страницы.
+    """
+    heading = _own(block, 'heading', '')
+    body = _own(block, 'text', '')
+    button = _own(block, 'buttonLabel', '')
+    link = _own(block, 'link', '') or _own(block, 'buttonLink', '')
+    align = _own(block, 'align', 'left')
+    background = _own(block, 'background', 'light')
+
+    parts = [f'<section class="banner banner--{esc(align)} banner--{esc(background)}">']
+    if heading:
+        parts.append(f'<h2>{esc(heading)}</h2>')
+    if body:
+        parts.append(f'<p>{esc(body)}</p>')
+    if button:
+        target = esc(link) if link and link != '#' else '#'
+        parts.append(f'<a class="banner__action" href="{target}">{esc(button)}</a>')
+    parts.append('</section>')
+    return ''.join(parts)
+
+
+def _render_pricing(block: dict, records: list[dict] | None = None,
+                    dataset: list[dict] | None = None) -> str:
+    """Тарифы: карточки с ценой, периодом и списком включений.
+
+    Раньше был списком строк, как data.list: посетитель не видел,
+    где один тариф лучше другого.
+    """
+    title_field = _own(block, 'titleField', 'title')
+    price_field = _own(block, 'priceField', 'price')
+    period_field = _own(block, 'periodField', '')
+    features_field = _own(block, 'featuresField', '')
+    highlight_field = _own(block, 'highlight', '')
+
+    rows = list(dataset if dataset is not None else [])
+
+    def card(row: dict) -> str:
+        title = str(row.get(title_field) or 'Тариф')
+        price = _price_of(row, price_field) if price_field else ''
+        period = str(row.get(period_field) or '') if period_field else ''
+        features = str(row.get(features_field) or '') if features_field else ''
+        highlight = str(row.get(highlight_field) or '').lower() if highlight_field else ''
+
+        price_html = f'<p class="plan__price">{esc(price)}</p>' if price else ''
+        period_html = f'<p class="plan__period">{esc(period)}</p>' if period else ''
+        items = ''.join(
+            f'<li>{esc(part.strip())}</li>'
+            for part in features.split(';')
+            if part.strip()
+        )
+        features_html = f'<ul class="plan__features">{items}</ul>' if items else ''
+        mark = ' plan--highlight' if highlight in ('1', '1.0', 'true', 'да') else ''
+        return (
+            f'<article class="plan{mark}">'
+            f'<h3 class="plan__title">{esc(title)}</h3>'
+            f'{price_html}{period_html}{features_html}'
+            '</article>'
+        )
+
+    cards = ''.join(card(row) for row in rows)
+    if not cards:
+        cards = '<p class="data__empty">Тарифы не заданы.</p>'
+
+    return (
+        '<section class="section section--pricing">'
+        f'<div class="plans">{cards}</div></section>'
     )
 
 
@@ -1241,6 +1400,41 @@ def _render_data_form(block: dict, records: list[dict] | None = None,
     )
 
 
+def _render_order(block: dict, records: list[dict] | None = None) -> str:
+    """Форма заявки.
+
+    Не оформление заказа: оформление создаёт запись в базе, а
+    статическому пакету отправлять её некуда. Форма собирает
+    значения и говорит об этом прямо: собирать их под именем
+    заказа значило бы обещать больше, чем есть.
+    """
+    heading = _own(block, 'heading', 'Заявка')
+    fields = _items(block, 'fields', ['Имя', 'Телефон', 'Комментарий'])
+    submit = _own(block, 'submitLabel', 'Отправить')
+    policy_field = _own(block, 'policyField', 'consent')
+
+    inputs = ''.join(
+        f'<label class="field">{esc(name)}<input name="f{index}" required></label>'
+        for index, name in enumerate(fields)
+    )
+    consent = (
+        '<p class="legal consent"><label>'
+        '<input type="checkbox" name="' + esc(policy_field) + '" required> '
+        'Согласен на обработку персональных данных</label></p>'
+        if policy_field
+        else ''
+    )
+    return (
+        '<section class="section section--order">'
+        f'<h2>{esc(heading)}</h2>'
+        f'<form class="form" method="post">{inputs}{consent}'
+        f'<button type="submit">{esc(submit)}</button></form>'
+        '<p class="data__note">Заявка сохранится на стенде заказчика, '
+        'когда к пакету будет подключён рантайм.</p>'
+        '</section>'
+    )
+
+
 def _render_form(block: dict, records: list[dict] | None = None) -> str:
     """Форма в статическом пакете.
 
@@ -1400,16 +1594,16 @@ RENDERERS = {
     'data.form': _render_data_form,
     'shop.card': _render_card,
     'shop.catalog': _render_catalog,
-    'shop.reviews': _render_review_list,
+    'shop.reviews': _render_reviews,
     'shop.price': _render_price,
-    'promo.pricing': _render_data,
-    'promo.banner': _render_section,
-    'shop.order': _render_form,
+    'promo.pricing': _render_pricing,
+    'promo.banner': _render_promo_banner,
+    'shop.order': _render_order,
     'shop.cart': _render_data,
-    'shop.stock': _render_count,
+    'shop.stock': _render_stock,
     'shop.search': _render_form,
     'shop.checkout': _render_form,
-    'shop.compare': _render_table_from_records,
+    'shop.compare': _render_compare,
 }
 
 
@@ -1424,6 +1618,10 @@ DATASET_MODULES = frozenset({
     'shop.catalog',
     'shop.card',
     'shop.price',
+    'promo.pricing',
+    'shop.compare',
+    'shop.reviews',
+    'shop.stock',
 })
 
 
@@ -1548,6 +1746,62 @@ body {{
 .cards {{ display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }}
 .card {{ border: 1px solid var(--border); border-radius: 8px; padding: 16px; }}
 .split {{ display: grid; gap: 24px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }}
+
+/* Коммерческие блоки. Каждый узнаваем по классу: иначе на странице
+   нельзя отличить предложение от обычной секции, а заявку от текста. */
+.banner {{
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 0 0 24px;
+  padding: 32px;
+  border-radius: 12px;
+  background: var(--fill-section);
+  border: 1px solid var(--border);
+}}
+.banner--accent {{ background: var(--accent); color: var(--on-accent); }}
+.banner--dark {{ background: #14161A; color: #F7F8F9; }}
+.banner--center {{ align-items: center; text-align: center; }}
+.banner--right {{ align-items: flex-end; text-align: right; }}
+.banner h2 {{ margin: 0; font-size: 28px; }}
+.banner p {{ margin: 0; }}
+.banner__action {{
+  display: inline-block;
+  padding: 12px 24px;
+  border-radius: 24px;
+  background: var(--accent);
+  color: var(--on-accent);
+  text-decoration: none;
+}}
+
+.plans {{ display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }}
+.plan {{ border: 1px solid var(--border); border-radius: 12px; padding: 20px; }}
+.plan--highlight {{ border-color: var(--accent); border-width: 2px; }}
+.plan__title {{ margin: 0 0 8px; font-size: 20px; }}
+.plan__price {{ margin: 0; font-size: 26px; font-weight: 700; }}
+.plan__period {{ margin: 4px 0 12px; color: var(--text-muted); }}
+.plan__features {{ margin: 0; padding-left: 18px; color: var(--text-muted); }}
+
+.compare {{ width: 100%; border-collapse: collapse; }}
+.compare th, .compare td {{ padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; }}
+.compare thead th {{ color: var(--text-muted); font-size: 14px; }}
+
+.reviews {{ list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }}
+.review {{ border: 1px solid var(--border); border-radius: 10px; padding: 16px; }}
+.review blockquote {{ margin: 0 0 8px; }}
+.review figcaption {{ color: var(--text-muted); }}
+
+.stock__value {{ font-size: 40px; font-weight: 700; margin-right: 10px; }}
+.stock--low .stock__value {{ color: #8A5A00; }}
+.stock--out .stock__value {{ color: var(--text-muted); }}
+.stock__note {{ margin: 4px 0 0; color: var(--text-muted); font-size: 14px; }}
+
+.form {{ display: grid; gap: 12px; max-width: 460px; }}
+.field {{ display: grid; gap: 4px; }}
+.field input {{ padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font: inherit; }}
+.form button {{ padding: 12px 24px; border: 0; border-radius: 8px; background: var(--accent); color: var(--on-accent); font: inherit; cursor: pointer; }}
+.consent {{ margin: 0; color: var(--text-muted); }}
 
 @media (prefers-color-scheme: dark) {{
   :root {{
