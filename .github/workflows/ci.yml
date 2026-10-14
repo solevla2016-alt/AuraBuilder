@@ -235,8 +235,8 @@ jobs:
         # приложения — ровно тот случай, когда проверка зеленая, а код
         # не запускался.
         run: >-
-        python manage.py test projects accounts data_sources
-        component_library deploying publications --verbosity 2
+          python manage.py test projects accounts data_sources
+          component_library deploying publications --verbosity 2
 
   # --- Рантайм ---------------------------------------------------------------
   # Рантайм поставляется заказчику отдельно и не делит код с платформой
