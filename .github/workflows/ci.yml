@@ -312,6 +312,14 @@ jobs:
           cat /tmp/site.log
           grep -q 'сайт и рантайм подняты' /tmp/site.log
 
+      - name: Найти браузер
+        # Путь к Chrome на образе runner отличается от локального, и
+        # проверка падала бы с «браузер не найден» вместо сути ошибки.
+        run: |
+          CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
+          echo "CHROME=$CHROME_PATH" >> "$GITHUB_ENV"
+          echo "браузер: $CHROME_PATH"
+
       - name: PWA в браузере
         # Сценарий 4 (ТЗ п.16.6): worker регистрируется и сайт открывается
         # без сети. Это видно только в настоящем браузере.

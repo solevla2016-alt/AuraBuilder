@@ -25,9 +25,13 @@ const CHROME_CANDIDATES = [
   process.env.CHROME,
   'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
   'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+  process.env.PUPPETEER_EXECUTABLE_PATH,
   '/usr/bin/google-chrome',
+  '/usr/bin/google-chrome-stable',
+  '/opt/google/chrome/chrome',
   '/usr/bin/chromium',
   '/usr/bin/chromium-browser',
+  '/snap/bin/chromium',
 ].filter(Boolean);
 
 const chromeBinary = CHROME_CANDIDATES.find((path) => {
