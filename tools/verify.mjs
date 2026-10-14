@@ -41,16 +41,7 @@ function pythonBin() {
   const candidates = [
     join(root, '.venv', 'Scripts', 'python.exe'),
     join(root, '.venv', 'bin', 'python'),
-  {
-    // Деплой проверяется отдельно от остального: он поднимает сервер,
-    // рантайм и делает HTTP-запросы к самому себе. В общем прогоне
-    // такие проверки прячутся за чужими ошибками.
-    name: 'Деплой на хостинг',
-    cmd: () => pythonBin(),
-    args: () => [join(root, 'tools', 'check_deploy.py')],
-    env: { DJANGO_DEBUG: '0', DJANGO_SECURE_SSL_REDIRECT: '0' },
-  },
-];
+  ];
   for (const c of candidates) if (existsSync(c)) return c;
   return 'python';
 }
@@ -108,6 +99,23 @@ const steps = [
     name: 'Тесты рантайма',
     cmd: () => pythonBin(),
     args: () => ['-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_runtime*.py'],
+  },
+{
+    // Деплой и PWA проверяются отдельно от остального: они поднимают
+    // сервер и браузер и делают HTTP-запросы к самим себе. В общем
+    // прогоне такие проверки прячутся за чужими ошибками.
+    name: 'Деплой на хостинг',
+    cmd: () => pythonBin(),
+    args: () => [join(root, 'tools', 'check_deploy.py')],
+    env: { DJANGO_DEBUG: '0', DJANGO_SECURE_SSL_REDIRECT: '0' },
+  },
+  {
+    // Регистрация service worker и работа без сети видны только в
+    // настоящем браузере: ни тесты Python, ни типы их не ловят.
+    name: 'PWA в браузере',
+    cmd: () => pythonBin(),
+    args: () => [join(root, 'tools', 'check_pwa.py')],
+    env: { DJANGO_DEBUG: '0', DJANGO_SECURE_SSL_REDIRECT: '0' },
   },
   {
     // Тесты идут с DEBUG=0, как в CI: так проверяется боевая

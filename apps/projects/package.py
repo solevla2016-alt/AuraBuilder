@@ -35,6 +35,12 @@ from .export import (
     slugify,
 )
 from .models import DocumentVersion, Project
+# Импорт под именем pwa_manifest: локальная переменная manifest в
+# build_package одноимённа с функцией манифеста приложения, и без
+# переименования она перекрывала бы её по всему телу функции.
+from .pwa import icon_svg
+from .pwa import manifest as pwa_manifest
+from .pwa import maskable_icon, registration_script, service_worker
 
 #: Предел размера архива, МБ. Число взято из тарифных лимитов (п.17.1)
 #: для статики: сайт тяжелее этого почти наверняка содержит файлы,
@@ -81,12 +87,20 @@ def slugify_ascii(value: str) -> str:
     return slug.strip('-') or 'project'
 
 
-def _page_html(project_name: str, body: str, title: str, description: str) -> str:
+def _page_html(project_name: str, body: str, title: str, description: str,
+               pwa: bool = False) -> str:
     """Страница пакета.
 
     lang="ru" и charset заданы сразу: без них русский текст в браузере
     разъезжается, а это первое, на что смотрит заказчик.
+
+    Манифест подключается только когда включён сценарий 4 (ТЗ п.16.6):
+    без него браузер всё равно откроет сайт вкладкой, а лишняя
+    регистрация service worker расходует память телефона покупателя.
     """
+
+    manifest_link = '<link rel="manifest" href="manifest.json">' if pwa else ''
+    scripts_extra = '<script src="assets/js/pwa.js" defer></script>' if pwa else ''
 
     return f"""<!doctype html>
 <html lang="ru">
@@ -100,12 +114,14 @@ def _page_html(project_name: str, body: str, title: str, description: str) -> st
 <meta property="og:type" content="website">
 <meta name="generator" content="AuraBuilder">
 <link rel="stylesheet" href="assets/css/site.css">
+{manifest_link}
 </head>
 <body>
 <main class="page">
 {body}
 </main>
 <script src="assets/js/runtime.js" defer></script>
+{scripts_extra}
 </body>
 </html>
 """
@@ -334,7 +350,17 @@ def runtime_config() -> str:
     )
 
 
-def build_package(project: Project, version: DocumentVersion, base_url: str = '') -> dict:
+def light_token(styles: dict, kind: str, token: str, fallback: str) -> str:
+    """Значение токена из настроек компонентов или палитра по умолчанию."""
+    section = (styles or {}).get(kind) or {}
+    value = section.get(token)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return fallback
+
+
+def build_package(project: Project, version: DocumentVersion, base_url: str = '',
+                  pwa: bool = False) -> dict:
     """Файлы пакета и манифест. Бросает ExportError при сбое."""
 
     tree = version.tree if isinstance(version.tree, dict) else {}
@@ -366,6 +392,7 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
             body,
             title,
             f'{project.name} — сайт, собранный в AuraBuilder',
+            pwa=pwa,
         )
     }
 
@@ -399,6 +426,28 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
             indent=2,
         )
 
+    if pwa:
+        # Файлы приложения (ТЗ п.16.6). Цвета берутся из палитры
+        # проекта: иконка и строка состояния должны совпадать с сайтом,
+        # иначе установленное приложение выглядит чужим.
+        theme = light_token(styles, 'section', 'background', '#FFFFFF')
+        text = light_token(styles, 'section', 'text', '#1A1C1E')
+        files['manifest.json'] = pwa_manifest(
+            project.name, 'index.html', theme, text
+        )
+        files['service-worker.js'] = service_worker(version.number, [
+            'index.html',
+            'assets/css/site.css',
+            'assets/js/runtime.js',
+        ])
+        files['assets/icons/icon.svg'] = icon_svg(project.name, theme, text)
+        files['assets/icons/icon-maskable.svg'] = maskable_icon(
+            project.name, theme, text
+        )
+        # Без регистрации worker файлы лежат в архиве мёртвым грузом:
+        # браузер сам их не подхватит.
+        files['assets/js/pwa.js'] = registration_script()
+
     checksums = {
         name: hashlib.sha256(content.encode('utf-8')).hexdigest()
         for name, content in {**html_files, **files}.items()
@@ -421,6 +470,9 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
         'files': checksums,
         'externalDependencies': [],
         'requiresPlatform': False,
+        # Признак сценария 4: по нему видно, что приложение
+        # устанавливается, а не просто открывается вкладкой.
+        'pwa': bool(pwa),
     }
 
     files['build-manifest.json'] = json.dumps(manifest, ensure_ascii=False, indent=2)
@@ -433,7 +485,8 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
 
     manifest['warnings'] = report.warnings
     files['build-manifest.json'] = json.dumps(manifest, ensure_ascii=False, indent=2)
-    return {'files': files, 'manifest': manifest, 'report': report}
+    return {'files': files, 'manifest': manifest, 'report': report,
+            'pwa': bool(pwa)}
 
 
 def package_zip(files: dict[str, str]) -> tuple[str, bytes]:

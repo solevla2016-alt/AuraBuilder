@@ -274,7 +274,13 @@ def project_export(request, project_id: str):
 
     try:
         built = build_package(
-            project, version, base_url=request.query_params.get('baseUrl', '')
+            project,
+            version,
+            base_url=request.query_params.get('baseUrl', ''),
+            # Сценарий 4 (ТЗ п.16.6) включается запросом: по умолчанию
+            # пакет остаётся без service worker, лишняя регистрация
+            # которого расходует память телефона покупателя.
+            pwa=request.query_params.get('pwa') in ('1', 'true', 'yes'),
         )
     except PackageTooLarge as e:
         # Превышение технического лимита — не поломка пакета, а слишком
@@ -302,6 +308,9 @@ def project_export(request, project_id: str):
     response['Content-Disposition'] = content_disposition_header(as_attachment=True, filename=f'{slugify_ascii(project.name)}-static.zip')
     response['X-AuraBuilder-Version'] = str(version.number)
     response['X-AuraBuilder-Warnings'] = str(len(built['report'].warnings))
+    # Признак сценария 4: видно по одному заголовку, устанавливается
+    # приложение или просто открывается вкладка.
+    response['X-AuraBuilder-PWA'] = '1' if built['pwa'] else '0'
     return response
 
 

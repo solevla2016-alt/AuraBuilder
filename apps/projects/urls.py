@@ -11,9 +11,13 @@
 from django.urls import path
 
 from . import views
+from .config_views import project_config_export, project_config_import
 
 urlpatterns = [
     path('', views.project_list, name='project-list'),
+    # Импорт объявлен раньше <str:project_id>: иначе строка 'import'
+    # разбиралась бы как идентификатор проекта.
+    path('import/', project_config_import, name='project-config-import'),
     path('<str:project_id>/members/', views.project_members, name='project-members'),
     path('<str:project_id>/audit/', views.audit_log, name='project-audit'),
     # Версии объявлены раньше деталей проекта: иначе строка «versions»
@@ -22,6 +26,12 @@ urlpatterns = [
     # Экспорт объявлен раньше деталей: иначе строка 'export'
     # разбиралась бы как project_id.
     path('<str:project_id>/export/', views.project_export, name='project-export'),
+    # Конфигурация проекта (ТЗ п.16.7): тоже двухуровневая, как выгрузка.
+    path(
+        '<str:project_id>/config/',
+        project_config_export,
+        name='project-config-export',
+    ),
     path(
         '<str:project_id>/versions/<int:number>/',
         views.version_detail,
