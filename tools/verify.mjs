@@ -110,6 +110,14 @@ const steps = [
     env: { DJANGO_DEBUG: '0', DJANGO_SECURE_SSL_REDIRECT: '0' },
   },
   {
+    // Публикация проверяется через HTTP: раздачу обслуживает другой
+    // слой, чем публикацию, и ошибка видна только посетителю.
+    name: 'Публикация сайта',
+    cmd: () => pythonBin(),
+    args: () => [join(root, 'tools', 'check_publish.py')],
+    env: { DJANGO_DEBUG: '0', DJANGO_SECURE_SSL_REDIRECT: '0' },
+  },
+  {
     // Регистрация service worker и работа без сети видны только в
     // настоящем браузере: ни тесты Python, ни типы их не ловят.
     name: 'PWA в браузере',
@@ -126,7 +134,8 @@ const steps = [
     cmd: () => pythonBin(),
     args: () => [
       'manage.py', 'test',
-      'projects', 'accounts', 'data_sources', 'component_library', 'deploying',
+      'projects', 'accounts', 'data_sources', 'component_library',
+      'deploying', 'publications',
     ],
     cwd: apps,
     env: { DJANGO_DEBUG: '0', DJANGO_SECURE_SSL_REDIRECT: '0' },

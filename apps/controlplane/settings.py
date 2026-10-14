@@ -19,6 +19,7 @@
 import os
 from datetime import timedelta
 from pathlib import Path
+import tempfile
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -99,6 +100,7 @@ INSTALLED_APPS = [
     'data_sources',
     'component_library',
     'deploying',
+    'publications',
 ]
 
 MIDDLEWARE = [
@@ -364,3 +366,15 @@ LOGGING = {
         'level': os.environ.get('DJANGO_LOG_LEVEL', 'INFO'),
     },
 }
+
+# --- Публикация (сценарий 1, ТЗ п.16.3) --------------------------------
+
+#: Куда складываются опубликованные сайты. В эксплуатации это отдельный
+#: том, который отдаётся через nginx или CDN; в стенде — каталог.
+PUBLISH_ROOT = Path(
+    os.environ.get('PUBLISH_ROOT', str(Path(tempfile.gettempdir()) / 'aurabuilder-sites'))
+)
+
+#: Как выглядит адрес публикации. Пусто — префикс /sites/<адрес>/.
+#: В эксплуатации здесь домен платформы: код раздачи не меняется.
+PUBLICATION_BASE_URL = os.environ.get('PUBLICATION_BASE_URL', '')

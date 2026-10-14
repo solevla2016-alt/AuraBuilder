@@ -234,7 +234,9 @@ jobs:
         # только там, где они названы, и молча пропустил бы новые
         # приложения — ровно тот случай, когда проверка зеленая, а код
         # не запускался.
-        run: python manage.py test projects accounts data_sources component_library deploying --verbosity 2
+        run: >-
+        python manage.py test projects accounts data_sources
+        component_library deploying publications --verbosity 2
 
   # --- Рантайм ---------------------------------------------------------------
   # Рантайм поставляется заказчику отдельно и не делит код с платформой
@@ -319,6 +321,11 @@ jobs:
           CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser)"
           echo "CHROME=$CHROME_PATH" >> "$GITHUB_ENV"
           echo "браузер: $CHROME_PATH"
+
+      - name: Публикация сайта
+        # Сценарий 1 (ТЗ п.16.3): сайт отвечает по адресу, отзыв
+        # действует, резервная копия снимается.
+        run: .venv/bin/python tools/check_publish.py
 
       - name: PWA в браузере
         # Сценарий 4 (ТЗ п.16.6): worker регистрируется и сайт открывается
