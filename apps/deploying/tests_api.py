@@ -18,6 +18,7 @@ from rest_framework.test import APIClient
 
 from projects.models import Project
 from projects.versions import snapshot
+from billing.models import Subscription
 
 
 @override_settings(LOGIN_ATTEMPT_LIMIT=1000)
@@ -29,6 +30,7 @@ class ApiTestCase(TestCase):
         cache.clear()
         User = get_user_model()
         self.owner = User.objects.create_user('owner', password='pass-owner')
+        Subscription.objects.create(user=self.owner, plan='start')
         self.editor = User.objects.create_user('editor', password='pass-editor')
         self.outsider = User.objects.create_user('outsider', password='pass-x')
 

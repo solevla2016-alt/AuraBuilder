@@ -18,6 +18,7 @@ from projects.models import Project
 from projects.package import build_package
 from projects.pwa import manifest, service_worker
 from projects.versions import snapshot
+from billing.models import Subscription
 
 
 @override_settings(LOGIN_ATTEMPT_LIMIT=1000)
@@ -25,6 +26,7 @@ class PwaPackageTests(TestCase):
     def setUp(self):
         cache.clear()
         self.user = get_user_model().objects.create_user('owner', password='pass-owner')
+        Subscription.objects.create(user=self.user, plan='pro')
         tree = {'width': 1200, 'blocks': [{
             'id': 'b1', 'module': 'text.heading', 'x': 0, 'y': 0,
             'width': 600, 'height': 200, 'label': 'Блок',

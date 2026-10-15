@@ -99,6 +99,7 @@ INSTALLED_APPS = [
     'accounts',
     'data_sources',
     'component_library',
+    'billing',
     'deploying',
     'publications',
 ]

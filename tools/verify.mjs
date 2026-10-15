@@ -135,7 +135,7 @@ const steps = [
     args: () => [
       'manage.py', 'test',
       'projects', 'accounts', 'data_sources', 'component_library',
-      'deploying', 'publications',
+      'deploying', 'publications', 'billing',
     ],
     cwd: apps,
     env: { DJANGO_DEBUG: '0', DJANGO_SECURE_SSL_REDIRECT: '0' },

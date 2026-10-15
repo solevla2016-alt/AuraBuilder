@@ -21,6 +21,7 @@ from rest_framework.response import Response
 
 from accounts.permissions import PUBLISH, VIEW, ProjectAccess, can
 from accounts.serializers import audit
+from billing.service import check_scenario
 from projects.models import DocumentVersion, Project
 
 from deploying.models import HostingProfile
@@ -154,6 +155,15 @@ def project_deploy(request, project_id: str):
         return Response(
             {'detail': 'Публиковать проект может тот, кто публикует.'},
             status=status.HTTP_403_FORBIDDEN,
+        )
+
+    # Тариф (ТЗ п.17.1): one-click deploy — с тарифа Start, так же,
+    # как и выгрузка статики.
+    denial = check_scenario(request.user, 3)
+    if denial is not None:
+        return Response(
+            {'detail': denial.detail, 'reason': denial.reason},
+            status=status.HTTP_402_PAYMENT_REQUIRED,
         )
 
     body = request.data or {}

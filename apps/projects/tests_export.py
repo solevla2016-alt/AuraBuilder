@@ -21,6 +21,7 @@ from data_sources.models import DataRecord, DataSource
 from projects.export import FORBIDDEN_HOSTS, ExportError, esc, slugify
 from projects.models import DocumentVersion, Project, default_tree
 from projects.package import build_package, package_zip, validate_files
+from billing.models import Subscription
 
 User = get_user_model()
 
@@ -29,6 +30,7 @@ class ExportTestCase(APITestCase):
     def setUp(self):
         cache.clear()
         self.user = User.objects.create_user('tester', 'tester@example.com', 'verysecret123')
+        Subscription.objects.create(user=self.user, plan='start')
         self.project = Project.objects.create(
             name='Магазин цветов', tree=default_tree(), owner=self.user, version=1
         )

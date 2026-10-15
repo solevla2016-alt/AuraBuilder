@@ -22,6 +22,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from accounts.models import AuditLog, Membership, Role, UserConsent
+from billing.models import Subscription
 from accounts.permissions import (
     DELETE,
     EDIT_CONTENT,
@@ -358,6 +359,9 @@ class AuditLogTests(ApiTestCase):
     def setUp(self):
         super().setUp()
         self.owner = User.objects.create_user('owner', 'owner@example.com', 'verysecret123')
+        # Журнал проверяется на втором проекте: на Free он закрыт
+        # лимитом в один проект, и тест проверял бы не журнал.
+        Subscription.objects.create(user=self.owner, plan='start')
         self.project = make_project(self.owner)
         self.login_as(self.owner)
 

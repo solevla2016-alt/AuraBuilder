@@ -39,6 +39,7 @@ from accounts.serializers import (
     audit,
     get_client_ip,
 )
+from billing.service import check_project_slot, check_scenario
 
 from .models import DocumentVersion, Project
 from .module_registry import CATEGORIES, MODULES, modules_for_stage
@@ -130,6 +131,16 @@ def project_list(request):
         # запрос по чужому UUID возвращал бы чужое дерево.
         if existing and can(request.user, existing, VIEW):
             return Response(ProjectSerializer(existing).data, status=status.HTTP_200_OK)
+
+    # Тариф (ТЗ п.17.1): число проектов ограничено. Проверка стоит
+    # после повторного вызова с тем же id — инициализация стенда не
+    # должна упираться в лимит из-за уже существующего проекта.
+    denial = check_project_slot(request.user)
+    if denial is not None:
+        return Response(
+            {'detail': denial.detail, 'reason': denial.reason},
+            status=status.HTTP_402_PAYMENT_REQUIRED,
+        )
 
     project = serializer.save(owner=request.user)
     audit(request, 'project.create', project)
@@ -249,6 +260,14 @@ def project_export(request, project_id: str):
             status=status.HTTP_403_FORBIDDEN,
         )
 
+    # Тариф (ТЗ п.17.1): выгрузка статики — с тарифа Start.
+    denial = check_scenario(request.user, 2)
+    if denial is not None:
+        return Response(
+            {'detail': denial.detail, 'reason': denial.reason},
+            status=status.HTTP_402_PAYMENT_REQUIRED,
+        )
+
     raw = request.query_params.get('version')
     if raw is not None:
         try:
@@ -272,6 +291,18 @@ def project_export(request, project_id: str):
                 status=status.HTTP_409_CONFLICT,
             )
 
+    wants_pwa = request.query_params.get('pwa') in ('1', 'true', 'yes')
+    if wants_pwa:
+        # Тариф (ТЗ п.17.1): сценарий 4 (Telegram и PWA) — с Pro.
+        # Сама сборка пакета тариф не проверяет: ею пользуются и
+        # проверки, и стенд, где тарифа нет.
+        denial = check_scenario(request.user, 4)
+        if denial is not None:
+            return Response(
+                {'detail': denial.detail, 'reason': denial.reason},
+                status=status.HTTP_402_PAYMENT_REQUIRED,
+            )
+
     try:
         built = build_package(
             project,
@@ -280,7 +311,7 @@ def project_export(request, project_id: str):
             # Сценарий 4 (ТЗ п.16.6) включается запросом: по умолчанию
             # пакет остаётся без service worker, лишняя регистрация
             # которого расходует память телефона покупателя.
-            pwa=request.query_params.get('pwa') in ('1', 'true', 'yes'),
+            pwa=wants_pwa,
         )
     except PackageTooLarge as e:
         # Превышение технического лимита — не поломка пакета, а слишком

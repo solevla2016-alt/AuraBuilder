@@ -15,6 +15,7 @@ from rest_framework.test import APITestCase
 from accounts.models import Membership, Role
 from data_sources.models import DataRecord, DataSource
 from projects.models import Project
+from billing.models import Subscription
 
 
 def make_tree(count: int) -> dict:
@@ -126,6 +127,7 @@ class ExportRecordLimitTests(APITestCase):
 
     def setUp(self):
         self.user = get_user_model().objects.create_user('exp', 'e@example.com', 'pw12345678')
+        Subscription.objects.create(user=self.user, plan='start')
         self.project = Project.objects.create(name='Выгрузка', owner=self.user, tree=make_tree(1))
         Membership.objects.create(project=self.project, user=self.user, role=Role.OWNER)
         self.source = DataSource.objects.create(
