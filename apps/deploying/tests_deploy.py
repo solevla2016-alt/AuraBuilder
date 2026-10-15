@@ -15,7 +15,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
+from secretstore.crypto import generate_key
 
 from projects.models import Project
 from projects.package import build_package
@@ -30,6 +31,10 @@ from deploying.transports import (
     build_transport,
     safe_name,
 )
+
+
+#: Ключ шифрования для тестов деплоя.
+TEST_KEY = generate_key('test')
 
 
 class TransportTests(TestCase):
@@ -78,13 +83,15 @@ class TransportTests(TestCase):
             build_transport(profile)
         self.assertIn('пароль', str(ctx.exception))
 
+    @override_settings(DJANGO_SECRET_ENCRYPTION_KEYS=TEST_KEY)
     def test_ftp_transport_is_built(self):
-        profile = HostingProfile(
-            kind='ftp', host='ftp.example.ru', username='u', secret='p',
-        )
+        profile = HostingProfile(kind='ftp', host='ftp.example.ru', username='u')
+        profile.set_secret('p')
         self.assertEqual(build_transport(profile).host, 'ftp.example.ru')
+        self.assertEqual(build_transport(profile).secret, 'p')
 
 
+@override_settings(DJANGO_SECRET_ENCRYPTION_KEYS=TEST_KEY)
 class DeployCase(TestCase):
     """Общая заготовка: проект, версия и каталог «сервера»."""
 
@@ -136,11 +143,15 @@ class ProfileTests(DeployCase):
         self.assertEqual(self.profile.runtime_target_path, '/tools/')
 
     def test_secret_is_never_returned(self):
-        self.profile.secret = 'очень-секретный-пароль'
+        self.profile.set_secret('очень-секретный-пароль')
         self.profile.save()
         public = self.profile.public_dict()
         self.assertTrue(public['hasSecret'])
+        self.assertTrue(public['secretEncrypted'])
         self.assertNotIn('очень-секретный-пароль', json.dumps(public))
+        # Секрет не должен лежать в строке профиля даже в своей строке.
+        row = HostingProfile.objects.get(pk=self.profile.pk)
+        self.assertNotIn('очень-секретный-пароль', row.secret_encrypted)
 
 
 class RuntimePathTests(DeployCase):

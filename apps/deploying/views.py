@@ -22,6 +22,7 @@ from rest_framework.response import Response
 from accounts.permissions import PUBLISH, VIEW, ProjectAccess, can
 from accounts.serializers import audit
 from billing.service import check_scenario
+from secretstore.crypto import SecretsUnavailable
 from projects.models import DocumentVersion, Project
 
 from deploying.models import HostingProfile
@@ -76,18 +77,25 @@ def hosting_profiles(request, project_id: str):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    profile = HostingProfile.objects.create(
+    profile = HostingProfile(
         owner=project.owner,
         name=name,
         kind=kind,
         host=str(body.get('host') or ''),
         port=int(body.get('port') or 21),
         username=str(body.get('username') or ''),
-        secret=secret,
         root_path=str(body.get('rootPath') or ''),
         runtime_path=str(body.get('runtimePath') or ''),
         site_url=str(body.get('siteUrl') or ''),
     )
+    try:
+        profile.set_secret(secret)
+    except SecretsUnavailable as e:
+        # Без ключа шифрования платформа не хранит чужие пароли
+        # в открытом виде: это осознанный отказ, а не ошибка запроса.
+        return Response({'detail': str(e), 'reason': 'no_encryption_key'},
+                        status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    profile.save()
     audit(request, 'hosting.profile.create', project, str(profile.id))
     return Response(profile.public_dict(), status=status.HTTP_201_CREATED)
 
@@ -132,7 +140,11 @@ def hosting_profile_detail(request, project_id: str, profile_id: str):
     if body.get('secret'):
         # Пустой секрет означает «оставить прежний»: иначе правка
         # названия обнулила бы пароль и следующий деплой упал бы.
-        profile.secret = str(body['secret'])
+        try:
+            profile.set_secret(str(body['secret']))
+        except SecretsUnavailable as e:
+            return Response({'detail': str(e), 'reason': 'no_encryption_key'},
+                            status=status.HTTP_503_SERVICE_UNAVAILABLE)
     profile.save()
 
     return Response(profile.public_dict())

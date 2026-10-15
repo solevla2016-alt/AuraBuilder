@@ -49,3 +49,8 @@ commerce-modules.png
 .rt-check.log
 .rt-check.err
 runtime-site.png
+
+# Временные базы сквозных проверок: они пересоздаются при каждом
+# прогоне и не должны попадать в историю.
+.deploy-check/
+.pwa-check/

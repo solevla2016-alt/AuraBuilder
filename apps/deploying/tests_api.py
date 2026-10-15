@@ -19,9 +19,15 @@ from rest_framework.test import APIClient
 from projects.models import Project
 from projects.versions import snapshot
 from billing.models import Subscription
+from secretstore.crypto import generate_key
+
+#: Ключ шифрования для тестов: деплой хранит пароль, а пароль без
+#: ключа платформа не хранит вовсе.
+TEST_KEY = generate_key('test')
 
 
-@override_settings(LOGIN_ATTEMPT_LIMIT=1000)
+@override_settings(LOGIN_ATTEMPT_LIMIT=1000,
+                   DJANGO_SECRET_ENCRYPTION_KEYS=TEST_KEY)
 class ApiTestCase(TestCase):
     def setUp(self):
         # Троттлинг входа поднят: в тестах один адрес входит десятки

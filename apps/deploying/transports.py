@@ -198,12 +198,13 @@ def build_transport(profile) -> FilesystemTransport | FtpTransport:
         return FilesystemTransport(profile.root_path)
 
     if profile.kind == 'ftp':
-        if not profile.host or not profile.username or not profile.secret:
+        secret = profile.get_secret()
+        if not profile.host or not profile.username or not secret:
             raise DeployError(
                 'для FTP нужны хост, логин и пароль: заполните все три поля'
             )
         return FtpTransport(
-            profile.host, profile.username, profile.secret, profile.port or 21
+            profile.host, profile.username, secret, profile.port or 21
         )
 
     raise DeployError(f'неизвестный способ доступа: {profile.kind}')

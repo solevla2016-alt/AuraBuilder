@@ -34,3 +34,10 @@ djangorestframework-simplejwt==5.5.1
 # PBKDF2 быстрее подбирается на GPU. Без этого пакета Django не знает
 # про Argon2Hasher, даже если он есть в stdlib-совместимом виде.
 argon2-cffi==25.1.0
+argon2-cffi==25.1.0
+
+# AES-256-GCM для чужих секретов (ТЗ п.7.3, ADR-0007). Без него пароль
+# от сервера заказчика лежал бы в ба��е открытым, а это ровно то, что
+# закрывает шифрование. Лицензия двойная: Apache-2.0 OR BSD-3-Clause,
+# что проходит гейт tools/license_gate_py.py.
+cryptography==50.0.2

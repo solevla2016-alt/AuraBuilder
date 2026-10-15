@@ -14,8 +14,11 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from django.conf import settings
 from django.db import models
+from secretstore.services import SecretMixin
 
 # Транспорт, который точно работает везде: файловая система. Он же
 # используется в проверках — поднимать FTP-сервер ради теста не нужно.
@@ -32,13 +35,24 @@ KIND_CHOICES = (
 )
 
 
-class HostingProfile(models.Model):
+class HostingProfile(SecretMixin, models.Model):
     """Доступ к серверу заказчика.
 
     Владелец проекта, а не всего аккаунта: на одном аккаунте могут
     быть сайты нескольких заказчиков, и доступы у них разные.
+
+    Пароль хранится зашифрованным (ТЗ п.7.3, ADR-0007). Открытое поле
+    `secret` удалено: пока оно существовало, копия базы раскрывала все
+    доступы к серверам заказчиков.
     """
 
+    # Токен привязывает шифротекст к записи (ADR-0007) и известен до
+    # сохранения: шифровать иначе нечем. Первичный ключ для этого не
+    # годится — он появляется только после вставки, а менять тип ключа
+    # у таблицы с живыми профилями значило бы переписывать их все.
+    secret_token = models.UUIDField(
+        'Идентификатор секрета', editable=False, default=uuid4,
+    )
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -52,7 +66,11 @@ class HostingProfile(models.Model):
     host = models.CharField('Хост', max_length=200, blank=True)
     port = models.PositiveIntegerField('Порт', default=21)
     username = models.CharField('Логин', max_length=120, blank=True)
-    secret = models.CharField('Пароль или ключ', max_length=400, blank=True)
+    secret_encrypted = models.TextField(
+        'Пароль или ключ (шифрованный)', blank=True, default='',
+        help_text='AES-256-GCM; открытое значение хранится только до '
+                  'первой миграции и не возвращается в API',
+    )
     root_path = models.CharField(
         'Каталог сайта', max_length=300, blank=True,
         help_text='Относительный путь от домашней папки, например public_html',
@@ -84,7 +102,7 @@ class HostingProfile(models.Model):
     @property
     def has_secret(self) -> bool:
         """Признак для API: секрет задан, но не показывается."""
-        return bool(self.secret)
+        return self.get_secret() != '' or self.secret_encrypted != ''
 
     @property
     def target_path(self) -> str:
@@ -134,4 +152,7 @@ class HostingProfile(models.Model):
             'runtimePath': self.runtime_path,
             'siteUrl': self.site_url,
             'hasSecret': self.has_secret,
+            # Признак шифрования виден интерфейсу: администратор должен
+            # видеть, что доступ всё ещё лежит открытым после переноса.
+            'secretEncrypted': self.secret_is_encrypted(),
         }

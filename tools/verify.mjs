@@ -140,6 +140,16 @@ const steps = [
     cwd: apps,
     env: { DJANGO_DEBUG: '0', DJANGO_SECURE_SSL_REDIRECT: '0' },
   },
+  {
+    // Ключ шифрования секретов проверяется до деплоя: без него
+    // платформа не хранит чужие пароли и отвечает 503 в тот самый
+    // момент, когда пользователь ждёт результата.
+    name: 'Ключ шифрования секретов',
+    cmd: () => pythonBin(),
+    args: () => ['manage.py', 'secret_key'],
+    cwd: apps,
+    env: { DJANGO_DEBUG: '0' },
+  },
 ];
 
 const failed = [];
