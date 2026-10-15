@@ -85,7 +85,10 @@ process.on('SIGINT', () => {
 
 /** Ждём готовности devtools. */
 async function waitForDevtools() {
-  for (let i = 0; i < 60; i++) {
+  // Полминуты: на загруженном раннере Chrome поднимается дольше, и
+  // падение «devtools не поднялся» означало бы красный статус из-за
+  // скорости машины, а не из-за сайта.
+  for (let i = 0; i < 120; i++) {
     try {
       const res = await fetch(`http://127.0.0.1:${port}/json/version`);
       if (res.ok) return await res.json();

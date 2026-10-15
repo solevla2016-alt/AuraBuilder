@@ -123,13 +123,17 @@ const cleanup = () => {
 process.on('exit', cleanup);
 
 let version = null;
-for (let i = 0; i < 60 && !version; i++) {
+// Пауза и при неудачном ответе тоже: иначе шестьдесят попыток
+// проходят за миллисекунды, и медленный старт Chrome в CI выглядит
+// как «браузер не поднялся».
+for (let i = 0; i < 120 && !version; i++) {
   try {
     const res = await fetch(`http://127.0.0.1:${port}/json/version`);
     if (res.ok) version = await res.json();
   } catch {
-    await new Promise((r) => setTimeout(r, 250));
+    /* ещё поднимается */
   }
+  if (!version) await new Promise((r) => setTimeout(r, 250));
 }
 if (!version) {
   console.error('devtools не поднялся');
