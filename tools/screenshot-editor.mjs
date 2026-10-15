@@ -437,11 +437,29 @@ const signIn = await evalAsync(page, `
     const body = await res.json();
     localStorage.setItem('aurabuilder.access', body.access);
     localStorage.setItem('aurabuilder.refresh', body.refresh);
-    return { ok: true };
+    // Тариф Start: сценарии ниже создают второй проект и проверяют
+    // список, а на Free лимит в один проект закрывает создание (п.17.1).
+    // Меняем тариф через публичный API — заодно проверяем, что он
+    // доступен сразу и без перезагрузки.
+    const plan = await post('/billing/subscription/change/', { plan: 'start' });
+    return { ok: true, plan: plan.status };
   `);
 
 await page.send('Page.reload', { ignoreCache: true });
 await new Promise((r) => setTimeout(r, 6000));
+
+// Вход и тариф проверяются явно: молчаливый сбой авторизации или смены
+// тарифа проявился бы через две минуты как «форма не появилась».
+if (!signIn?.result?.value?.ok) {
+  throw new Error(
+    'вход не удался: ' + JSON.stringify(signIn?.result?.value ?? signIn),
+  );
+}
+if (signIn.result.value.plan !== 200) {
+  throw new Error(
+    'тариф Start не выдан: HTTP ' + signIn.result.value.plan,
+  );
+}
 
 // Список проектов — точка входа после входа. Редактор открывается
 // только явным выбором, поэтому до пробы холста нужно нажать на первую
