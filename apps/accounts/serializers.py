@@ -7,7 +7,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 from rest_framework import serializers
 
-from .models import Membership, Role, UserConsent
+from .models import AuditLog, Membership, Role, UserConsent
 
 User = get_user_model()
 
@@ -204,3 +204,20 @@ def suggest_slug(name: str) -> str:
     """Имя проекта латиницей — будущий адрес публикации (ТЗ п.16.2)."""
     value = slugify(name, allow_unicode=False)[:60]
     return value or 'project'
+
+
+def audit_account(action: str, user, request, detail: str = '') -> None:
+    """Журнал действий, не привязанных к проекту (ТЗ п.11.2).
+
+    Смена пароля и удаление аккаунта случаются вне проекта, а журнал
+    обязан их видеть: по журналу судят, что происходило с учётной
+    записью. Проект здесь пустой, запись не привязана к проекту.
+    """
+    return AuditLog.objects.create(
+        action=action,
+        actor=user,
+        project=None,
+        block_id=detail[:64],
+        ip=get_client_ip(request),
+        user_agent=(request.META.get('HTTP_USER_AGENT') or '')[:300],
+    )

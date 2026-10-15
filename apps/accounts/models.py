@@ -83,9 +83,15 @@ class AuditLog(models.Model):
         blank=True,
         related_name='audit_entries',
     )
+    # Проект в журнале необязателен: вход, смена пароля и удаление
+    # аккаунта случаются вне проекта, а журнал обязан их видеть.
+    # SET_NULL, а не CASCADE: удаление проекта не должно стирать
+    # историю обращений к данным, пока жива учётная запись.
     project = models.ForeignKey(
         'projects.Project',
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='audit_entries',
     )
     # Идентификатор изменённого объекта внутри дерева: дерево — это JSON,
@@ -138,3 +144,45 @@ class UserConsent(models.Model):
 
     def __str__(self) -> str:
         return f'согласие v{self.document_version}: {self.active}'
+
+
+class PasswordReset(models.Model):
+    """Запрос на восстановление пароля.
+
+    Хранится не сам ключ, а его хэш: копия базы не должна позволять
+    войти под пользователем. Собственный ключ живёт только в письме,
+    а в таблице — его SHA-256.
+
+    Срок и одноразовость проверяются по полям, а не по факту
+    использования: истёкший ключ должен переставать работать даже
+    тогда, когда никто не попытался его применить.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='password_resets',
+    )
+    key_hash = models.CharField(max_length=64, db_index=True, unique=True)
+    requested_ip = models.GenericIPAddressField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    #: Сколько живёт ссылка из письма.
+    TTL_MINUTES = 60
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self) -> str:
+        return f'Восстановление пароля: {self.user} ({self.created_at:%d.%m %H:%M})'
+
+    @property
+    def expired(self) -> bool:
+        return timezone.now() >= self.expires_at
+
+    @property
+    def usable(self) -> bool:
+        """Ключ ещё можно применить."""
+        return self.used_at is None and not self.expired

@@ -7,7 +7,7 @@
 
 from django.urls import path
 
-from . import views
+from . import recovery, views
 
 urlpatterns = [
     # Регистрация и вход
@@ -22,4 +22,15 @@ urlpatterns = [
 
     # Заглушка подтверждения email: заработает вместе с этапом 8.
     path('confirm-email/', views.RegisterKeyView.as_view(), name='confirm-email'),
+    # Восстановление пароля и удаление аккаунта (ТЗ п.13.1).
+    path('password-reset/request/',
+         recovery.PasswordResetRequestView.as_view(),
+         name='password-reset-request'),
+    path('password-reset/confirm/',
+         recovery.PasswordResetConfirmView.as_view(),
+         name='password-reset-confirm'),
+    path('me/delete/',
+         recovery.AccountDeleteView.as_view(),
+         name='account-delete'),
 ]
+
