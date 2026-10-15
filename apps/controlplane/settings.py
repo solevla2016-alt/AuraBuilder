@@ -101,6 +101,7 @@ INSTALLED_APPS = [
     'component_library',
     'billing',
     'secretstore',
+    'telegram',
     'deploying',
     'publications',
 ]
@@ -226,6 +227,11 @@ LOGIN_ATTEMPT_WINDOW_MINUTES = int(
 # Ключа нет — платформа не хранит чужие пароли вовсе и отвечает 503
 # с объяснением. Это осознанный отказ: сохранить их открытыми значило
 # бы вернуть ровно то, что шифрование убирает.
+# Адрес платформы в открытом мире: он попадает в ссылку Mini App и
+# в настройку кнопки меню бота, поэтому задаётся явно — иначе бот
+# получил бы ссылку на 127.0.0.1 и молча перестал бы работать.
+PLATFORM_BASE_URL = os.environ.get('PLATFORM_BASE_URL', '')
+
 DJANGO_SECRET_ENCRYPTION_KEYS = os.environ.get(
     'DJANGO_SECRET_ENCRYPTION_KEYS', '',
 )

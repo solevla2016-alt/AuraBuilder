@@ -240,7 +240,8 @@ jobs:
         # не запускался.
         run: >-
           python manage.py test projects accounts data_sources
-          component_library deploying publications billing secretstore --verbosity 2
+          component_library deploying publications billing secretstore
+          telegram --verbosity 2
 
   # --- Рантайм ---------------------------------------------------------------
   # Рантайм поставляется заказчику отдельно и не делит код с платформой
