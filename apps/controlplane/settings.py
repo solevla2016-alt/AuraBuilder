@@ -98,6 +98,7 @@ INSTALLED_APPS = [
     'projects',
     'accounts',
     'data_sources',
+    'logic',
     'component_library',
     'billing',
     'secretstore',

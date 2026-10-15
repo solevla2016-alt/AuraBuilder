@@ -34,6 +34,9 @@ from .export import (
     render_block,
     slugify,
 )
+from logic.compiler import compile_graph
+from logic import graph as logic_graph
+
 from .models import DocumentVersion, Project
 # Импорт под именем pwa_manifest: локальная переменная manifest в
 # build_package одноимённа с функцией манифеста приложения, и без
@@ -121,6 +124,7 @@ def _page_html(project_name: str, body: str, title: str, description: str,
 {body}
 </main>
 <script src="assets/js/runtime.js" defer></script>
+<script src="assets/js/logic.js" defer></script>
 {scripts_extra}
 </body>
 </html>
@@ -407,6 +411,16 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
         'runtime.json': runtime_config(),
     }
 
+    # Логика страницы (Logic Graph, ТЗ п.6.4). Файл кладётся всегда:
+    # пустой граф даёт корректный, но ничего не делающий скрипт, и
+    # страница не ломается, когда ноды добавят позже и пересоберут.
+    logic = compile_graph(logic_graph.extract(tree))
+    files['assets/js/logic.js'] = logic['script']
+    if logic['nodes']:
+        # Декларация нужна рантайму: серверные ноды исполняет он.
+        files['logic.json'] = json.dumps(logic['declaration'],
+                                         ensure_ascii=False, indent=2)
+
     # Данные кладутся отдельным файлом: страница подключает их через
     # data-* атрибуты, и без платформы их больше негде взять.
     if sources:
@@ -467,6 +481,13 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
         'builtAt': version.created_at.isoformat() if version.created_at else None,
         'blocks': len(rendered),
         'modules': sorted({r.module_id for r in rendered}),
+        # Логика страницы: сколько нод и есть ли среди них серверные.
+        # По этому видно, пойдёт ли сборка на сервер заказчика с рантаймом.
+        'logic': {
+            'nodes': logic['nodes'],
+            'actions': logic['actions'],
+            'requiresRuntime': logic['hasRuntimeNodes'],
+        },
         'files': checksums,
         'externalDependencies': [],
         'requiresPlatform': False,

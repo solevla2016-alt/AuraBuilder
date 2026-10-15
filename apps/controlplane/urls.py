@@ -53,4 +53,9 @@ urlpatterns = [
     # напрямую, поэтому маршруты объявлены отдельным включением.
     path('api/', include('data_sources.urls')),
     path('api/', include('component_library.urls')),
+    # Логика страницы (Logic Graph): библиотека нод, граф и
+    # предпросмотр скомпилированного файла. Объявлено до проектов:
+    # путь api/projects/<id>/logic/ содержит два сегмента и должен
+    # находиться раньше общего префикса.
+    path('', include('logic.urls')),
 ]

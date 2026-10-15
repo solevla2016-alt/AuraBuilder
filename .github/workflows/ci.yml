@@ -241,7 +241,7 @@ jobs:
         run: >-
           python manage.py test projects accounts data_sources
           component_library deploying publications billing secretstore
-          telegram --verbosity 2
+          telegram logic --verbosity 2
 
   # --- Рантайм ---------------------------------------------------------------
   # Рантайм поставляется заказчику отдельно и не делит код с платформой
