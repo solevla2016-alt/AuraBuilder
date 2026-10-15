@@ -439,9 +439,19 @@ const signIn = await evalAsync(page, `
     localStorage.setItem('aurabuilder.refresh', body.refresh);
     // Тариф Start: сценарии ниже создают второй проект и проверяют
     // список, а на Free лимит в один проект закрывает создание (п.17.1).
-    // Меняем тариф через публичный API — заодно проверяем, что он
-    // доступен сразу и без перезагрузки.
-    const plan = await post('/billing/subscription/change/', { plan: 'start' });
+    // Меняем тариф через публичный API — заодно проверяем, что смена
+    // тарифа видна сразу и без перезагрузки.
+    //
+    // Заголовок обязателен: токен лежит в localStorage, но сам по себе
+    // он запрос не авторизует, и без заголовка пришёл бы 401.
+    const plan = await fetch('/api/billing/subscription/change/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + body.access,
+      },
+      body: JSON.stringify({ plan: 'start' }),
+    });
     return { ok: true, plan: plan.status };
   `);
 
