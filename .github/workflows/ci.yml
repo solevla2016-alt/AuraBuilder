@@ -366,6 +366,12 @@ jobs:
   browser:
     name: Редактор в браузере и LCP
     runs-on: ubuntu-latest
+    # Замер скорости идёт последним и только после остальных заданий.
+    # Раньше он стартовал вместе со сборкой образов и SBOM, и на общем
+    # раннере статика отдавалась с TTFB 4,3 с — красный статус
+    # показывал загрузку машины, а не сайт.
+    needs: [generated, sbom, licenses, frontend, backend, runtime,
+            runtime-site, docker]
     steps:
       - uses: actions/checkout@v5
 
