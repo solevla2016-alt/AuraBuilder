@@ -460,15 +460,12 @@ await new Promise((r) => setTimeout(r, 6000));
 
 // Вход и тариф проверяются явно: молчаливый сбой авторизации или смены
 // тарифа проявился бы через две минуты как «форма не появилась».
-if (!signIn?.result?.value?.ok) {
-  throw new Error(
-    'вход не удался: ' + JSON.stringify(signIn?.result?.value ?? signIn),
-  );
+// evalAsync отдаёт значение выражения, а не обёртку CDP.
+if (!signIn?.ok) {
+  throw new Error('вход не удался: ' + JSON.stringify(signIn));
 }
-if (signIn.result.value.plan !== 200) {
-  throw new Error(
-    'тариф Start не выдан: HTTP ' + signIn.result.value.plan,
-  );
+if (signIn.plan !== 200) {
+  throw new Error('тариф Start не выдан: HTTP ' + signIn.plan);
 }
 
 // Список проектов — точка входа после входа. Редактор открывается
