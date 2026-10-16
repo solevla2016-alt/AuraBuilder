@@ -72,6 +72,7 @@ export function EditorCanvas({
   onOpenComponents,
   onOpenVersions,
   onOpenPublish,
+  onOpenLogic,
   onSignOut,
 }: {
   /** Проект открыт из списка: идентификатор и название известны заранее. */
@@ -82,6 +83,8 @@ export function EditorCanvas({
   onOpenVersions: () => void;
   /** Публикация и экспорт: пять сценариев ТЗ п.16 на одном экране. */
   onOpenPublish: () => void;
+  /** Граф логики: отдельный полноэкранный режим (ТЗ п.4.2). */
+  onOpenLogic: () => void;
   onSignOut: () => void;
 }) {
   const [tool, setTool] = useState('select');
@@ -565,6 +568,19 @@ export function EditorCanvas({
           >
             <Icon name="history" />
             <span>Версии</span>
+          </button>
+          {/* Логика (ТЗ п.6.4): граф нод в отдельном режиме.
+              Отдельная кнопка, а не инструмент на холсте: сетка
+              нод занимает весь экран и живёт по своим правилам. */}
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={onOpenLogic}
+            title="Логика страницы"
+            aria-label="Логика страницы"
+          >
+            <Icon name="flow" />
+            <span>Логика</span>
           </button>
           {/* Публикация и экспорт (ТЗ п.16). Без неё сценарии
               существуют только через API: сайт можно было бы сделать,

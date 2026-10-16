@@ -46,6 +46,12 @@ export interface Block {
 export interface PageTree {
   width: number;
   blocks: Block[];
+  /**
+   * Граф логики (ТЗ п.6.4). Живёт в том же документе: логика
+   * описывает поведение этой страницы, и версионировать её отдельно
+   * значило бы забыть, какая логика соответствовала какой версии.
+   */
+  logic?: { nodes: unknown[]; edges: unknown[] };
 }
 
 export interface Project {

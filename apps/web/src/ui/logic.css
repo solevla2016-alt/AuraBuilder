@@ -1,0 +1,200 @@
+/*
+ * Экран Logic Graph.
+ *
+ * Стили отдельным блоком и с префиксом logic__: правила графа не
+ * должны разъезжаться с остальным интерфейсом при правке общих
+ * селекторов — класс на кнопке библиотеки и на самой ноде один и тот
+ * же по смыслу, но разные по поведению.
+ */
+.logic {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.logic__top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--border);
+}
+
+.logic__body {
+  display: grid;
+  grid-template-columns: 220px 1fr 260px;
+  flex: 1;
+  min-height: 0;
+}
+
+.logic__lib,
+.logic__props {
+  overflow-y: auto;
+  padding: var(--space-md);
+  border-right: 1px solid var(--border);
+}
+
+.logic__props {
+  border-right: none;
+  border-left: 1px solid var(--border);
+}
+
+.logic__role {
+  margin: var(--space-md) 0 var(--space-xs);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--textSecondary);
+}
+
+.logic__lib-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  margin-bottom: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  text-align: left;
+  cursor: grab;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.logic__lib-item em {
+  font-size: var(--text-xs);
+  font-style: normal;
+  color: var(--textSecondary);
+}
+
+/* Роли читаются цветом: активатор, условие и действие — разные
+   по смыслу, и их путать нельзя. */
+.logic__node--trigger {
+  border-left: 3px solid #2f855a;
+}
+
+.logic__node--condition {
+  border-left: 3px solid #b7791f;
+}
+
+.logic__node--action {
+  border-left: 3px solid #2b6cb0;
+}
+
+.logic__canvas {
+  position: relative;
+  overflow: auto;
+  background:
+    linear-gradient(var(--border) 1px, transparent 1px) 0 0 / 100% 32px,
+    linear-gradient(90deg, var(--border) 1px, transparent 1px) 0 0 / 32px 100%;
+}
+
+.logic__hint {
+  position: absolute;
+  top: var(--space-lg);
+  left: var(--space-lg);
+  max-width: 420px;
+  color: var(--textSecondary);
+}
+
+.logic__wires {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.logic__wire {
+  stroke: var(--textSecondary);
+  stroke-width: 2;
+}
+
+.logic__wire--draft {
+  stroke-dasharray: 4 4;
+}
+
+.logic__wire-hit {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 12;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.logic__wire-hit:hover {
+  fill: #c53030;
+}
+
+.logic__node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  cursor: grab;
+  user-select: none;
+}
+
+.logic__node-id {
+  font-size: var(--text-xs);
+  color: var(--textSecondary);
+}
+
+.logic__outs {
+  display: flex;
+  gap: var(--space-xs);
+  margin-top: 2px;
+}
+
+.logic__out {
+  padding: 1px 6px;
+  font-size: var(--text-xs);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: crosshair;
+}
+
+.logic__out--yes {
+  border-color: #2f855a;
+}
+
+.logic__out--no {
+  border-color: #c53030;
+}
+
+.logic__required {
+  margin-left: var(--space-xs);
+  font-size: var(--text-xs);
+  color: #c53030;
+}
+
+.logic__problems {
+  margin-top: var(--space-md);
+  padding-left: var(--space-md);
+  color: #c53030;
+  font-size: var(--text-sm);
+}
+
+.logic__script pre {
+  max-height: 240px;
+  overflow: auto;
+  padding: var(--space-xs);
+  font-size: var(--text-xs);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+}
+
+@media (width <= 900px) {
+  .logic__body {
+    grid-template-columns: 160px 1fr 200px;
+  }
+}

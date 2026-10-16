@@ -103,6 +103,33 @@ def validate_tree(value: Any) -> str | None:
         if error:
             return error
 
+    error = validate_logic(value.get('logic'))
+    if error:
+        return error
+
+    error = validate_logic_blocks(value)
+    if error:
+        return error
+
+    return None
+
+
+def validate_logic(value: Any) -> str | None:
+    """Проверяет граф логики при сохранении документа.
+
+    Проверка здесь, а не только при сборке: иначе человек сохранил бы
+    сломанный граф, ушёл, и узнал бы о нём через час — при попытке
+    опубликовать сайт.
+    """
+    if value is None:
+        return None
+    try:
+        from logic.graph import LogicError, validate as validate_graph
+        validate_graph(value)
+    except LogicError as e:
+        # Проблемы перечисляются по одной строкой: список помогает
+        # показать их все сразу, а не по одному за сохранение.
+        return 'tree.logic: ' + str(e).replace('; ', '; ')
     return None
 
 
@@ -231,3 +258,39 @@ class ProjectCreateSerializer(serializers.Serializer):
         if validated_data.get('owner') is not None:
             kwargs['owner'] = validated_data['owner']
         return Project.objects.create(**kwargs)
+
+
+def validate_logic_blocks(tree: Any) -> str | None:
+    """Проверяет, что ноды логики ссылаются на существующие блоки.
+
+    «Показать модуль» с несуществующим блоком выглядит исправно и
+    молча не делает ничего: посетитель ничего не увидит, а человек
+    будет искать, почему. Проверка при сохранении дешевле, чем
+    разгадка через неделю после публикации.
+    """
+    from logic.graph import extract, is_empty, parse
+
+    raw = extract(tree if isinstance(tree, dict) else {})
+    if is_empty(raw):
+        return None
+    try:
+        graph = parse(raw)
+    except ValueError:
+        # Структурные ошибки уже сообщил validate_logic: смотреть
+        # ссылки в непроверяемом графе бессмысленно.
+        return None
+
+    known = {
+        b.get('id')
+        for b in (tree.get('blocks') or [])
+        if isinstance(b, dict)
+    }
+    missing = sorted({
+        str(node.props.get('blockId'))
+        for node in graph.nodes
+        if node.props.get('blockId') and str(node.props.get('blockId')) not in known
+    })
+    if missing:
+        return ('tree.logic: эти блоки не найдены на странице: '
+                + ', '.join(missing))
+    return None

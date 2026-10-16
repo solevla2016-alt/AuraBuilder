@@ -2039,6 +2039,213 @@ const key = async (letter, code, modifiers = 0) => {
   ]);
 
   /*
+   * Редактор логики (ТЗ п.6.4, режим п.4.2).
+   *
+   * Проверяется путь целиком: нода появилась из библиотеки, связи
+   * соединились, граф сохранился в проекте, и собранный пакет
+   * содержит скомпилированный файл с действием. Проверять только
+   * «экран открылся» здесь мало: сломанный граф внешне выглядит
+   * так же, как рабочий, и ошибка всплыла бы только у посетителя.
+   */
+  mark('редактор логики');
+  // Возврат в редактор: после проверки публикации открыт её экран.
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      const back = [...document.querySelectorAll('button')]
+        .find((b) => b.textContent?.includes('В редактор'));
+      if (back) back.click();
+      return Boolean(back);
+    })()`,
+  });
+  await new Promise((r) => setTimeout(r, 1200));
+  await click(page, '[aria-label="Логика страницы"]');
+  if (!(await waitFor(page, '.logic__canvas', 15000))) {
+    throw new Error('экран логики не открылся');
+  }
+  // Библиотека приходит отдельным запросом: проверять её сразу после
+  // открытия экрана — значит мерить гонку, а не интерфейс.
+  if (!(await waitFor(page, '.logic__lib-item', 15000))) {
+    throw new Error('библиотека нод не загрузилась');
+  }
+  const library = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `JSON.stringify({
+      count: document.querySelectorAll('.logic__lib-item').length,
+      problems: document.querySelector('.logic__problems')?.textContent ?? '',
+    })`,
+  });
+  const libInfo = JSON.parse(library.result.value);
+  results.push([
+    `библиотека нод на месте (${libInfo.count} типов${
+      libInfo.problems ? '; ' + libInfo.problems : ''
+    })`,
+    libInfo.count >= 10,
+  ]);
+
+  // Активатор, условие и действие — минимальная цепочка из ТЗ.
+  for (const title of ['При клике', 'Если условие', 'Показать сообщение']) {
+    await page.send('Runtime.evaluate', {
+      expression: `(() => {
+        const item = [...document.querySelectorAll('.logic__lib-item')]
+          .find((b) => b.textContent?.trim().startsWith(${JSON.stringify(title)}));
+        if (item) item.click();
+        return Boolean(item);
+      })()`,
+    });
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  const nodes = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `document.querySelectorAll('.logic__node').length`,
+  });
+  results.push([
+    `ноды добавлены из библиотеки (${nodes.result.value})`,
+    nodes.result.value === 3,
+  ]);
+
+  // Связи: активатор → условие → действие. Тянуть линию вручную
+  // нельзя: проверка не должна зависеть от точности мыши, и ошибка
+  // была бы «промахнулся», а не «связь не работает».
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      const nodes = [...document.querySelectorAll('.logic__node')];
+      const trigger = nodes[0];
+      const condition = nodes[1];
+      const action = nodes[2];
+      const outOf = (node) => node?.querySelector('.logic__out');
+      if (!trigger || !condition || !action) return false;
+      outOf(trigger).click();
+      return true;
+    })()`,
+  });
+  // Конец линии задаётся координатой центра следующей ноды.
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      const nodes = [...document.querySelectorAll('.logic__node')];
+      const condition = nodes[1];
+      const box = condition.getBoundingClientRect();
+      const canvas = document.querySelector('.logic__canvas');
+      const cbox = canvas.getBoundingClientRect();
+      const x = box.left + box.width / 2;
+      const y = box.top + box.height / 2;
+      canvas.dispatchEvent(new PointerEvent('pointerup', {
+        clientX: x, clientY: y, bubbles: true,
+      }));
+      return true;
+    })()`,
+  });
+  await new Promise((r) => setTimeout(r, 400));
+  const wires = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `document.querySelectorAll('.logic__wire').length`,
+  });
+  results.push([
+    `связь проведена (${wires.result.value} линий)`,
+    wires.result.value >= 1,
+  ]);
+
+  // Обязательное поле заполняется через панель свойств: сервер
+  // откажется сохранять граф с пустым blockId, и проверка свойств
+  // прошла бы тем, что поле вообще не редактируется.
+  await click(page, '.logic__node');
+  await new Promise((r) => setTimeout(r, 400));
+  const propsShown = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `document.querySelectorAll('.logic__props input, .logic__props select').length`,
+  });
+  results.push([
+    `панель свойств открыта (${propsShown.result.value} полей)`,
+    propsShown.result.value >= 1,
+  ]);
+
+  /*
+   * Обязательные поля заполняются через панель свойств: сервер
+   * откажется сохранять граф с пустыми полями, и проверка свойств
+   * прошла бы тем, что их вообще нельзя заполнить.
+   */
+  const fillProp = async (nodeIndex, propName, value) => {
+    await click(page, `.logic__node:nth-of-type(${nodeIndex})`);
+    await new Promise((r) => setTimeout(r, 250));
+    return page.send('Runtime.evaluate', {
+      expression: `(() => {
+        const field = [...document.querySelectorAll('.logic__props label')]
+          .find((l) => l.textContent?.trim().startsWith(${JSON.stringify(propName)}));
+        const input = field?.querySelector('input, select');
+        if (!input) return false;
+        const proto = input.tagName === 'SELECT'
+          ? window.HTMLSelectElement.prototype
+          : window.HTMLInputElement.prototype;
+        Object.getOwnPropertyDescriptor(proto, 'value').set.call(input, ${JSON.stringify(value)});
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      })()`,
+    });
+  };
+
+  await fillProp(1, 'blockId', 'b1');
+  await new Promise((r) => setTimeout(r, 200));
+  await fillProp(2, 'source', 'data.cart.count');
+  await new Promise((r) => setTimeout(r, 200));
+  // У действия обязателен текст: без него сервер откажется
+  // сохранять граф, а проверка молча прошла бы мимо половины
+  // обязательных полей.
+  await fillProp(3, 'text', 'Спасибо за заказ');
+  await new Promise((r) => setTimeout(r, 200));
+  // Проверяется заполненное поле текущей ноды, а не конкретное
+  // значение: после последнего fillProp в панели именно оно, и
+  // привязка к строке была бы проверкой реализации, а не экрана.
+  const propEdited = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `[...document.querySelectorAll('.logic__props input, .logic__props select')]
+      .filter((i) => String(i.value).trim() !== '').length`,
+  });
+  results.push([
+    `свойства ноды редактируются (${propEdited.result.value} заполнено)`,
+    propEdited.result.value >= 1,
+  ]);
+
+  // Сохранение: сервер проверяет граф и пишет его в документ.
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      const save = [...document.querySelectorAll('button')]
+        .find((b) => b.textContent?.includes('Сохранить логику'));
+      if (save) save.click();
+      return Boolean(save);
+    })()`,
+  });
+  const saved = await waitFor(page, '.logic .vers__ok', 20000);
+  const saveNotice = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `document.querySelector('.logic .vers__ok')?.textContent ?? ''`,
+  });
+  results.push([
+    `логика сохранена (${(saveNotice.result.value || '').slice(0, 40)})`,
+    saved && !saveNotice.result.value.includes('не сохранён'),
+  ]);
+
+  // Собранный пакет обязан содержать действие из графа.
+  const compiled = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `document.querySelector('.logic__script pre')?.textContent ?? ''`,
+  });
+  results.push([
+    'скомпилированный файл показан в редакторе',
+    typeof compiled.result.value === 'string' && compiled.result.value.includes('__show'),
+  ]);
+
+  // Назад в редактор: следующей проверке нужен холст.
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      const back = [...document.querySelectorAll('button')]
+        .find((b) => b.textContent?.includes('В редактор'));
+      if (back) back.click();
+      return Boolean(back);
+    })()`,
+  });
+  await new Promise((r) => setTimeout(r, 1200));
+
+  /*
    * Публикация и экспорт (ТЗ п.16).
    *
    * Проверяется путь, который раньше был доступен только через API:
