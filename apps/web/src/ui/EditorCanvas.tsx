@@ -71,6 +71,7 @@ export function EditorCanvas({
   onOpenData,
   onOpenComponents,
   onOpenVersions,
+  onOpenPublish,
   onSignOut,
 }: {
   /** Проект открыт из списка: идентификатор и название известны заранее. */
@@ -79,6 +80,8 @@ export function EditorCanvas({
   onOpenData: () => void;
   onOpenComponents: () => void;
   onOpenVersions: () => void;
+  /** Публикация и экспорт: пять сценариев ТЗ п.16 на одном экране. */
+  onOpenPublish: () => void;
   onSignOut: () => void;
 }) {
   const [tool, setTool] = useState('select');
@@ -562,6 +565,19 @@ export function EditorCanvas({
           >
             <Icon name="history" />
             <span>Версии</span>
+          </button>
+          {/* Публикация и экспорт (ТЗ п.16). Без неё сценарии
+              существуют только через API: сайт можно было бы сделать,
+              но не показать людям. */}
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={onOpenPublish}
+            title="Публикация и экспорт"
+            aria-label="Публикация и экспорт"
+          >
+            <Icon name="rocket" />
+            <span>Опубликовать</span>
           </button>
           {/* Кнопка возврата в список проектов: без неё из редактора
               не выйти, кроме выхода из аккаунта, а это разные вещи. */}

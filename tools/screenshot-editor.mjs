@@ -2039,6 +2039,158 @@ const key = async (letter, code, modifiers = 0) => {
   ]);
 
   /*
+   * Публикация и экспорт (ТЗ п.16).
+   *
+   * Проверяется путь, который раньше был доступен только через API:
+   * человек нажимает кнопку в редакторе и получает работающий адрес.
+   * Экран без этого остался бы мёртвой вкладкой, а сценарий из
+   * критериев приёмки нельзя было бы прогнать целиком в браузере.
+   */
+  mark('публикация');
+  // Перед сценарием открыт экран версий, а кнопка публикации живёт
+  // в шапке редактора: без возврата поиск падал бы с «элемент не
+  // найден» и выглядел бы как исчезнувшая кнопка.
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      const back = [...document.querySelectorAll('button')]
+        .find((b) => b.textContent?.includes('В редактор'));
+      if (back) back.click();
+      return Boolean(back);
+    })()`,
+  });
+  await new Promise((r) => setTimeout(r, 1500));
+  await click(page, '[aria-label="Публикация и экспорт"]');
+  if (!(await waitFor(page, '[data-screen="publish-site"]', 15000))) {
+    const dump = await page.send('Runtime.evaluate', {
+      returnByValue: true,
+      expression: `JSON.stringify({
+        main: document.querySelector('main')?.className ?? null,
+        title: document.querySelector('.data__title')?.textContent ?? null,
+        error: document.querySelector('.data__error')?.textContent ?? null,
+      })`,
+    });
+    throw new Error(`экран публикации не открылся: ${dump.result.value}`);
+  }
+  const panels = await page.send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: `document.querySelectorAll('[data-screen]').length`,
+  });
+  results.push([
+    `все пять сценариев на экране (${panels.result.value} разделов)`,
+    panels.result.value === 5,
+  ]);
+
+  // Публикация: адрес должен появиться и вести на сайт.
+  // Клик делается через страницу, а не координатой: кнопка может лежать
+  // за пределами окна на узком экране, и координата ушла бы в пустоту.
+  await page.send('Runtime.evaluate', {
+    expression: `(() => {
+      const btn = [...document.querySelectorAll('[data-screen="publish-site"] button')]
+        .find((b) => b.textContent?.includes('Опубликовать'));
+      if (btn) btn.click();
+      return Boolean(btn);
+    })()`,
+  });
+  const published = await waitFor(
+    page,
+    '[data-screen="publish-site"] .vers__ok, [data-screen="publish-site"] a[target="_blank"]',
+    25000,
+  );
+  results.push([
+    'публикация дала адрес сайта',
+    published,
+  ]);
+  if (!published) {
+    // Без состояния экрана падение выглядело бы как «кнопка не работает»:
+    // неизвестно, отказ это по тарифу, отсутствие версии или сеть.
+    const why = await page.send('Runtime.evaluate', {
+      returnByValue: true,
+      expression: `JSON.stringify({
+        where: document.querySelector('main')?.className ?? null,
+        title: document.querySelector('.data__title')?.textContent ?? null,
+        error: document.querySelector('.data__error')?.textContent ?? null,
+        ok: document.querySelector('.vers__ok')?.textContent ?? null,
+        links: document.querySelectorAll('a[target="_blank"]').length,
+      })`,
+    });
+    results.push([`состояние экрана публикации: ${why.result.value}`, false]);
+    // Ошибки страницы обязательны здесь: пустая страница без причины
+    // выглядит как «кнопка сломала приложение», а не как исключение
+    // в рендере.
+    const failures = page.console
+      .filter(
+        (m) =>
+          (m.method === 'Log.entryAdded' && m.params?.entry?.level === 'error') ||
+          m.method === 'Runtime.exceptionThrown',
+      )
+      .slice(-2)
+      .map(
+        (m) =>
+          m.params?.entry?.text
+          ?? m.params?.exceptionDetails?.exception?.description
+          ?? JSON.stringify(m.params ?? {}).slice(0, 300),
+      );
+    results.push([
+      `ошибки страницы: ${failures.join(' | ') || '—'}`,
+      false,
+    ]);
+  }
+  if (published) {
+    const siteUrl = await page.send('Runtime.evaluate', {
+      returnByValue: true,
+      expression: `document.querySelector('[data-screen="publish-site"] a[target="_blank"]')?.href ?? ''`,
+    });
+    const probe = await fetch(siteUrl.result.value || 'about:blank')
+      .then((r) => r.status)
+      .catch(() => 0);
+    results.push([
+      `опубликованный сайт отвечает (HTTP ${probe})`,
+      probe === 200,
+    ]);
+    // Отзыв: проверяется состояние публикации, а не надпись на
+    // экране. Текст меняется вместе с формулировкой, а состояние —
+    // это то, ради чего человек и нажимает кнопку.
+    // Отзыв: кнопка ищется по слову, а не по номеру. `nth-of-type`
+    // считает соседей одного тега, и вторая кнопка секции — это
+    // вовсе не «Отозвать»: промах молча уходил в другую команду.
+    await page.send('Runtime.evaluate', {
+      expression: `(() => {
+        const btn = [...document.querySelectorAll('[data-screen="publish-site"] button')]
+          .find((b) => b.textContent?.trim() === 'Отозвать');
+        if (btn) btn.click();
+        return Boolean(btn);
+      })()`,
+    });
+    const afterWithdraw = await evalAsync(page, `
+      const headers = {
+        Authorization: 'Bearer ' + localStorage.getItem('aurabuilder.access'),
+      };
+      const url = '/api/projects/${compsBox.result.value.project}/site/';
+      // Опрос, а не разовая проверка: отзыв уже ушёл на сервер, но
+      // ответ мог прийти раньше, чем обновилось состояние, и одна
+      // попытка поймала бы старый статус.
+      //
+      // Проверяется active, а не published: published означает «сайт
+      // был опубликован» и остаётся истиной после отзыва — отзыв
+      // обратим, и это часть смысла.
+      for (let i = 0; i < 20; i++) {
+        const status = await (await fetch(url, { headers })).json();
+        if (status.active === false) {
+          return { published: status.published, state: status.state };
+        }
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      const status = await (await fetch(url, { headers })).json();
+      return { published: status.published, state: status.state };
+    `).catch((e) => ({ published: null, state: String(e) }));
+    results.push([
+      `отзыв снял публикацию (${afterWithdraw?.state ?? '—'})`,
+      afterWithdraw?.state === 'withdrawn',
+    ]);
+  }
+
+
+  /*
    * Уборка за прогоном.
    *
    * Каждый прогон создаёт проект, источник данных и запись. Без удаления

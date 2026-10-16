@@ -75,6 +75,25 @@ export default defineConfig({
     },
   },
 
+  /*
+   * Прокси для preview — тот же, что и для dev.
+   *
+   * Без него `npm run preview` (его использует CI и замер скорости)
+   * отдавал бы на /api/html-страницу самого приложения вместо Control
+   * Plane: запрос проходил, статус был 200, и проверка падала позже и
+   * в другом месте — «тариф не выдан» вместо «сервера нет».
+   */
+  preview: {
+    port: 4173,
+    strictPort: false,
+    proxy: {
+      '/api': {
+        target: process.env.API_TARGET ?? 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+    },
+  },
+
   build: {
     target: 'es2022',
     sourcemap: true,

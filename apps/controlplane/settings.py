@@ -184,8 +184,12 @@ REST_FRAMEWORK = {
     # разработке — в памяти процесса: при нескольких воркерах gunicorn
     # счётчик делится между ними, и лимит становится в разы мягче.
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '100/hour',
-        'user': '1000/hour',
+        # Пороги из окружения: стенду и CI они нужны выше. Браузерная
+        # проверка делает сотни запросов за прогон, и при жёстком
+        # лимите она падала бы с 429 на середине — а это выглядело бы
+        # как поломка платформы, а не как ограничение частоты.
+        'anon': os.environ.get('THROTTLE_ANON_RATE', '100/hour'),
+        'user': os.environ.get('THROTTLE_USER_RATE', '1000/hour'),
     },
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.AnonRateThrottle',
