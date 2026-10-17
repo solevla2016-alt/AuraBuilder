@@ -193,6 +193,7 @@ export const SCHEMAS: ModuleSchema[] = [
   ] },
   { moduleId: 'section.gallery', props: [
     { name: 'heading', type: 'text', required: false, default: "Работы", limits: {}, description: 'Заголовок галереи' },
+    { name: 'images', type: 'text', required: false, default: null, limits: {}, description: 'Адреса картинок через запятую; задаются кнопкой «Загрузить картинки»' },
     { name: 'columns', type: 'number', required: false, default: 3, limits: {"min":2,"max":5,"step":1}, description: 'Сколько изображений в ряд' },
     { name: 'gap', type: 'number', required: false, default: 16, limits: {"min":4,"max":48,"step":4}, description: 'Промежуток между кадрами, px' }
   ] },
@@ -297,6 +298,10 @@ export const SCHEMAS: ModuleSchema[] = [
     { name: 'src', type: 'text', required: false, default: null, limits: {}, description: 'Адрес файла; пусто — файл не подключён' },
     { name: 'autoplay', type: 'boolean', required: false, default: false, limits: {}, description: 'Проигрывать автоматически' },
     { name: 'loop', type: 'boolean', required: false, default: false, limits: {}, description: 'Повторять' }
+  ] },
+  { moduleId: 'media.image', props: [
+    { name: 'src', type: 'text', required: false, default: null, limits: {}, description: 'Адрес картинки; пусто — на сайте будет заглушка' },
+    { name: 'alt', type: 'text', required: false, default: null, limits: {}, description: 'Что изображено на картинке: этот текст читают скринридеры и поисковики' }
   ] },
   { moduleId: 'text.code', props: [
     { name: 'heading', type: 'text', required: false, default: null, limits: {}, description: 'Заголовок над блоком' },

@@ -2396,6 +2396,91 @@ const key = async (letter, code, modifiers = 0) => {
     ]);
   }
 
+  /*
+   * Медиатека проекта.
+   *
+   * Проверяется реальной загрузкой из браузера: тот самый путь, где
+   * платформа принимает только JSON и отвечает 415 на multipart, а
+   * адрес файла должен остаться рабочим после перезагрузки страницы.
+   * Файл собирается прямо в странице из base64 — диск стенда не
+   * участвует, и проверка не зависит от того, что на нём лежит.
+   */
+  mark('медиатека');
+  const mediaProjectId = compsBox.result.value.project;
+  const pngBase64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const uploadResult = await evalAsync(page, `
+    const headers = { Authorization: 'Bearer ' + localStorage.getItem('aurabuilder.access') };
+    const bytes = Uint8Array.from(atob(${JSON.stringify(pngBase64)}), (c) => c.charCodeAt(0));
+    const form = new FormData();
+    // Имя с кириллицей: в адрес оно попасть не должно, иначе ссылка
+    // разъедется при копировании или обслуживании сайта.
+    form.append('file', new File([bytes], 'меню.png', { type: 'image/png' }));
+    const res = await fetch('/api/projects/${mediaProjectId}/assets/', {
+      method: 'POST', headers, body: form,
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) return { status: res.status, detail: body.detail ?? '' };
+
+    // Переименованный исполняемый файл: имя «photo.png» не делает его
+    // картинкой, и пропустить такой файл значит выполнить чужой код
+    // от имени сайта заказчика.
+    const evil = new FormData();
+    evil.append('file', new File([new Uint8Array([0x4d, 0x5a, 0x90, 0x00, 0x00])], 'photo.png', { type: 'image/png' }));
+    const evilRes = await fetch('/api/projects/${mediaProjectId}/assets/', {
+      method: 'POST', headers, body: evil,
+    });
+    const evilBody = await evilRes.json().catch(() => ({}));
+
+    const fileRes = await fetch(body.url, { headers });
+    const listing = await (await fetch('/api/projects/${mediaProjectId}/assets/', { headers })).json();
+
+    return {
+      status: res.status,
+      name: body.name,
+      url: body.url,
+      contentType: body.contentType,
+      fileStatus: fileRes.status,
+      served: (await fileRes.arrayBuffer()).byteLength,
+      listed: (listing.assets || []).length,
+      evilStatus: evilRes.status,
+      evilDetail: evilBody.detail ?? '',
+    };
+  `);
+  const media = uploadResult.value ?? uploadResult;
+  results.push([
+    `картинка загрузилась из браузера (${media?.contentType ?? '—'})`,
+    media?.status === 201 && media?.contentType === 'image/png',
+  ]);
+  results.push([
+    'имя файла без пробелов и кириллицы',
+    typeof media?.name === 'string' && !/[\s\u0400-\u04FF]/.test(media.name),
+  ]);
+  results.push([
+    `файл отдаётся по адресу медиатеки (${media?.fileStatus ?? '—'})`,
+    media?.fileStatus === 200 && media?.served > 0,
+  ]);
+  results.push([
+    `файл виден в списке медиатеки (${media?.listed ?? 0})`,
+    media?.listed === 1,
+  ]);
+  results.push([
+    `переименованный исполняемый файл отклонён (${media?.evilStatus ?? '—'})`,
+    media?.evilStatus === 400 && /изображени/i.test(media?.evilDetail ?? ''),
+  ]);
+  // Загруженный файл убирается сразу: иначе следующий прогон видел бы
+  // в списке прошлый файл и падал бы не из-за кода, а из-за уборки.
+  await evalAsync(page, `
+    const headers = { Authorization: 'Bearer ' + localStorage.getItem('aurabuilder.access') };
+    const listing = await (await fetch('/api/projects/${mediaProjectId}/assets/', { headers })).json();
+    for (const asset of listing.assets || []) {
+      await fetch('/api/projects/${mediaProjectId}/assets/' + asset.id + '/', {
+        method: 'DELETE', headers,
+      });
+    }
+    return true;
+  `);
+
 
   /*
    * Уборка за прогоном.

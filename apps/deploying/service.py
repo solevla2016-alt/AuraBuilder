@@ -26,6 +26,7 @@ from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 from projects.package import RUNTIME_PROTOCOL_VERSION as PROTOCOL_VERSION
+from projects.package import FileContent, _as_bytes
 
 from .models import HostingProfile
 from .runtime_pack import runtime_files
@@ -141,7 +142,7 @@ def deploy(
         )
 
     built = build_package(project, version, base_url=site_url)
-    files: dict[str, str] = dict(built['files'])
+    files: dict[str, FileContent] = dict(built['files'])
 
     # Ключ установки живёт в профиле, а не вычитывается с сервера:
     # чтение файла обратным каналом означало бы, что деплой падает из-за
@@ -164,7 +165,9 @@ def deploy(
         existing = set(transport.existing())
         uploaded = 0
         for name, content in files.items():
-            transport.put(name, content.encode('utf-8'))
+            # Картинки идут байтами: кодировать их как текст значило бы
+            # испортить файл на сервере заказчика.
+            transport.put(name, _as_bytes(content))
             uploaded += 1
 
         removed = _remove_stale(transport, existing - set(files))

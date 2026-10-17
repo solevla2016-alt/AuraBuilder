@@ -301,6 +301,14 @@
           "description": "Заголовок галереи"
         },
         {
+          "name": "images",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Адреса картинок через запятую; задаются кнопкой «Загрузить картинки»"
+        },
+        {
           "name": "columns",
           "type": "number",
           "required": false,
@@ -989,6 +997,27 @@
           "default": false,
           "limits": {},
           "description": "Повторять"
+        }
+      ]
+    },
+    {
+      "id": "media.image",
+      "props": [
+        {
+          "name": "src",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Адрес картинки; пусто — на сайте будет заглушка"
+        },
+        {
+          "name": "alt",
+          "type": "text",
+          "required": false,
+          "default": null,
+          "limits": {},
+          "description": "Что изображено на картинке: этот текст читают скринридеры и поисковики"
         }
       ]
     },

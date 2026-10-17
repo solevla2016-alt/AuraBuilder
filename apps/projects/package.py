@@ -34,6 +34,8 @@ from .export import (
     render_block,
     slugify,
 )
+from assets.packaging import collect as collect_assets
+from assets.packaging import manifest_entry
 from logic.compiler import compile_graph
 from logic import graph as logic_graph
 
@@ -158,6 +160,17 @@ def _dataset_for(block: dict, datasets: dict[str, list[dict]]) -> list[dict]:
 
 class PackageTooLarge(Exception):
     """Выгрузка не укладывается в технический лимит (ТЗ п.4.11)."""
+
+
+#: Содержимое файла пакета. Картинки приходят байтами: кодировать их в
+#: текст ради единого словаря означало бы либо испортить файл, либо
+#: тащить base64 в архив. Поэтому словарь хранит оба вида, а всё, что
+#: работает с содержимым, идёт через _as_bytes.
+FileContent = str | bytes
+
+
+def _as_bytes(content: FileContent) -> bytes:
+    return content if isinstance(content, bytes) else content.encode('utf-8')
 
 
 def _collect_sources(project: Project, version: DocumentVersion) -> dict[str, list[dict]]:
@@ -288,7 +301,7 @@ def _readme(project_name: str, manifest: dict) -> str:
 """
 
 
-def validate_files(files: dict[str, str], base_url: str = '') -> ValidationReport:
+def validate_files(files: dict[str, FileContent], base_url: str = '') -> ValidationReport:
     """Проверки перед выдачей архива (ТЗ п.16.4).
 
     Порядок не важен, набор фиксированный: пропущенная проверка — это
@@ -299,6 +312,10 @@ def validate_files(files: dict[str, str], base_url: str = '') -> ValidationRepor
 
     for host in FORBIDDEN_HOSTS:
         for name, content in files.items():
+            # Картинки пропускаются: искать в них внешний домен нечего,
+            # а попытка разобрать байты как текст обрезала бы файл.
+            if not isinstance(content, str):
+                continue
             if host in content:
                 report.errors.append(
                     f'{name}: внешняя ссылка на {host} (п.15.3, п.16.4)'
@@ -316,6 +333,11 @@ def validate_files(files: dict[str, str], base_url: str = '') -> ValidationRepor
         report.errors.append('в пакете нет ни одной HTML-страницы')
     for name in html_files:
         content = files[name]
+        if not isinstance(content, str):
+            # HTML сюда попасть не может, но проверка должна ругаться
+            # вслух, а не падать на .encode с невнятным сообщением.
+            report.errors.append(f'{name}: страница сохранена не как текст')
+            continue
         if '<html' not in content or '</html>' not in content:
             report.errors.append(f'{name}: страница не закрыта')
         if 'charset="utf-8"' not in content and "charset='utf-8'" not in content:
@@ -323,7 +345,7 @@ def validate_files(files: dict[str, str], base_url: str = '') -> ValidationRepor
         if 'og:title' not in content:
             report.warnings.append(f'{name}: нет Open Graph-тегов')
 
-    total = sum(len(c.encode('utf-8')) for c in files.values())
+    total = sum(len(_as_bytes(c)) for c in files.values())
     if total > MAX_ARCHIVE_MB * 1024 * 1024:
         report.errors.append(f'архив тяжелее {MAX_ARCHIVE_MB} МБ')
 
@@ -400,7 +422,7 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
         )
     }
 
-    files: dict[str, str] = {
+    files: dict[str, FileContent] = {
         'assets/css/site.css': build_css(styles),
         'robots.txt': _robots_txt(base_url),
         'sitemap.xml': _sitemap_xml(base_url, ['index.html']),
@@ -462,11 +484,6 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
         # браузер сам их не подхватит.
         files['assets/js/pwa.js'] = registration_script()
 
-    checksums = {
-        name: hashlib.sha256(content.encode('utf-8')).hexdigest()
-        for name, content in {**html_files, **files}.items()
-    }
-
     manifest = {
         'formatVersion': FORMAT_VERSION,
         'project': {'id': str(project.id), 'name': project.name},
@@ -488,7 +505,9 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
             'actions': logic['actions'],
             'requiresRuntime': logic['hasRuntimeNodes'],
         },
-        'files': checksums,
+        # Контрольные суммы считаются ниже: к этому моменту ссылки на
+        # медиатеку ещё не стали локальными.
+        'files': {},
         'externalDependencies': [],
         'requiresPlatform': False,
         # Признак сценария 4: по нему видно, что приложение
@@ -496,21 +515,50 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
         'pwa': bool(pwa),
     }
 
+    # Медиатека: картинки кладутся в пакет, а ссылки на них
+    # становятся локальными. Иначе выгрузка работала бы только на
+    # инфраструктуре платформы, а человек унёс бы её на свой хостинг
+    # и увидел пустые картинки.
+    #
+    # Шаг идёт после слияния html_files: собирать надо по уже
+    # готовым страницам, иначе переписывать нечего. Раньше вызов шёл
+    # раньше слияния, и ни одна картинка не переезжала в архив.
+    files.update(html_files)
+    media = collect_assets(project, files)
+    manifest['assets'] = manifest_entry(media)
+    # Ссылка на файл, которого в проекте уже нет, остаётся в HTML.
+    # Это не ошибка сборки — сайт отдаётся, — но такая зависимость
+    # должна быть видна в манифесте, а не только у посетителя.
+    manifest['externalDependencies'] = sorted(media.get('external', []))
+
+    # Контрольные суммы пересчитываются после того, как ссылки стали
+    # локальными: иначе сумма в манифесте не совпала бы с файлом в
+    # архиве, и сравнение сборок перестало бы работать.
+    manifest['files'] = {
+        name: hashlib.sha256(_as_bytes(content)).hexdigest()
+        for name, content in files.items()
+    }
+
     files['build-manifest.json'] = json.dumps(manifest, ensure_ascii=False, indent=2)
     files['README.md'] = _readme(project.name, manifest)
-    files.update(html_files)
 
     report = validate_files(files, base_url)
     if not report.ok:
         raise ExportError('; '.join(report.errors))
 
-    manifest['warnings'] = report.warnings
+    warnings = list(report.warnings)
+    for url in media.get('external', []):
+        warnings.append(
+            f'ссылка на удалённый файл медиатеки: {url} — на сайте будет '
+            'пустое место'
+        )
+    manifest['warnings'] = warnings
     files['build-manifest.json'] = json.dumps(manifest, ensure_ascii=False, indent=2)
     return {'files': files, 'manifest': manifest, 'report': report,
             'pwa': bool(pwa)}
 
 
-def package_zip(files: dict[str, str]) -> tuple[str, bytes]:
+def package_zip(files: dict[str, FileContent]) -> tuple[str, bytes]:
     """Архив из готовых файлов.
 
     Время в архиве фиксировано: без этого два экспорта одной версии
@@ -523,5 +571,5 @@ def package_zip(files: dict[str, str]) -> tuple[str, bytes]:
             info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o644 << 16
-            archive.writestr(info, files[name].encode('utf-8'))
+            archive.writestr(info, _as_bytes(files[name]))
     return '', buffer.getvalue()

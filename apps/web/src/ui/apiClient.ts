@@ -36,10 +36,14 @@ export class ApiError extends Error {
 }
 
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...((init?.headers as Record<string, string>) ?? {}),
-  };
+  const headers: Record<string, string> = {};
+
+  // С FormData заголовок Content-Type не выставляется: браузер должен
+  // сам дописать границу multipart. Заданный вручную application/json
+  // приводил бы к тому, что сервер не увидит файл, — и загрузка
+  // картинки отвечала бы «файл не получен».
+  if (!(init?.body instanceof FormData)) headers['Content-Type'] = 'application/json';
+  Object.assign(headers, (init?.headers as Record<string, string>) ?? {});
 
   // Access-токен живёт 15 минут (ТЗ п.7.7), поэтому при каждом запросе
   // access мог уже истечь. Ответ 401 с кодом token_not_valid

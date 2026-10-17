@@ -22,6 +22,7 @@ from pathlib import Path
 from django.db import transaction
 
 from projects.package import PackageTooLarge, build_package
+from projects.package import FileContent, _as_bytes
 
 from .models import (
     STATE_ACTIVE,
@@ -68,8 +69,13 @@ def _free_slug(base: str) -> str:
     return candidate
 
 
-def _write_tree(files: dict[str, str], directory: Path) -> tuple[int, int]:
-    """Пишет файлы сборки и возвращает их количество и размер."""
+def _write_tree(files: dict[str, FileContent], directory: Path) -> tuple[int, int]:
+    """Пишет файлы сборки и возвращает их количество и размер.
+
+    Картинки приходят байтами и пишутся как есть: перекодирование
+    испортило бы файл, а на опубликованном сайте появились бы битые
+    картинки при полностью «успешной» публикации.
+    """
     if directory.exists():
         shutil.rmtree(directory)
     directory.mkdir(parents=True)
@@ -78,7 +84,7 @@ def _write_tree(files: dict[str, str], directory: Path) -> tuple[int, int]:
     for name, content in files.items():
         target = directory / name
         target.parent.mkdir(parents=True, exist_ok=True)
-        data = content.encode('utf-8') if isinstance(content, str) else content
+        data = _as_bytes(content)
         target.write_bytes(data)
         total += len(data)
         count += 1

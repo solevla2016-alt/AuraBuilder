@@ -100,6 +100,7 @@ INSTALLED_APPS = [
     'data_sources',
     'logic',
     'component_library',
+    'assets',
     'billing',
     'secretstore',
     'telegram',
@@ -405,3 +406,13 @@ PUBLISH_ROOT = Path(
 #: Как выглядит адрес публикации. Пусто — префикс /sites/<адрес>/.
 #: В эксплуатации здесь домен платформы: код раздачи не меняется.
 PUBLICATION_BASE_URL = os.environ.get('PUBLICATION_BASE_URL', '')
+
+# --- Медиатека проекта (ТЗ п.4.3) ---------------------------------------
+
+#: Каталог загруженных картинок. В эксплуатации это том рядом с
+#: PUBLISH_ROOT: файлы должны переживать пересборку контейнера, иначе
+#: вместе с контейнером пропадут все картинки проектов. Каталог вне
+#: репозитория и не коммитится — это пользовательские файлы.
+ASSET_ROOT = Path(
+    os.environ.get('ASSET_ROOT', str(Path(tempfile.gettempdir()) / 'aurabuilder-assets'))
+)

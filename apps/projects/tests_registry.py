@@ -143,6 +143,10 @@ class SchemaTests(APITestCase):
             # и поиск ждут рантайма, и схемы для них пока нет.
             'promo.banner', 'promo.pricing', 'shop.compare',
             'shop.reviews', 'shop.stock', 'shop.order',
+            # Изображение: без схемы адрес картинки и подпись к ней
+            # нельзя было задать из редактора — блок выводился одной
+            # заглушкой, какой бы адрес человек ни вставил.
+            'media.image',
         }
         self.assertEqual(set(SCHEMAS), expected)
         self.assertEqual(SCHEMA_IDS, frozenset(expected))

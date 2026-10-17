@@ -371,11 +371,12 @@ def _render_tabs(block: dict) -> str:
 
 
 def _render_gallery(block: dict) -> str:
-    """Галерея плейсхолдеров: файлов на стенде нет.
+    """Галерея: файлы из свойства images либо честные заглушки.
 
     Раскладка задаётся схемой: сколько кадров в ряд (columns) и
-    промежуток (gap). Раньше читалось count — свойства, которого в
-    схеме нет, поэтому настройки раскладки в выгрузку не доходили.
+    промежуток (gap). Если файлов нет или их меньше, чем кадров
+    раскладки, недостающие места занимает заглушка — иначе сетка
+    «схлопывается» и страница выглядит сломанной.
     """
     props = _props(block)
     heading = _text(block, "heading", "")
@@ -386,17 +387,28 @@ def _render_gallery(block: dict) -> str:
     frames = props.get("frames")
     frames = frames if isinstance(frames, int) and 2 <= frames <= 24 else columns
 
-    cells = "".join(
-        f"<figure class=\"gallery__item\"><div class=\"media__placeholder\" role=\"img\" "
-        f"aria-label=\"Изображение {i + 1}\">Изображение {i + 1}</div></figure>"
-        for i in range(frames)
-    )
+    images = _split_images(props.get("images"))
+    cells = []
+    for index in range(frames):
+        src = images[index] if index < len(images) else ''
+        if src:
+            body = _image_tag(src, f'Изображение {index + 1}')
+        else:
+            body = (
+                f'<div class="media__placeholder" role="img" '
+                f'aria-label="Изображение {index + 1}">'
+                f'Изображение {index + 1}</div>'
+            )
+        cells.append(f'<figure class="gallery__item">{body}</figure>')
+    grid = "".join(cells)
+
+    style = f' style="--gallery-columns:{columns};--gallery-gap:{gap}px"'
+    heading_html = f'<h2 class="gallery__heading">{esc(heading)}</h2>' if heading else ''
     return (
-        "<section class=\"block block--gallery\">"
-        + (f"<h2>{esc(heading)}</h2>" if heading else "")
-        + f'<div class="gallery" style="--gallery-columns:{columns};--gallery-gap:{gap}px">'
-        + cells
-        + "</div></section>"
+        '<section class="block block--gallery">'
+        f'{heading_html}'
+        f'<div class="gallery__grid"{style}>{grid}</div>'
+        '</section>'
     )
 
 
@@ -1584,15 +1596,93 @@ def _render_form(block: dict, records: list[dict] | None = None) -> str:
     )
 
 
+def _image_tag(src: str, alt: str) -> str:
+    """Тег картинки для галереи.
+
+    Загрузка ленивая, а размеры не заданы: без них страница «прыгает»
+    при загрузке, а по атрибутам alt читается текст для скринридера —
+    картинка без описания молча исчезает для незрячего посетителя.
+    """
+    return (
+        f'<img class="media__image" src="{esc(src)}" alt="{esc(alt)}" '
+        'loading="lazy" decoding="async">'
+    )
+
+
+def _split_images(value: object) -> list[str]:
+    """Список адресов из свойства блока.
+
+    Список приходит строкой через запятую либо JSON-массивом: человек
+    вставляет ссылки из буфера, а форма не должна требовать JSON.
+    """
+    if isinstance(value, (list, tuple)):
+        return [str(v).strip() for v in value if str(v).strip()]
+    if not isinstance(value, str):
+        return []
+    raw = value.strip()
+    if not raw:
+        return []
+    if raw.startswith('['):
+        try:
+            import json
+
+            parsed = json.loads(raw)
+        except ValueError:
+            return [raw]
+        if isinstance(parsed, list):
+            return [str(v).strip() for v in parsed if str(v).strip()]
+    return [part.strip() for part in raw.split(',') if part.strip()]
+
+
+def _image_src(block: dict, *keys: str) -> str:
+    """Адрес картинки из свойств блока.
+
+    Именно из свойств, а не через _text: тот на отсутствующем ключе
+    берёт текст блока, и вместо адреса в src попал бы обычный текст
+    вроде «Текст». Адрес — это то, что человек задал руками или
+    выбрал в медиатеке, поэтому и берётся только оттуда.
+    """
+    props = _props(block)
+    for key in keys:
+        value = props.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ''
+
+
 def _render_media(block: dict) -> str:
-    alt = _text(block, 'alt', _text(block, 'text', 'Изображение'))
-    # Реальных файлов на стенде нет, и подставлять заглушку-снимок
-    # значило бы отдать заказчику не его картинку. Плейсхолдер честнее:
-    # он виден и в редакторе, и в экспорте.
+    """Видео и прочие медиа без файла: честная заглушка.
+
+    Плейсхолдер виден и в редакторе, и в выгрузке: подставлять
+    чужую картинку вместо заказанной нельзя.
+    """
+    alt = _text(block, 'alt', _text(block, 'text', 'Видео'))
     return (
         '<figure class="block block--media">'
         f'<div class="media__placeholder" role="img" aria-label="{esc(alt)}">'
         f'{esc(alt)}</div></figure>'
+    )
+
+
+def _render_image(block: dict) -> str:
+    """Изображение: настоящий файл, если он задан, иначе заглушка.
+
+    Загрузка ленивая, размеры не заданы: без них страница «прыгает»
+    при загрузке, а по атрибуту alt читается текст для скринридера —
+    картинка без описания молча исчезает для незрячего посетителя.
+    """
+    alt = _text(block, 'alt', _text(block, 'text', 'Изображение'))
+    src = _image_src(block, 'src', 'image')
+    if not src:
+        return (
+            '<figure class="block block--media">'
+            f'<div class="media__placeholder" role="img" aria-label="{esc(alt)}">'
+            f'{esc(alt)}</div></figure>'
+        )
+    return (
+        '<figure class="block block--media">'
+        f'<img class="media__image" src="{esc(src)}" alt="{esc(alt)}" '
+        'loading="lazy" decoding="async"></figure>'
     )
 
 
@@ -1637,7 +1727,7 @@ RENDERERS = {
     'text.paragraph': _render_paragraph,
     'text.list': _render_list,
     'text.quote': _render_quote,
-    'media.image': _render_media,
+    'media.image': _render_image,
     'media.video': _render_media,
     'action.button': _render_button,
     'action.link': _render_button,
@@ -1827,6 +1917,30 @@ body {{
   border-radius: var(--radius-media);
   color: var(--text-muted);
   background: var(--fill-media);
+}}
+
+/* Настоящие картинки. Ширина по контейнеру и высота по пропорции:
+   иначе на телефоне картинка вылезает за экран, а в пустом блоке
+   страница «прыгает» при загрузке. */
+.media__image {{
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-media);
+}}
+
+.gallery__grid {{
+  display: grid;
+  gap: var(--gallery-gap, 16px);
+  grid-template-columns: repeat(var(--gallery-columns, 3), minmax(0, 1fr));
+}}
+
+.gallery__item {{
+  margin: 0;
+}}
+
+@media (width <= 720px) {{
+  .gallery__grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
 }}
 
 .button {{

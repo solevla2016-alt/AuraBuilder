@@ -15,9 +15,10 @@
  * записью в истории.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Icon } from './icons';
 import { dataApi, type DataSource } from './data';
+import { assetsApi, humanSize, type Asset } from './assets';
 import type { Block } from './project';
 import { kindOf, schemaFor } from './moduleRegistry';
 import type { PropDef } from './moduleRegistry';
@@ -59,6 +60,20 @@ const ALIGNS: { id: Align; icon: 'alignLeft' | 'alignCenter' | 'alignRight'; lab
 
 /** Шаг изменения координат при вводе с клавиатуры, пиксели. */
 const STEP = 4;
+
+/**
+ * Свойства, в которых вместо текстового поля показывается медиатека.
+ *
+ * Ключ — имя свойства, значение — модули и сколько им файлов нужно.
+ * Список явный, а не выведенный из реестра: поле выбора файлов
+ * осмысленно только там, где файл действительно попадает на
+ * страницу, и молча подставить его модулю, который адрес не
+ * использует, значило бы добавить кнопку, ничего не делающую.
+ */
+const IMAGE_PROPS: Record<string, Record<string, 'one' | 'many'>> = {
+  src: { 'media.image': 'one' },
+  images: { 'section.gallery': 'many' },
+};
 
 function NumberField({
   label,
@@ -249,6 +264,168 @@ function SourcePicker({
   );
 }
 
+/**
+ * Файлы проекта.
+ *
+ * Список нужен всем блокам с картинками, поэтому он грузится всегда
+ * и на каждый проект меняется заново: после публикации новой версии
+ * в медиатеку могли добавить файл, и переключение проекта обязано
+ * его показывать.
+ */
+function useAssets(projectId: string | undefined): Asset[] {
+  const [items, setItems] = useState<Asset[]>([]);
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    void assetsApi
+      .list(projectId)
+      .then((list) => {
+        if (!cancelled) setItems(list);
+      })
+      .catch(() => {
+        // Медиатека недоступна — блок продолжает принимать адрес
+        // вручную: запрещать редактирование из-за одного поля
+        // значит потерять доступ ко всем остальным свойствам.
+        if (!cancelled) setItems([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+  return items;
+}
+
+interface ImagePickerProps {
+  projectId?: string | undefined;
+  /** Список файлов проекта. */
+  items: Asset[];
+  /** true — один файл, false — несколько (галерея). */
+  multiple: boolean;
+  /** Текущее значение свойства: адрес или список адресов через запятую. */
+  value: string;
+  onChange: (v: string) => void;
+}
+
+/**
+ * Выбор картинки из медиатеки.
+ *
+ * Загруженный файл сразу становится содержимым блока: человек
+ * выбрал картинку, чтобы поставить её на сайт, и требовать после
+ * этого ещё «вставить ссылку вручную» — лишнее действие. При
+ * загрузке нескольких файлов прежние не выбрасываются: человек
+ * добавляет вторую картинку к первой, а не заменяет её.
+ */
+function ImagePicker({
+  projectId,
+  items,
+  multiple,
+  value,
+  onChange,
+}: ImagePickerProps) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const current = useMemo(
+    () => value.split(',').map((s) => s.trim()).filter(Boolean),
+    [value],
+  );
+
+  const choose = (url: string) => {
+    onChange(multiple ? [...current, url].join(', ') : url);
+  };
+
+  const unchoose = (url: string) => {
+    const next = current.filter((u) => u !== url);
+    onChange(next.join(', '));
+  };
+
+  const upload = async (files: FileList | null) => {
+    if (!projectId || !files || files.length === 0) return;
+    setBusy(true);
+    setError('');
+    try {
+      // По очереди, а не через Promise.all: при отказе сервера уже
+      // загруженные файлы остаются в медиатеке, и их адреса не должны
+      // потеряться из-за одного непрошедшего файла.
+      const loaded: Asset[] = [];
+      for (const file of Array.from(files)) {
+        loaded.push(await assetsApi.upload(projectId, file));
+      }
+      const uploaded = loaded.map((a) => a.url);
+      if (uploaded.length === 0) return;
+      onChange(multiple ? [...current, ...uploaded].join(', ') : uploaded[0] ?? '');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Файл не загружен');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="prop prop--assets">
+      <span className="prop__label">Картинки</span>
+
+      <label className="props__upload">
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+          multiple={multiple}
+          disabled={busy}
+          onChange={(e) => {
+            void upload(e.target.files);
+            e.target.value = '';
+          }}
+        />
+        <span>
+          <Icon name="plus" size={14} />
+          {busy ? 'Загружаем…' : multiple ? 'Загрузить картинки' : 'Загрузить картинку'}
+        </span>
+      </label>
+
+      {error ? (
+        <p className="prop__error" role="alert">
+          {error}
+        </p>
+      ) : null}
+
+      {current.length > 0 ? (
+        <ul className="assets__list">
+          {current.map((url) => (
+            <li key={url} className="assets__item">
+              <img className="assets__thumb" src={url} alt="" />
+              <button
+                type="button"
+                className="assets__drop"
+                onClick={() => unchoose(url)}
+                title="Убрать из блока"
+              >
+                <Icon name="trash" size={14} />
+                <span className="visually-hidden">Убрать из блока</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {items.length > 0 ? (
+        <div className="assets__gallery">
+          {items.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className="assets__pick"
+              onClick={() => choose(item.url)}
+              title={`${item.originalName} · ${humanSize(item.size)}`}
+            >
+              <img src={item.url} alt={item.originalName} />
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function PropertiesPanel({
   block,
   projectId,
@@ -268,6 +445,10 @@ export function PropertiesPanel({
   // выбранном) и React роняет всё дерево — экран становится пустым
   // ровно в момент, когда пользователь нажимает на блок.
   const sources = useSources(projectId);
+
+  // Файлы проекта: нужны блокам с картинками. Хук вызывается всегда,
+  // иначе смена блока меняла бы число хуков и React ронял панель.
+  const assetItems = useAssets(projectId);
 
   // Черновик содержимого живёт, пока пользователь печатает: обновлять
   // дерево на каждую букву значило бы засорять историю.
@@ -349,6 +530,19 @@ export function PropertiesPanel({
                 }
                 sources={sources}
                 onChange={(v) => onPatch({ props: { ...(block.props ?? {}), source: v } })}
+              />
+            ) : IMAGE_PROPS[prop.name]?.[block.module] ? (
+              <ImagePicker
+                key={prop.name}
+                projectId={projectId}
+                items={assetItems}
+                multiple={IMAGE_PROPS[prop.name]?.[block.module] === 'many'}
+                value={
+                  typeof block.props?.[prop.name] === 'string'
+                    ? (block.props[prop.name] as string)
+                    : ''
+                }
+                onChange={(v) => onPatch({ props: { ...(block.props ?? {}), [prop.name]: v } })}
               />
             ) : (
               <SchemaField
