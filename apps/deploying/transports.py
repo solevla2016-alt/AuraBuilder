@@ -41,17 +41,41 @@ def safe_name(name: str) -> str:
     return cleaned
 
 
-class FilesystemTransport:
-    """Файлы раскладываются по каталогу на диске."""
+def normalise_prefix(prefix: str | None) -> str:
+    """Каталог сайта как абсолютный путь с завершающим слэшем.
 
-    def __init__(self, target: str | Path) -> None:
+    Пустой префикс — это корень FTP-аккаунта, и он пишется как «/»:
+    иначе пути собирались бы как «assets/css/site.css» относительно
+    рабочего каталога клиента, а ftplib трактует такой путь как
+    относительный.
+    """
+    path = (prefix or '').strip().replace('\\', '/')
+    if '..' in path.split('/'):
+        raise DeployError(f'недопустимый каталог сайта: {prefix}')
+    if not path:
+        return '/'
+    if not path.startswith('/'):
+        path = '/' + path
+    return path if path.endswith('/') else path + '/'
+
+
+class FilesystemTransport:
+    """Файлы раскладываются по каталогу на диске.
+
+    `prefix` — подкаталог внутри корня. Он нужен, чтобы поведение
+    совпадало с FTP: там каталог сайта указывается относительно
+    домашней папки, и без него файлы раскладывались бы мимо сайта.
+    """
+
+    def __init__(self, target: str | Path, prefix: str = '') -> None:
         self.root = Path(target).expanduser().resolve()
         self.root.mkdir(parents=True, exist_ok=True)
+        self.prefix = (prefix or '').replace('\\', '/').strip('/')
 
     def path_for(self, name: str) -> Path:
         # resolve() с проверкой внутри root: symlink или «..» не должны
         # выпустить запись за пределы каталога сайта.
-        path = (self.root / safe_name(name)).resolve()
+        path = (self.root / posixpath.join(self.prefix, safe_name(name))).resolve()
         if not str(path).startswith(str(self.root)):
             raise DeployError(f'файл выходит за пределы каталога: {name}')
         return path
@@ -71,10 +95,11 @@ class FilesystemTransport:
             path.unlink()
 
     def existing(self) -> list[str]:
+        base = (self.root / self.prefix).resolve() if self.prefix else self.root
         names: list[str] = []
-        for path in self.root.rglob('*'):
+        for path in base.rglob('*'):
             if path.is_file():
-                names.append(str(path.relative_to(self.root)).replace('\\', '/'))
+                names.append(str(path.relative_to(base)).replace('\\', '/'))
         return names
 
     def close(self) -> None:
@@ -87,6 +112,11 @@ class FtpTransport:
     Соединение переоткрывается при обрыве: деплой сайта на несколько
     сотен файлов идёт долго, и разорванное соединение посреди загрузки
     не должно начинать всё заново вручную.
+
+    `prefix` — каталог сайта относительно домашней папки FTP
+    (у Timeweb и Beget это `public_html`). Без него файлы легли бы в
+    домашнюю папку, а сайт по адресу остался бы прежним, и деплой
+    рапортовал бы об успехе.
     """
 
     def __init__(
@@ -96,14 +126,24 @@ class FtpTransport:
         secret: str,
         port: int = 21,
         timeout: int = 30,
+        prefix: str = '/',
     ) -> None:
         self.host = host
         self.username = username
         self.secret = secret
         self.port = port
         self.timeout = timeout
+        # Префикс хранится с ведущим и завершающим слэшем: ftplib
+        # считает относительный путь относительным и может положить
+        # файл не туда, а путь без завершающего слэша превращается
+        # в имя каталога.
+        self.prefix = normalise_prefix(prefix)
         self._client: ftplib.FTP | None = None
         self._dirs: set[str] = set()
+
+    def remote_path(self, name: str) -> str:
+        """Путь на сервере: каталог сайта плюс имя файла."""
+        return self.prefix + safe_name(name)
 
     def connect(self) -> ftplib.FTP:
         if self._client is not None:
@@ -119,7 +159,7 @@ class FtpTransport:
             raise DeployError(f'не удалось подключиться к {self.host}: {exc}') from exc
 
     def _ensure_dir(self, remote_dir: str) -> None:
-        if not remote_dir or remote_dir in self._dirs or remote_dir == '/':
+        if not remote_dir or remote_dir == '/' or remote_dir in self._dirs:
             return
         client = self.connect()
         parent = posixpath.dirname(remote_dir.rstrip('/'))
@@ -136,10 +176,10 @@ class FtpTransport:
 
     def put(self, name: str, content: bytes) -> None:
         client = self.connect()
-        remote = safe_name(name)
+        remote = self.remote_path(name)
         directory = posixpath.dirname(remote)
-        if directory:
-            self._ensure_dir('/' + directory.lstrip('/'))
+        if directory and directory != '/':
+            self._ensure_dir(directory)
         try:
             from io import BytesIO
 
@@ -150,30 +190,72 @@ class FtpTransport:
     def remove(self, name: str) -> None:
         client = self.connect()
         try:
-            client.delete(safe_name(name))
+            client.delete(self.remote_path(name))
         except ftplib.error_perm:
             # Файла нет — удалять нечего, и это не сбой деплоя.
             pass
 
     def existing(self) -> list[str]:
+        """Файлы каталога сайта относительно его корня.
+
+        Обход рекурсивный: файлы лежат в assets/css, assets/js и
+        assets/img, и одноуровневый список не увидел бы их. Из-за
+        этого удаление устаревших файлов ничего не удаляло, а старые
+        index.html и манифест оставались на сервере.
+
+        Имена возвращаются относительно каталога сайта — такими же,
+        какие приходят в put(). Иначе сравнение «что устарело» не
+        находило бы ничего даже при обходе.
+        """
         client = self.connect()
-        found: list[str] = []
+        base = self.prefix
+        listing = self._list_dir(client, base.rstrip('/'))
+        names: list[str] = []
+        for item in listing:
+            if item is None:
+                continue
+            # Имя возвращается относительно каталога сайта: такими же
+            # приходят ключи пакета в put(), и только в таком виде
+            # сравнение «что устарело» вообще что-то находит.
+            names.append(item[len(base):] if item.startswith(base) else item)
+        return sorted(names)
 
-        def walk(remote_dir: str) -> None:
-            try:
-                entries = client.mlsd(remote_dir) if hasattr(client, 'mlsd') else []
-            except ftplib.all_errors:
-                return
-            for entry in entries:
-                if entry.get('type') not in (None, 'file'):
-                    continue
-                full = posixpath.join(remote_dir, entry['name'])
-                found.append(full.lstrip('/'))
-                if entry.get('type') == 'dir':
-                    walk(full)
+    def _list_dir(self, client: ftplib.FTP, remote_dir: str) -> list[str | None]:
+        """Содержимое каталога. None на месте недоступного подкаталога.
 
-        walk('')
-        return found
+        Список каталогов по цепочке, а не один: `retrlines` обрывается
+        на первой же ошибке, и невидимый каталог молча терялся бы
+        вместе с файлами внутри него.
+        """
+        try:
+            names = client.nlst(remote_dir) if remote_dir else client.nlst()
+        except ftplib.all_errors:
+            return []
+        result: list[str | None] = []
+        for entry in names:
+            full = posixpath.join(remote_dir, entry) if remote_dir else entry
+            if self._is_dir(client, full):
+                # None означает «забыть этот подкаталог»: так его
+                # содержимое не попадёт под удаление устаревших файлов.
+                result.append(None)
+                result.extend(self._list_dir(client, full))
+            else:
+                result.append(full)
+        return result
+
+    def _is_dir(self, client: ftplib.FTP, path: str) -> bool:
+        try:
+            client.cwd(path)
+        except ftplib.all_errors:
+            return False
+        try:
+            client.cwd('/')
+        except ftplib.all_errors:
+            # На хостинге, где нельзя вернуться в корень, считаем
+            # каталогом то, во что удалось войти: содержимое всё равно
+            # обойдётся, а имя останется забытым для удаления.
+            return True
+        return True
 
     def close(self) -> None:
         if self._client is not None:
@@ -191,10 +273,18 @@ def build_transport(profile) -> FilesystemTransport | FtpTransport:
     Недостающие данные проверяются здесь, а не по месту: «нет пароля»
     должно говориться до первой загрузки, иначе пользователь увидит
     обрыв где-то в середине.
+
+    Каталог сайта из профиля передаётся транспорту, а не подставляется
+    в имена файлов на стороне вызова: иначе префикс забыли бы в одном
+    из путей, и файлы сайта легли бы рядом с ним, а сравнение
+    устаревших файлов перестало бы совпадать по именам.
     """
     if profile.kind == 'fs':
         if not profile.root_path:
             raise DeployError('не указан каталог сайта')
+        # Для папки на диске root_path — это и есть корень сайта, а
+        # не префикс внутри него: отдельный каталог на машине заказчика
+        # уже указывает на папку сайта.
         return FilesystemTransport(profile.root_path)
 
     if profile.kind == 'ftp':
@@ -204,7 +294,8 @@ def build_transport(profile) -> FilesystemTransport | FtpTransport:
                 'для FTP нужны хост, логин и пароль: заполните все три поля'
             )
         return FtpTransport(
-            profile.host, profile.username, secret, profile.port or 21
+            profile.host, profile.username, secret, profile.port or 21,
+            prefix=profile.target_path,
         )
 
     raise DeployError(f'неизвестный способ доступа: {profile.kind}')
@@ -250,4 +341,6 @@ __all__ = [
     'build_transport',
     'clear_directory',
     'copy_tree',
+    'normalise_prefix',
+    'safe_name',
 ]

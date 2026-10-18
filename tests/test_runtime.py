@@ -396,8 +396,24 @@ class CatalogFromPackageTests(unittest.TestCase):
     }
 
     def test_ids_match_add_buttons(self):
+        """Идентификатор — источник и номер записи в нём.
+
+        Раньше обе стороны считали номер заново у каждого источника,
+        а рантайм вдобавок считал сквозным по всем: второй источник
+        отправлял t1 и получал первый товар первого.
+        """
         items = catalog_items_from_package(self.PACKAGE)
-        self.assertEqual([i['id'] for i in items], ['t1', 't2'])
+        self.assertEqual([i['id'] for i in items], ['src-1-t1', 'src-1-t2'])
+
+    def test_two_sources_do_not_share_ids(self):
+        items = catalog_items_from_package({
+            'src-1': {'items': [{'name': 'Роза'}, {'name': 'Тюльпан'}]},
+            'src-2': {'items': [{'name': 'Аренда зала'}]},
+        })
+        self.assertEqual(
+            [i['id'] for i in items],
+            ['src-1-t1', 'src-1-t2', 'src-2-t1'],
+        )
 
     def test_name_and_price_are_found(self):
         items = catalog_items_from_package(self.PACKAGE)
@@ -465,7 +481,9 @@ class CatalogLoaderTests(unittest.TestCase):
         url = f'http://127.0.0.1:{server.server_port}/assets/data/data.json'
         count = CatalogLoader(url, self.store).load()
         self.assertEqual(count, 2)
-        self.assertEqual(self.store.item('t2')['name'], 'Тюльпан')
+        # Идентификатор содержит источник: по одному номеру записи
+        # товары из разных источников неразличимы.
+        self.assertEqual(self.store.item('src-1-t2')['name'], 'Тюльпан')
 
 
 class ConfigTests(unittest.TestCase):

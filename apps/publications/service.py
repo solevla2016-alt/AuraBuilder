@@ -167,8 +167,13 @@ def withdraw(site: Site, remove_files: bool = False) -> None:
     """Отзывает публикацию.
 
     Файлы по умолчанию остаются: отзыв обратим, и удаление сайта по
-    одной кнопке — плохая идея. Версии, отозванные дольше месяца,
-    удаляются плановой задачей.
+    одной кнопке — плохая идея.
+
+    С удалением файлов удаляются и записи о версиях и копиях. Раньше
+    каталог стирался, а строки в базе оставались: сайт помечался
+    отозванным, но повторная публикация видела «уже опубликованную
+    версию», файлы не пересобирала и возвращала сайт, состоящий из
+    пустых ссылок на несуществующие файлы.
     """
     site.state = STATE_WITHDRAWN
     site.withdrawn_at = timezone_now()
@@ -178,6 +183,14 @@ def withdraw(site: Site, remove_files: bool = False) -> None:
         directory = site.directory()
         if directory.exists():
             shutil.rmtree(directory, ignore_errors=True)
+        # Записи без файлов вредны: по ним история показывает версии,
+        # которых на диске нет, а публикация считает, что версия уже
+        # выложена. Сначала снимается ссылка на текущую версию, иначе
+        # удаление строк оставило бы её болтаться.
+        Backup.objects.filter(site=site).delete()
+        site.versions.all().delete()
+        site.current_version = None
+        site.save(update_fields=['current_version'])
 
 
 def _prune_versions(site: Site) -> None:
@@ -201,24 +214,48 @@ def backup_site(site: Site, now: datetime | None = None) -> Backup | None:
 
     Копия снимком байтов, а не ссылкой: восстановление из ссылки не
     восстановило бы ничего, если файлы удалены.
+
+    Каждая копия — отдельная запись и отдельный каталог. Раньше запись
+    обновлялась по номеру версии, из-за чего вторая копия того же дня
+    заменяла первую, а её каталог оставался на диске навсегда: за
+    месяц ежедневных копий накапливалось месяц недоступных папок.
     """
     if site.current_version is None:
         return None
     stamp = (now or datetime.now(UTC)).strftime('%Y%m%d-%H%M%S')
-    relative = f'sites/{site.slug}/backups/v{site.current_version.number}-{stamp}'
+    relative = _free_backup_path(site, site.current_version.number, stamp)
     target = publish_root() / relative
     if target.exists():
         shutil.rmtree(target, ignore_errors=True)
     shutil.copytree(site.current_version.directory, target)
 
     size = sum(f.stat().st_size for f in target.rglob('*') if f.is_file())
-    backup, _ = Backup.objects.update_or_create(
+    backup = Backup.objects.create(
         site=site,
         number=site.current_version.number,
-        defaults={'path': relative, 'size': size},
+        path=relative,
+        size=size,
     )
     _prune_backups(site)
     return backup
+
+
+def _free_backup_path(site: Site, number: int, stamp: str) -> str:
+    """Каталог копии, ещё не занятый другой копией.
+
+    Отметка времени имеет секунды, а копирование по таймеру дважды за
+    секунду вполне возможно. Без суффикса вторая копия удалила бы
+    каталог первой, и обе записи в истории указывали бы на один и тот
+    же путь.
+    """
+    base = f'sites/{site.slug}/backups/v{number}-{stamp}'
+    taken = set(site.backups.values_list('path', flat=True))
+    candidate = base
+    index = 2
+    while candidate in taken or (publish_root() / candidate).exists():
+        candidate = f'{base}-{index}'
+        index += 1
+    return candidate
 
 
 def _prune_backups(site: Site) -> None:

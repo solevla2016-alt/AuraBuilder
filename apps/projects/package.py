@@ -352,6 +352,32 @@ def validate_files(files: dict[str, FileContent], base_url: str = '') -> Validat
     return report
 
 
+def precache_names(files: dict[str, FileContent]) -> list[str]:
+    """Файлы, без которых открытое офлайн приложение не работает.
+
+    Берутся из состава сборки, а не перечисляются руками: список,
+    заданный в коде, разъезжался бы с пакетом при первой же новой
+    иконке или картинке, и офлайн тихо ломался бы.
+
+    Не кешируется `service-worker.js`: иначе новая версия worker не
+    пришла бы из сети и осталась бы старая навсегда.
+    """
+    wanted = (
+        'index.html',
+        'assets/css/',
+        'assets/js/',
+        'assets/icons/',
+        'assets/data/',
+        'assets/img/',
+        'assets/fonts/',
+    )
+    names = [
+        name for name in sorted(files)
+        if name == 'index.html' or name.startswith(wanted)
+    ]
+    return [name for name in names if name != 'service-worker.js']
+
+
 # Версия протокола рантайма (docs/RUNTIME.md). Кладётся в runtime.json,
 # и клиент отказывается подключаться при несовпадении с сервером.
 RUNTIME_PROTOCOL_VERSION = 1
@@ -471,11 +497,6 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
         files['manifest.json'] = pwa_manifest(
             project.name, 'index.html', theme, text
         )
-        files['service-worker.js'] = service_worker(version.number, [
-            'index.html',
-            'assets/css/site.css',
-            'assets/js/runtime.js',
-        ])
         files['assets/icons/icon.svg'] = icon_svg(project.name, theme, text)
         files['assets/icons/icon-maskable.svg'] = maskable_icon(
             project.name, theme, text
@@ -530,6 +551,18 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
     # Это не ошибка сборки — сайт отдаётся, — но такая зависимость
     # должна быть видна в манифесте, а не только у посетителя.
     manifest['externalDependencies'] = sorted(media.get('external', []))
+
+    # Service worker собирается последним из содержимого.
+    #
+    # Его список кеша берётся из уже сложенной сборки, а список,
+    # записанный в коде, разъезжался бы с пакетом при первой же новой
+    # иконке. Раньше worker собирался раньше слияния страницы и
+    # картинок, поэтому в precache не было ни index.html, ни иконок,
+    # ни рисунков: приложение открывалось, но выглядело пустым.
+    if pwa:
+        files['service-worker.js'] = service_worker(
+            version.number, precache_names(files)
+        )
 
     # Контрольные суммы пересчитываются после того, как ссылки стали
     # локальными: иначе сумма в манифесте не совпала бы с файлом в

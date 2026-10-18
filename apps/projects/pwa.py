@@ -129,9 +129,9 @@ def service_worker(version: int, precache: list[str]) -> str:
  * при следующем открытии — в отличие от «сначала сеть», где офлайн
  * означает пустую страницу.
  *
- * Кешируются только файлы сборки. Документы и всё, что меняется
- * по запросу, идут в сеть: иначе покупатель увидел бы свой старый
- * заказ как действующий.
+ * Кешируются только файлы сборки. Данные заказа и корзины идут в
+ * сеть всегда: покупатель не должен увидеть свой старый заказ как
+ * действующий.
  */
 'use strict';
 
@@ -141,10 +141,42 @@ const PRECACHE = [
 {entries}
 ];
 
+/*
+ * Каталог сайта внутри адреса.
+ *
+ * Сайт может лежать и в корне домена, и по пути /sites/<адрес>/, и
+ * сравнивать нужно относительные имена. Раньше сравнение шло по
+ * имени файла: для assets/css/site.css вычислялось 'assets/site.css',
+ * а такого в списке нет, и кеш не срабатывал ни для одного файла —
+ * офлайн не работал, хотя worker был зарегистрирован, а кеш создавался.
+ *
+ * За основу берётся self.location.href, а не pathname: конструктор
+ * URL требует абсолютный адрес и на пути вида '/service-worker.js'
+ * бросает исключение прямо при загрузке скрипта. Worker с таким
+ * исключением не регистрируется вовсе.
+ */
+const BASE = new URL('./', self.location.href).pathname;
+
+function relative(pathname) {{
+  return pathname.startsWith(BASE) ? pathname.slice(BASE.length) : null;
+}}
+
+/*
+ * Установка не должна срываться из-за одного файла.
+ *
+ * Раньше addAll отменял установку целиком, если хоть один файл не
+ * ответил 404: без установленного worker офлайн не работал вовсе,
+ * хотя остальные файлы были на месте.
+ */
 self.addEventListener('install', (event) => {{
   event.waitUntil(
     caches.open(CACHE)
-      .then((cache) => cache.addAll(PRECACHE))
+      .then((cache) => Promise.all(
+        PRECACHE.map((name) =>
+          cache.add(new Request(name, {{ cache: 'reload' }}))
+            .catch(() => undefined)
+        )
+      ))
       .then(() => self.skipWaiting())
   );
 }});
@@ -164,12 +196,31 @@ function isCacheable(request) {{
   if (request.method !== 'GET') return false;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return false;
-  if (url.pathname.startsWith('/api/')) return false;
-  return PRECACHE.some((name) => name === 'assets/' + url.pathname.split('/').pop());
+  const name = relative(url.pathname);
+  if (name === null) return false;
+  if (name.startsWith('api/')) return false;
+  return PRECACHE.indexOf(name) !== -1;
 }}
 
 self.addEventListener('fetch', (event) => {{
   const {{ request }} = event;
+
+  // Переход по адресу: сначала сеть, при отказе — кеш. Так установленное
+  // приложение открывается без связи, а в сети показывается свежая
+  // версия страницы.
+  if (request.mode === 'navigate') {{
+    event.respondWith(
+      fetch(request)
+        .then((response) => {{
+          const copy = response.clone();
+          caches.open(CACHE).then((cache) => cache.put(request, copy));
+          return response;
+        }})
+        .catch(() => caches.match(request).then((cached) => cached || caches.match('index.html')))
+    );
+    return;
+  }}
+
   if (!isCacheable(request)) return;
 
   event.respondWith(

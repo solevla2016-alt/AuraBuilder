@@ -110,17 +110,57 @@ class PwaPackageTests(TestCase):
         self.assertIn('<svg', icon)
 
     def test_service_worker_precaches_only_package_files(self):
+        """В precache попадают вложенные файлы сборки.
+
+        Раньше список задавался в коде вручную и состоял из страницы,
+        стилей и клиента: иконки, логика и картинки в него не попадали,
+        и установленное приложение открывалось без них.
+        """
         worker = self.build(True)['files']['service-worker.js']
         self.assertIn('"index.html"', worker)
         self.assertIn('assets/css/site.css', worker)
-        # Кешировать всё подряд нельзя: иначе офлайн покажет старый сайт.
-        self.assertNotIn("'assets/data/data.json'", worker)
+        self.assertIn('assets/icons/icon.svg', worker)
+        self.assertIn('assets/icons/icon-maskable.svg', worker)
+        self.assertIn('assets/js/logic.js', worker)
+        # Worker сам себя не кеширует: новая версия пришла бы из кеша
+        # и осталась бы старая навсегда.
+        self.assertNotIn('"service-worker.js"', worker)
+        # Файлов, которых в пакете нет, в списке быть не может.
+        self.assertNotIn('assets/fonts/', worker)
 
     def test_service_worker_skips_api(self):
         """Запросы к рантайму не кешируются никогда: иначе покупатель
-        увидит свою корзину из прошлого визита."""
+        увидит свою корзину из прошлого визита.
+
+        Проверяется по смыслу, а не по строке в исходнике worker:
+        путь сверяется относительно каталога сайта, и API отсекается
+        по имени каталога в нём.
+        """
         worker = self.build(True)['files']['service-worker.js']
-        self.assertIn("url.pathname.startsWith('/api/')", worker)
+        self.assertIn("name.startsWith('api/')", worker)
+
+    def test_service_worker_caches_by_full_relative_path(self):
+        """Сравнение идёт по относительному пути целиком.
+
+        Раньше имя сравнивалось по имени файла: для assets/css/site.css
+        вычислялось 'assets/site.css', такого в списке нет, и кеш не
+        срабатывал ни для одного файла — офлайн не работал, хотя worker
+        был зарегистрирован, а кеш создавался.
+        """
+        worker = self.build(True)['files']['service-worker.js']
+        self.assertIn('PRECACHE.indexOf(name)', worker)
+        self.assertNotIn("url.pathname.split('/').pop()", worker)
+
+    def test_service_worker_base_is_built_from_absolute_url(self):
+        """Основа для каталога сайта — абсолютный адрес.
+
+        Конструктор URL требует абсолютную основу и на пути вида
+        '/service-worker.js' бросает исключение прямо при загрузке
+        скрипта. Worker с таким исключением не регистрируется, и
+        офлайн не работает, хотя сборка считается успешной.
+        """
+        worker = self.build(True)['files']['service-worker.js']
+        self.assertIn("new URL('./', self.location.href).pathname", worker)
 
     def test_service_worker_cache_changes_with_version(self):
         first = self.build(True)['files']['service-worker.js']

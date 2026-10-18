@@ -1108,6 +1108,21 @@ def _render_pricing(block: dict, records: list[dict] | None = None,
     )
 
 
+def item_id(source: str, index: int) -> str:
+    """Идентификатор товара для кнопки «В корзину».
+
+    Собирается из идентификатора источника и номера записи, и обе
+    стороны — страница и рантайм — считают его одинаково. Номер сам
+    по себе не годится: он начинается с единицы у каждого источника,
+    и два разных товара из двух источников получили бы один и тот же
+    идентификатор.
+
+    Рантайм разбирает такой же формат в runtime/store.py; менять их
+    нужно вместе, иначе кнопка отправит в корзину чужой товар.
+    """
+    return f'{source}-t{index + 1}'
+
+
 def _render_catalog(block: dict, records: list[dict] | None = None,
                     dataset: list[dict] | None = None) -> str:
     """Каталог товаров.
@@ -1123,14 +1138,20 @@ def _render_catalog(block: dict, records: list[dict] | None = None,
 
     rows = list(dataset if dataset is not None else [])
     shown = rows[:limit]
-    # Идентификатор товара — его номер в источнике начиная с 1: он
-    # должен совпасть с тем, что рантайм загрузит в каталог
-    # (docs/RUNTIME.md). Номер считается по полному списку, а не по
-    # обрезанному: иначе limit сдвинул бы идентификаторы и «В корзину»
-    # отправила бы несуществующий товар.
+    # Идентификатор товара — источник и номер записи в нём. Источник
+    # обязателен: номера сами по себе совпадали у разных источников,
+    # а рантайм считал товары по всем источникам подряд, из-за чего
+    # кнопка «В корзину» у второго источника отправляла t1 и рантайм
+    # клал в корзину первый товар первого источника. Товар покупателя
+    # становился другим без единой ошибки в логах.
+    #
+    # Номер считается по полному списку, а не по обрезанному: иначе
+    # limit сдвинул бы идентификаторы и «В корзину» отправила бы
+    # несуществующий товар.
+    source_key = _own(block, 'source', '')
     cards = ''.join(
         _product_card(row, title_field, price_field, image_field, '', '',
-                      '', item_id=f't{index + 1}')
+                      '', item_id=item_id(source_key, index))
         for index, row in enumerate(rows[:limit])
     )
     if not cards:
@@ -1164,7 +1185,8 @@ def _render_card(block: dict, records: list[dict] | None = None,
     return (
         '<section class="section section--product">'
         + _product_card(rows[0], title_field, price_field, image_field,
-                        detail_field, button, prefix, item_id='t1')
+                        detail_field, button, prefix,
+                        item_id=item_id(_own(block, 'source', ''), 0))
         + '</section>'
     )
 

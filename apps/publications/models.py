@@ -167,6 +167,11 @@ class Backup(models.Model):
     ТЗ п.16.3 требует ежедневных копий: копия делается по таймеру и
     хранится рядом, отдельным каталогом. Хранение копий дольше
     заданного числа означало бы молчаливый рост диска.
+
+    Копий одной версии может быть сколько угодно: ограничение
+    «одна копия на версию» делало ежедневные копии невозможными —
+    вторая копия того же дня заменяла первую, а каталог первой
+    оставался на диске навсегда.
     """
 
     site = models.ForeignKey(
@@ -181,11 +186,6 @@ class Backup(models.Model):
         verbose_name = 'Резервная копия'
         verbose_name_plural = 'Резервные копии'
         ordering = ['-created_at']
-        constraints = [
-            models.UniqueConstraint(
-                fields=['site', 'number'], name='unique_backup_per_site'
-            ),
-        ]
 
     @property
     def directory(self) -> Path:

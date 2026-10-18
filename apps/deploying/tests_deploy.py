@@ -29,6 +29,7 @@ from deploying.transports import (
     DeployError,
     FilesystemTransport,
     build_transport,
+    normalise_prefix,
     safe_name,
 )
 
@@ -82,6 +83,65 @@ class TransportTests(TestCase):
         with self.assertRaises(DeployError) as ctx:
             build_transport(profile)
         self.assertIn('пароль', str(ctx.exception))
+
+    def test_site_directory_is_used_for_files(self):
+        """Файлы сайта кладутся в каталог сайта, а не в корень.
+
+        У хостингов FTP-аккаунт открывается домашней папкой, а сайт
+        лежит в public_html. Без префикса деплой рапортовал бы об
+        успехе, а по адресу открывался бы прежний сайт.
+        """
+        transport = FilesystemTransport(self.root, prefix='public_html')
+        transport.put('index.html', '<h1>Сайт</h1>'.encode('utf-8'))
+        transport.put('assets/css/site.css', b'body{}')
+        self.assertTrue((self.root / 'public_html' / 'index.html').exists())
+        self.assertTrue(
+            (self.root / 'public_html' / 'assets' / 'css' / 'site.css').exists()
+        )
+
+    def test_existing_lists_nested_files_by_site_names(self):
+        """Список файлов должен совпадать с именами пакета.
+
+        Файлы лежат в assets/css, assets/js и assets/img. Если список
+        не рекурсивный или если имена приходят с путём до каталога
+        сайта, сравнение «что устарело» не найдёт ничего, и старые
+        файлы останутся на сервере навсегда.
+        """
+        transport = FilesystemTransport(self.root, prefix='public_html')
+        transport.put('index.html', '<h1>Сайт</h1>'.encode('utf-8'))
+        transport.put('assets/css/site.css', b'body{}')
+        transport.put('assets/img/pic.png', b'\x89PNG')
+        self.assertEqual(
+            sorted(transport.existing()),
+            ['assets/css/site.css', 'assets/img/pic.png', 'index.html'],
+        )
+
+    def test_prefix_is_normalised_to_absolute_path(self):
+        self.assertEqual(normalise_prefix('public_html'), '/public_html/')
+        self.assertEqual(normalise_prefix('/www/site/'), '/www/site/')
+        # Пустой каталог — это корень FTP-аккаунта, а не «относительный
+        # путь», который ftplib иначе соберёт относительно клиента.
+        self.assertEqual(normalise_prefix(''), '/')
+        self.assertEqual(normalise_prefix(None), '/')
+
+    def test_prefix_with_parent_traversal_is_refused(self):
+        with self.assertRaises(DeployError):
+            normalise_prefix('../соседний')
+
+    def test_ftp_target_path_is_passed_to_transport(self):
+        """Каталог из профиля обязан доехать до транспорта."""
+        profile = HostingProfile(
+            kind='ftp', host='ftp.example.ru', username='u',
+            secret_encrypted='',
+        )
+        profile.set_secret('пароль')
+        profile.root_path = 'public_html'
+        transport = build_transport(profile)
+        self.assertEqual(transport.prefix, '/public_html/')
+        self.assertEqual(
+            transport.remote_path('assets/css/site.css'),
+            '/public_html/assets/css/site.css',
+        )
 
     @override_settings(DJANGO_SECRET_ENCRYPTION_KEYS=TEST_KEY)
     def test_ftp_transport_is_built(self):

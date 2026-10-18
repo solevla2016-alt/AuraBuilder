@@ -64,16 +64,20 @@ def catalog_items_from_package(payload: dict) -> list[dict[str, Any]]:
 
     Файл собирает платформа, но рантайм не обязан знать её формат
     целиком: здесь разбирается только устройство данных — источники с
-    записями. Идентификаторы t1, t2… совпадают с теми, что ставит
-    кнопка «В корзину», потому что оба считаются от порядка записей
-    в источнике.
+    записями. Идентификатор товара — источник и номер записи в нём, ровно как
+    считает кнопка «В корзину» на странице (projects/export.py,
+    функция item_id). Раньше номер шёл сквозным по всем источникам, а
+    страница считала его заново у каждого: второй источник отправлял
+    t1, а рантайм находил по нему первый товар первого источника.
+    В корзину попадал другой товар, и нигде не было ни ошибки, ни
+    предупреждения.
 
     Строки склеиваются для показа, а записи по полям нужны для поиска и
     цены, поэтому берутся `items`, а `rows` — только если их нет.
     """
     items: list[dict[str, Any]] = []
-    sources = payload.values() if isinstance(payload, dict) else []
-    for source in sources:
+    sources = payload.items() if isinstance(payload, dict) else []
+    for source_key, source in sources:
         if not isinstance(source, dict):
             continue
         records = source.get('items')
@@ -83,11 +87,11 @@ def catalog_items_from_package(payload: dict) -> list[dict[str, Any]]:
                 records = [{'name': row} for row in rows]
             else:
                 continue
-        for record in records:
+        for index, record in enumerate(records):
             if not isinstance(record, dict):
                 continue
             name, price, search = _product_fields(record)
-            items.append({'id': f't{len(items) + 1}', 'name': name,
+            items.append({'id': f'{source_key}-t{index + 1}', 'name': name,
                           'price': price, 'search': search})
     return items
 

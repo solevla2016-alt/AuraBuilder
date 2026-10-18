@@ -160,6 +160,21 @@ check('в манифесте есть иконки', (parsed?.icons?.length ?? 0
 // Регистрация worker занимает время: браузер ставит его после загрузки.
 let registered = false;
 for (let i = 0; i < 40 && !registered; i += 1) {
+  if (i === 0) {
+    // Состояние worker печатается при первом ожидании: причина
+    // «не зарегистрирован» иначе видна только по догадкам, а
+    // регистрация может и падать, и зависать в installing.
+    const state = await evaluate(
+      `navigator.serviceWorker.getRegistration().then((r) => {
+         const w = r && (r.installing || r.waiting || r.active);
+         if (w) return w.state + ' / ' + w.scriptURL;
+         return navigator.serviceWorker.register('service-worker.js')
+           .then((reg) => 'регистрация: ' + reg.scope)
+           .catch((e) => 'ошибка регистрации: ' + e.message);
+       })`,
+    );
+    console.log(`  worker: ${state}`);
+  }
   registered = await evaluate(
     "navigator.serviceWorker.getRegistrations().then((r) => r.length > 0)",
   );

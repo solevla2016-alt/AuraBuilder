@@ -21,6 +21,7 @@ from projects.versions import snapshot
 
 from publications.models import Site
 from publications.service import (
+    KEEP_BACKUPS,
     PublishError,
     SiteNotFound,
     backup_site,
@@ -212,6 +213,32 @@ class PublishTests(TestCase):
         withdraw(result.site)
         self.assertTrue(directory.exists())
 
+    def test_withdraw_removing_files_forgets_versions(self):
+        """После удаления файлов в базе не должно остаться версий.
+
+        Записи без файлов вредны дважды: история показывает версии,
+        которых на диске нет, а повторная публикация считает, что
+        версия уже выложена, файлы не пересобирает и возвращает сайт,
+        состоящий из пустых ссылок.
+        """
+        import shutil
+
+        result = publish(self.project, self.version)
+        backup_site(result.site)
+        withdraw(result.site, remove_files=True)
+        site = Site.objects.get(pk=result.site.pk)
+        self.assertFalse(site.versions.exists())
+        self.assertFalse(site.backups.exists())
+        self.assertIsNone(site.current_version)
+        self.assertFalse(result.version.directory.exists())
+
+        again = publish(self.project, self.version)
+        self.assertTrue(again.site.is_active)
+        self.assertTrue(again.version.directory.exists())
+        self.assertEqual(
+            self.client.get(f'/sites/{again.site.slug}/').status_code, 200
+        )
+
     # --- копии ---------------------------------------------------------
 
     def test_backup_is_independent_copy(self):
@@ -228,6 +255,30 @@ class PublishTests(TestCase):
     def test_backup_without_version_is_none(self):
         site = Site.objects.create(project=self.project, slug='site')
         self.assertIsNone(backup_site(site))
+
+    def test_two_backups_a_day_do_not_replace_each_other(self):
+        """Копия заменяла предыдущую копию той же версии.
+
+        Требуются ежедневные копии, а не «одна копия на версию».
+        Со второй копией заменялась первая, и её каталог оставался на
+        диске навсегда: в истории у обеих записей был один путь, и
+        вернуться к первой было уже нельзя.
+        """
+        result = publish(self.project, self.version)
+        first = backup_site(result.site)
+        second = backup_site(result.site)
+        self.assertNotEqual(first.path, second.path)
+        self.assertTrue((first.directory / 'index.html').exists())
+        self.assertTrue((second.directory / 'index.html').exists())
+        self.assertEqual(result.site.backups.count(), 2)
+
+    def test_backups_are_pruned_to_daily_depth(self):
+        """Копий должно остаться KEEP_BACKUPS, а не «по одной на
+        версию»: семь последних дней, а не семь последних версий."""
+        result = publish(self.project, self.version)
+        for _ in range(KEEP_BACKUPS + 3):
+            backup_site(result.site)
+        self.assertEqual(result.site.backups.count(), KEEP_BACKUPS)
 
     # --- API -----------------------------------------------------------
 

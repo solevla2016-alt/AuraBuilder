@@ -486,6 +486,94 @@ class RenderedTextTests(ExportTestCase):
         self.assertIn('Первый экран магазина', html)
 
 
+class CatalogItemIdTests(ExportTestCase):
+    """Идентификатор товара должен называть один и тот же товар
+    на странице и в рантайме.
+
+    Проверяется на двух источниках: именно там номера расходились.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.goods = DataSource.objects.create(
+            project=self.project, name='Товары', key='goods',
+        )
+        self.services = DataSource.objects.create(
+            project=self.project, name='Услуги', key='services',
+        )
+        for source, names in (
+            (self.goods, ['Роза', 'Тюльпан']),
+            (self.services, ['Аренда зала', 'Фотосъёмка']),
+        ):
+            for name in names:
+                DataRecord.objects.create(source=source, data={'name': name})
+
+    def tree_with_catalog(self, source_id: str) -> dict:
+        return {
+            'width': 1200,
+            'blocks': [{
+                'id': 'b1', 'module': 'shop.catalog', 'x': 0, 'y': 0,
+                'width': 600, 'height': 400, 'label': 'Каталог',
+                'props': {'source': str(source_id), 'limit': 10},
+            }],
+        }
+
+    def test_add_button_carries_source_and_number(self):
+        version = self.snapshot(self.tree_with_catalog(self.goods.id))
+        html = self.build(version)['files']['index.html']
+        self.assertIn(f'data-rt-add="{self.goods.id}-t1"', html)
+        self.assertIn(f'data-rt-add="{self.goods.id}-t2"', html)
+
+    def test_two_sources_do_not_share_item_ids(self):
+        """Раньше оба источника начинали счёт с единицы.
+
+        Кнопка второго источника отправляла t1, а рантайм считал
+        товары сквозным порядком и находил первый товар первого
+        источника. Покупатель получал другой товар, и нигде не было ни
+        ошибки, ни предупреждения.
+        """
+        tree = self.tree_with_catalog(self.goods.id)
+        tree['blocks'].append({
+            'id': 'b2', 'module': 'shop.catalog', 'x': 0, 'y': 420,
+            'width': 600, 'height': 400, 'label': 'Услуги',
+            'props': {'source': str(self.services.id), 'limit': 10},
+        })
+        html = self.build(self.snapshot(tree))['files']['index.html']
+        goods_ids = set(re.findall(r'data-rt-add="([^"]+)"', html))
+        self.assertIn(f'{self.goods.id}-t1', goods_ids)
+        self.assertIn(f'{self.services.id}-t1', goods_ids)
+        self.assertEqual(len(goods_ids), 4, goods_ids)
+
+    def test_runtime_reads_the_same_identifiers(self):
+        """Стороны обязаны считать идентификатор одинаково.
+
+        Формат задан в projects/export.py (функция item_id) и
+        разбирается в runtime/store.py; менять их нужно вместе.
+        """
+        import importlib.util
+        from pathlib import Path
+
+        spec = importlib.util.spec_from_file_location(
+            'runtime_store',
+            Path(__file__).resolve().parents[2] / 'runtime' / 'store.py',
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        payload = {
+            str(self.goods.id): {'items': [{'name': 'Роза'}, {'name': 'Тюльпан'}]},
+            str(self.services.id): {'items': [{'name': 'Аренда зала'}]},
+        }
+        ids = [item['id'] for item in module.catalog_items_from_package(payload)]
+        self.assertEqual(
+            ids,
+            [
+                f'{self.goods.id}-t1', f'{self.goods.id}-t2',
+                f'{self.services.id}-t1',
+            ],
+        )
+
+
 class HelperTests(APITestCase):
     """Мелочи, на которых держится остальное."""
 
