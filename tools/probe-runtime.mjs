@@ -215,15 +215,30 @@ check(
   })()`)),
 );
 
+/*
+ * Идентификатор товара — источник и номер записи в нём: `<id>-t<n>`.
+ *
+ * Проверяется форма, а не точное значение: идентификатор источника
+ * задаёт платформа, и пробник его не знает. Раньше здесь стоял
+ * жёсткий 't1', и проверка падала не из-за рантайма, а из-за того,
+ * что форма поменялась: два товара из разных источников больше не
+ * могут называться одинаково.
+ */
+const firstItemId = await evaluate(
+  "(() => { const b = document.querySelector('[data-rt-add]');"
+  + " return b ? b.getAttribute('data-rt-add') : ''; })()",
+);
 check(
   'каталог дал кнопки с идентификаторами товаров',
-  (await evaluate(
-    "document.querySelectorAll('[data-rt-add]').length >= 3 &&"
-    + " !!document.querySelector('[data-rt-add=\"t1\"]')",
-  )),
+  (await evaluate("document.querySelectorAll('[data-rt-add]').length >= 3"))
+  && /-t\d+$/.test(firstItemId),
 );
+check(`идентификатор назван по источнику (${firstItemId})`,
+  /-t\d+$/.test(firstItemId));
 
-await click('[data-rt-add="t1"]');
+// Кликается первая кнопка: её адрес читается из страницы, а не
+// подставляется из предположения о нумерации.
+await click('[data-rt-add]');
 await waitFor("document.querySelector('.rt-cart__row')", 'позиции в корзине');
 check(
   'товар добавлен в корзину',
