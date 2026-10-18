@@ -2591,7 +2591,18 @@ const checks = [
 
 // Сценарии выполняются до закрытия сокета: они шлют команды в браузер.
 // После cleanup() соединение уже разорвано и CDP отвечает таймаутом.
-const scenarios = await runScenarios(page, info.box, await inspectStand(page));
+//
+// Сбой не должен ронять прогон молча: раньше исключение из сценария
+// выходило наружу, и в логе не оставалось ни одного результата —
+// было видно только, что шаг упал, но не что именно. Причина сбоя
+// становится обычной непрошедшей проверкой.
+let scenarios;
+try {
+  scenarios = await runScenarios(page, info.box, await inspectStand(page));
+} catch (e) {
+  scenarios = [['сценарии прервались на ошибке', false, String(e.message ?? e)]];
+  console.log(`сценарий упал: ${String(e.message ?? e).slice(0, 200)}`);
+}
 
 // Кадр после сценариев: на нём видны панель свойств и выделенный блок.
 // Раньше снимок брался до сценариев и показывал пустую панель.
@@ -2603,9 +2614,9 @@ cleanup();
 
 console.log('');
 let ok = true;
-for (const [name, pass] of [...checks, ...scenarios]) {
+for (const [name, pass, detail] of [...checks, ...scenarios]) {
   if (!pass) ok = false;
-  console.log(`  ${pass ? 'ок  ' : '!!  '}${name}`);
+  console.log(`  ${pass ? 'ок  ' : '!!  '}${name}${detail && !pass ? ` — ${detail}` : ''}`);
 }
 
 // Именно exitCode, а не process.exit: при перенаправлении вывода
