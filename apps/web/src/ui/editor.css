@@ -1613,6 +1613,41 @@ select.prop__input option {
   margin-top: var(--space-sm);
 }
 
+/* Список резервных копий: откат виден рядом с публикацией, а не
+   спрятан в отдельный экран — про него иначе никто не узнает. */
+.vers__backups {
+  margin-top: var(--space-md);
+}
+
+.vers__backups-title {
+  margin: 0 0 var(--space-xs);
+  font-size: var(--text-sm);
+  color: var(--textSecondary);
+}
+
+.vers__backup-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.vers__backup {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.vers__backup-text {
+  font-size: var(--text-xs);
+  color: var(--textSecondary);
+}
+
 .vers__ok {
   margin: 0 var(--space-lg);
   padding: var(--space-sm) var(--space-md);

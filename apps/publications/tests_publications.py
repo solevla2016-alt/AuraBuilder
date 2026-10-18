@@ -16,6 +16,7 @@ from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from accounts.models import Membership
+from accounts.permissions import Role
 from projects.models import Project
 from projects.versions import snapshot
 
@@ -27,6 +28,7 @@ from publications.service import (
     backup_site,
     publish,
     resolve,
+    restore_backup,
     status_payload,
     withdraw,
 )
@@ -279,6 +281,87 @@ class PublishTests(TestCase):
         for _ in range(KEEP_BACKUPS + 3):
             backup_site(result.site)
         self.assertEqual(result.site.backups.count(), KEEP_BACKUPS)
+
+    def test_restore_returns_files_of_that_version(self):
+        """Откат к копии должен вернуть её файлы, а не только запись
+        в истории: иначе сайт продолжал бы отдавать новое содержимое."""
+        result = publish(self.project, self.version)
+        backup = backup_site(result.site)
+        original = (result.version.directory / 'index.html').read_text(encoding='utf-8')
+        (result.version.directory / 'index.html').write_text(
+            '<html><body>испорчено</body></html>', encoding='utf-8'
+        )
+
+        restore_backup(result.site, backup)
+
+        self.assertEqual(
+            (result.version.directory / 'index.html').read_text(encoding='utf-8'),
+            original,
+        )
+
+    def test_restore_makes_that_version_current(self):
+        result = publish(self.project, self.version)
+        backup = backup_site(result.site)
+        restore_backup(result.site, backup)
+        site = Site.objects.get(pk=result.site.pk)
+        self.assertTrue(site.is_active)
+        self.assertEqual(site.current_version.number, backup.number)
+
+    def test_restore_keeps_history_truthful(self):
+        """Номер версии в истории остаётся один: восстановление не
+        плодит вторую «ту же» версию."""
+        result = publish(self.project, self.version)
+        backup = backup_site(result.site)
+        restore_backup(result.site, backup)
+        self.assertEqual(
+            result.site.versions.filter(number=backup.number).count(), 1
+        )
+
+    def test_restore_of_missing_copy_says_so(self):
+        """Копия может быть удалена с диска. Молчаливый откат на пустое
+        место оставил бы сайт без страницы."""
+        import shutil
+
+        result = publish(self.project, self.version)
+        backup = backup_site(result.site)
+        shutil.rmtree(backup.directory)
+        with self.assertRaises(PublishError):
+            restore_backup(result.site, backup)
+
+    def test_api_lists_backups_and_restores(self):
+        result = publish(self.project, self.version)
+        backup = backup_site(result.site)
+        client = self.client_for()
+        listing = client.get(f'/api/projects/{self.project.id}/site/backups/')
+        self.assertEqual(listing.status_code, 200, listing.data)
+        self.assertEqual(len(listing.data['backups']), 1)
+        self.assertTrue(listing.data['backups'][0]['restorable'])
+
+        (result.version.directory / 'index.html').write_text(
+            '<html><body>испорчено</body></html>', encoding='utf-8'
+        )
+        response = client.post(
+            f'/api/projects/{self.project.id}/site/backups/{backup.id}/restore/'
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        restored = (result.version.directory / 'index.html').read_text(encoding='utf-8')
+        self.assertNotIn('испорчено', restored)
+
+    def test_api_refuses_restore_without_publish_right(self):
+        """Восстановление меняет то, что увидит посетитель, поэтому
+        оно не доступно тому, кто только читает проект."""
+        result = publish(self.project, self.version)
+        backup = backup_site(result.site)
+        User = get_user_model()
+        viewer = User.objects.create_user('viewer', password='pass-viewer')
+        Membership.objects.create(
+            project=self.project, user=viewer, role=Role.VIEWER,
+        )
+        client = self.client_for(user=viewer, password='pass-viewer')
+        response = client.post(
+            f'/api/projects/{self.project.id}/site/backups/{backup.id}/restore/'
+        )
+        self.assertEqual(response.status_code, 403, response.data)
 
     # --- API -----------------------------------------------------------
 

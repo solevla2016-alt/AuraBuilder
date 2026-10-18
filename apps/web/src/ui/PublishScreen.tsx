@@ -18,6 +18,7 @@ import { ApiError } from './apiClient';
 import {
   publishingApi,
   type DeployResult,
+  type BackupItem,
   type HostingProfile,
   type SiteStatus,
 } from './publishing';
@@ -56,16 +57,24 @@ export function PublishScreen({ projectId, projectName, onBack }: Props) {
   const [deploy, setDeploy] = useState<DeployResult | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [backups, setBackups] = useState<BackupItem[]>([]);
 
   const load = useCallback(async () => {
     try {
-      const [site, hosting] = await Promise.all([
+      const [site, hosting, copies] = await Promise.all([
         publishingApi.status(projectId),
         // Профили могут быть недоступны на тарифе: отсутствие списка
         // не должно мешать публикации и выгрузке.
         publishingApi.profiles(projectId).catch(() => [] as HostingProfile[]),
+        // Список копий — тоже необязательный: без него публикация
+        // работает, пропадает только откат.
+        publishingApi
+          .backups(projectId)
+          .then((body) => (Array.isArray(body.backups) ? body.backups : []))
+          .catch(() => [] as BackupItem[]),
       ]);
       setStatus(site);
+      setBackups(copies);
       // Ответ — массив; проверка здесь, потому что один неверный
       // элемент иначе уронил бы весь экран целиком.
       setProfiles(Array.isArray(hosting) ? hosting : []);
@@ -120,6 +129,30 @@ export function PublishScreen({ projectId, projectName, onBack }: Props) {
         text: `Копия №${result.number} сделана (${Math.max(1, Math.round(result.size / 1024))} КБ).`,
       };
     });
+
+  /**
+   * Откат к копии.
+   *
+   * Подтверждение обязательно: копия становится текущей версией, и
+   * посетитель сразу видит её содержимое. Одно нажатие без вопроса
+   * означало бы, что человек уводит сайт назад случайно — а заметит
+   * об этом только посетитель.
+   */
+  const restore = (item: BackupItem) => {
+    if (!window.confirm(
+      `Вернуть сайт к копии версии ${item.version}?`
+      + ' Текущая версия останется в истории, но посетители увидят копию.',
+    )) {
+      return;
+    }
+    void run(`restore-${item.id}`, async () => {
+      await publishingApi.restoreBackup(projectId, item.id);
+      return {
+        kind: 'ok',
+        text: `Сайт возвращён к копии версии ${item.version}.`,
+      };
+    });
+  };
 
   const addProfile = () =>
     run('profile', async () => {
@@ -221,6 +254,36 @@ export function PublishScreen({ projectId, projectName, onBack }: Props) {
         </div>
         {published && !active ? (
           <p className="props__note">Публикация отозвана: сайт отвечает 410.</p>
+        ) : null}
+
+        {backups.length > 0 ? (
+          <div className="vers__backups">
+            <h3 className="vers__backups-title">Вернуться к копии</h3>
+            <ul className="vers__backup-list">
+              {backups.map((item) => (
+                <li key={item.id} className="vers__backup">
+                  <span className="vers__backup-text">
+                    Версия {item.version} ·{' '}
+                    {new Date(item.createdAt).toLocaleString('ru-RU')}
+                  </span>
+                  {item.restorable ? (
+                    <button
+                      type="button"
+                      className="btn btn--ghost"
+                      onClick={() => restore(item)}
+                      disabled={busy !== null}
+                    >
+                      {busy === `restore-${item.id}` ? 'Возвращаем…' : 'Вернуть'}
+                    </button>
+                  ) : (
+                    // Кнопка не показывается: обещание отката, который
+                    // невозможен, хуже его отсутствия.
+                    <span className="props__note">копия удалена с диска</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
         ) : null}
       </section>
 

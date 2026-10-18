@@ -266,6 +266,57 @@ def _prune_backups(site: Site) -> None:
         backup.delete()
 
 
+def restore_backup(site: Site, backup: Backup) -> SiteVersion:
+    """Возвращает на место публикацию из резервной копии (ТЗ п.16.3).
+
+    Копия кладётся на место своей версии, а текущей становится она.
+    Так история остаётся правдивой: в ней по-прежнему видно, какая
+    версия сколько занимает, а «восстановить» не значит «стереть
+    следы». Файлы прошлых версий не трогаются.
+
+    Отдельная новая запись не заводится намеренно: номер версии уже
+    занят и менять его нельзя, а заводить дубликат значило бы показать
+    в истории две седьмые версии.
+    """
+    source = backup.directory
+    if not (source / 'index.html').is_file():
+        raise PublishError(
+            'Копия удалена с диска: восстанавливать нечего. Сделайте '
+            'новую копию перед следующим откатом.'
+        )
+
+    # Освобождаем номер версии: запись и её каталог заменяются копией.
+    stale = site.versions.filter(number=backup.number).first()
+    if stale is not None:
+        if site.current_version_id == stale.id:
+            site.current_version = None
+            site.save(update_fields=['current_version'])
+        shutil.rmtree(stale.directory, ignore_errors=True)
+        stale.delete()
+
+    relative = f'sites/{site.slug}/versions/v{backup.number}-{backup.number:04d}'
+    target = publish_root() / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        shutil.rmtree(target, ignore_errors=True)
+    shutil.copytree(source, target)
+
+    files = sum(1 for item in target.rglob('*') if item.is_file())
+    size = sum(item.stat().st_size for item in target.rglob('*') if item.is_file())
+    version = SiteVersion.objects.create(
+        site=site, number=backup.number, path=relative, size=size, files=files,
+    )
+
+    site.current_version = version
+    site.state = STATE_ACTIVE
+    site.withdrawn_at = None
+    site.published_at = timezone_now()
+    site.save(update_fields=[
+        'current_version', 'state', 'withdrawn_at', 'published_at',
+    ])
+    return version
+
+
 def resolve(slug: str, path: str = '') -> tuple[SiteVersion, Path]:
     """Находит папку текущей версии по адресу.
 

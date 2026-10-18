@@ -18,11 +18,12 @@ from accounts.permissions import PUBLISH, VIEW, ProjectAccess, can
 from accounts.serializers import audit
 from projects.models import DocumentVersion, Project
 
-from .models import Site
+from .models import Backup, Site
 from .service import (
     PublishError,
     backup_site,
     publish,
+    restore_backup,
     status_payload,
     withdraw,
 )
@@ -148,3 +149,65 @@ def project_site_backup(request, project_id: str):
     audit(request, 'site.backup', project, f'v{backup.number}')
     return Response({'number': backup.number, 'size': backup.size,
                      'createdAt': backup.created_at.isoformat()})
+
+
+@api_view(['GET'])
+@permission_classes([ProjectAccess])
+def site_backups(request, project_id: str):
+    """Список резервных копий: из них можно восстановиться.
+
+    Без списка копии существовали бы, но найти их было бы нечем.
+    """
+    project = _project(project_id)
+    if project is None or not can(request.user, project, VIEW):
+        return Response({'detail': 'проект не найден'},
+                        status=status.HTTP_404_NOT_FOUND)
+    site = Site.objects.filter(project=project).first()
+    if site is None:
+        return Response({'backups': []})
+    return Response({'backups': [
+        {
+            'id': str(backup.id),
+            'version': backup.number,
+            'size': backup.size,
+            'createdAt': backup.created_at.isoformat(),
+            # Доступно ли восстановление: копия может быть удалена с
+            # диска, и тогда кнопка обещала бы пустое действие.
+            'restorable': (backup.directory / 'index.html').is_file(),
+        }
+        for backup in site.backups.all()
+    ]})
+
+
+@api_view(['POST'])
+@permission_classes([ProjectAccess])
+def backup_restore(request, project_id: str, backup_id: str):
+    """Восстанавливает публикацию из резервной копии (ТЗ п.16.3).
+
+    Право — как у публикации: восстановление меняет то, что увидит
+    посетитель, и сделать его должен тот, кто публикует.
+    """
+    project = _project(project_id)
+    if project is None or not can(request.user, project, VIEW):
+        return Response({'detail': 'проект не найден'},
+                        status=status.HTTP_404_NOT_FOUND)
+    if not can(request.user, project, PUBLISH):
+        return Response(
+            {'detail': 'Восстанавливать копию может тот, кто публикует.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    site = Site.objects.filter(project=project).first()
+    backup = Backup.objects.filter(id=backup_id, site=site).first() if site else None
+    if backup is None:
+        return Response({'detail': 'копия не найдена'},
+                        status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        version = restore_backup(site, backup)
+    except PublishError as exc:
+        return Response({'detail': str(exc)},
+                        status=status.HTTP_409_CONFLICT)
+
+    audit(request, 'site.restore', project, f'v{version.number}')
+    return Response(status_payload(site))

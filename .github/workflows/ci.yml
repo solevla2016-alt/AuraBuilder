@@ -38,9 +38,14 @@ jobs:
   # Реестр модулей, схемы свойств и токены генерируются из документов.
   # Если в код попал результат, а документ правили позже, стенд и
   # документация разошлись. Проверка без сборки — самая быстрая.
-  generated:
+generated:
     name: Сгенерированные файлы актуальны
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # Образ закреплён явно, а не через ubuntu-latest: с 19 октября
+    # 2026 метка уезжает на Ubuntu 26 без предупреждения, и прогон
+    # поехал бы на незнакомом образе. Проверяемся на том, на чём
+    # проверено.
+
     steps:
       - uses: actions/checkout@v5
 
@@ -69,7 +74,8 @@ jobs:
   # риск, который п.0.7 закрывает.
   sbom:
     name: Реестр SBOM актуален
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+
     steps:
       - uses: actions/checkout@v5
 
@@ -96,7 +102,8 @@ jobs:
   # --- Лицензии ------------------------------------------------------------
   licenses:
     name: Лицензии зависимостей
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+
     steps:
       - uses: actions/checkout@v5
 
@@ -125,7 +132,8 @@ jobs:
   # --- Фронтенд ------------------------------------------------------------
   frontend:
     name: Типы и сборка фронтенда
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+
     steps:
       - uses: actions/checkout@v5
 
@@ -157,7 +165,8 @@ jobs:
   # --- Бэкенд --------------------------------------------------------------
   backend:
     name: Тесты Control Plane на PostgreSQL
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+
 
     # PostgreSQL из того же образа, что и в docker-compose: тесты на
     # другой версии базы проверяют не то, что пойдёт в стенд. JSONField
@@ -250,7 +259,8 @@ jobs:
   # именно поэтому он запускается сам по себе, а не внутри job выше.
   runtime:
     name: Тесты рантайма
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+
     steps:
       - uses: actions/checkout@v5
 
@@ -282,7 +292,8 @@ jobs:
   # выгрузки — разметку; собранный сайт проверяет только браузер.
   runtime-site:
     name: Собранный сайт и рантайм в браузере
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+
     steps:
       - uses: actions/checkout@v5
 
@@ -358,7 +369,10 @@ jobs:
 
       - name: Снимок страницы
         if: always()
-        uses: actions/upload-artifact@v4
+        # v7 — последняя версия на Node 24. На v4 GitHub с 19 октября
+        # 2026 принудительно переводит экшен на Node 24, и такой перевод
+        # ломает уже собранный прогон, а не предупреждает заранее.
+        uses: actions/upload-artifact@v7
         with:
           name: runtime-site
           path: runtime-site.png
@@ -370,7 +384,8 @@ jobs:
   # и выглядел чёрный холст — ошибок в консоли не было.
   browser:
     name: Редактор в браузере и LCP
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+
     # Замер скорости идёт последним и только после остальных заданий.
     # Раньше он стартовал вместе со сборкой образов и SBOM, и на общем
     # раннере статика отдавалась с TTFB 4,3 с — красный статус
@@ -491,7 +506,8 @@ jobs:
   # скопированного слишком поздно.
   docker:
     name: Сборка образов
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+
     # Переменные объявлены на уровне job, а не на отдельных шагах:
     # compose подставляет их при чтении файла, поэтому шаг без них
     # падал с «required variable POSTGRES_PASSWORD is missing» ещё

@@ -30,6 +30,20 @@ export interface SiteStatus {
   backups: number;
 }
 
+/** Резервная копия публикации: одна строка в списке отката. */
+export interface BackupItem {
+  id: string;
+  version: number;
+  size: number;
+  createdAt: string;
+  /**
+   * Копию можно восстановить. Бывает false, если каталог удалён с
+   * диска: кнопка тогда не показывается, а не обещает пустое
+   * действие.
+   */
+  restorable: boolean;
+}
+
 /** Профиль доступа к серверу (ТЗ п.16.5). */
 export interface HostingProfile {
   id: string;
@@ -84,6 +98,29 @@ export const publishingApi = {
       `/projects/${projectId}/site/backup/`,
       { method: 'POST', body: JSON.stringify({}) },
     ),
+
+  /**
+   * Список копий, из которых можно восстановиться.
+   *
+   * Отдельный запрос, а не поле в состоянии публикации: список
+   * растёт, а состояние читается при каждом входе на экран, и
+   * десятки копий в нём мешали бы видеть, что сейчас с сайтом.
+   */
+  backups: (projectId: string) =>
+    request<{ backups: BackupItem[] }>(`/projects/${projectId}/site/backups/`),
+
+  /**
+   * Возврат публикации к состоянию копии.
+   *
+   * Копия становится текущей версией: это откат, а не «новая
+   * публикация поверх», иначе номер версии в истории перестал бы
+   * соответствовать содержимому.
+   */
+  restoreBackup: (projectId: string, backupId: string) =>
+    request<SiteStatus>(`/projects/${projectId}/site/backups/${backupId}/restore/`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
 
   /**
  * Профили доступа к серверам заказчика.
