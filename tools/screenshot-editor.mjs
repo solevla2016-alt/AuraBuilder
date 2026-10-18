@@ -2083,8 +2083,23 @@ const key = async (letter, code, modifiers = 0) => {
   ]);
 
   // Активатор, условие и действие — минимальная цепочка из ТЗ.
+  //
+  // После каждого клика ждём не фиксированную паузу, а появления
+  // новой ноды. Пауза в 300 мс проходила на машине разработчика и
+  // не проходила на CI: часть нод не успевала отрисоваться, и проверка
+  // падала на «нода не найдена», хотя логика и интерфейс исправны.
+  const countNodes = async () => {
+    const r = await page.send('Runtime.evaluate', {
+      returnByValue: true,
+      expression: `document.querySelectorAll('.logic__node').length`,
+    });
+    return r.result.value ?? 0;
+  };
+
+  let expected = await countNodes();
   for (const title of ['При клике', 'Если условие', 'Показать сообщение']) {
-    await page.send('Runtime.evaluate', {
+    const clicked = await page.send('Runtime.evaluate', {
+      returnByValue: true,
       expression: `(() => {
         const item = [...document.querySelectorAll('.logic__lib-item')]
           .find((b) => b.textContent?.trim().startsWith(${JSON.stringify(title)}));
@@ -2092,15 +2107,24 @@ const key = async (letter, code, modifiers = 0) => {
         return Boolean(item);
       })()`,
     });
-    await new Promise((r) => setTimeout(r, 300));
+    if (!clicked.result.value) {
+      throw new Error(`в библиотеке нет ноды «${title}»`);
+    }
+    // Ждём конкретного результата: нода появилась или истекло время.
+    const deadline = Date.now() + 15000;
+    while (Date.now() < deadline) {
+      if ((await countNodes()) > expected) break;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    expected += 1;
   }
-  const nodes = await page.send('Runtime.evaluate', {
-    returnByValue: true,
-    expression: `document.querySelectorAll('.logic__node').length`,
-  });
+  const nodes = await countNodes();
+  if (process.env['PROBE_TRACE']) {
+    console.log(`  нод после кликов: ${nodes}`);
+  }
   results.push([
-    `ноды добавлены из библиотеки (${nodes.result.value})`,
-    nodes.result.value === 3,
+    `ноды добавлены из библиотеки (${nodes})`,
+    nodes === 3,
   ]);
 
   // Связи: активатор → условие → действие. Тянуть линию вручную

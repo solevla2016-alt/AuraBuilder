@@ -87,6 +87,16 @@ export function LogicScreen({ projectId, projectName, onBack }: Props) {
   const [linking, setLinking] = useState<{ from: string; branch: string; x: number; y: number } | null>(null);
   const surface = useRef<HTMLDivElement | null>(null);
 
+  /*
+   * Правка, сделанная до прихода ответа сервера.
+   *
+   * Дерево проекта запрашивается при открытии экрана, и на медленной
+   * сети ответ летел дольше, чем человек нажимал кнопки. Раньше ответ
+   * безусловно перезаписывал граф, и только что добавленные ноды
+   * исчезали: человек видел, что нажал, а поле снова пустое.
+   */
+  const editedRef = useRef(false);
+
   useEffect(() => {
     void logicApi
       .types()
@@ -104,6 +114,7 @@ export function LogicScreen({ projectId, projectName, onBack }: Props) {
    */
   useEffect(() => {
     let cancelled = false;
+    editedRef.current = false;
     void api
       .getProject(projectId)
       .then((project) => {
@@ -111,7 +122,11 @@ export function LogicScreen({ projectId, projectName, onBack }: Props) {
         const stored = (project.tree as { logic?: LogicGraph }).logic;
         setTree(project.tree);
         setVersion(project.version);
-        setGraph(stored && Array.isArray(stored.nodes) ? stored : emptyGraph);
+// Правка пользователя важнее отставшего ответа: иначе нода,
+        // добавленная во время загрузки, исчезала бы без предупреждения.
+        if (!editedRef.current) {
+          setGraph(stored && Array.isArray(stored.nodes) ? stored : emptyGraph);
+        }
       })
       .catch(() => {
         if (!cancelled) setProblems(['Не удалось загрузить проект.']);
@@ -134,6 +149,8 @@ export function LogicScreen({ projectId, projectName, onBack }: Props) {
 
   const addNode = useCallback(
     (def: NodeTypeDef) => {
+      editedRef.current = true;
+      editedRef.current = true;
       setGraph((prev) => {
         const id = newId(prev.nodes);
         const count = prev.nodes.length;
@@ -163,6 +180,7 @@ export function LogicScreen({ projectId, projectName, onBack }: Props) {
   );
 
   const moveNode = useCallback((id: string, x: number, y: number) => {
+    editedRef.current = true;
     setGraph((prev) => ({
       ...prev,
       nodes: prev.nodes.map((n) => (n.id === id ? { ...n, x: Math.max(0, x), y: Math.max(0, y) } : n)),
@@ -170,6 +188,7 @@ export function LogicScreen({ projectId, projectName, onBack }: Props) {
   }, []);
 
   const removeNode = useCallback((id: string) => {
+    editedRef.current = true;
     setGraph((prev) => ({
       nodes: prev.nodes.filter((n) => n.id !== id),
       // Связи удалённой ноды исчезают вместе с ней: оставить их
@@ -181,6 +200,7 @@ export function LogicScreen({ projectId, projectName, onBack }: Props) {
   }, []);
 
   const removeEdge = useCallback((edge: LogicEdge) => {
+    editedRef.current = true;
     setGraph((prev) => ({
       ...prev,
       edges: prev.edges.filter(
@@ -192,6 +212,7 @@ export function LogicScreen({ projectId, projectName, onBack }: Props) {
 
   const connect = useCallback(
     (from: string, branch: string, to: string) => {
+      editedRef.current = true;
       setGraph((prev) => {
         const target = prev.nodes.find((n) => n.id === to);
         const source = prev.nodes.find((n) => n.id === from);
@@ -214,6 +235,7 @@ export function LogicScreen({ projectId, projectName, onBack }: Props) {
   );
 
   const setProp = useCallback((nodeId: string, name: string, value: unknown) => {
+    editedRef.current = true;
     setGraph((prev) => ({
       ...prev,
       nodes: prev.nodes.map((n) => (n.id === nodeId ? { ...n, props: { ...n.props, [name]: value } } : n)),
