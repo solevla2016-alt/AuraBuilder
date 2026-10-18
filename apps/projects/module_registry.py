@@ -207,7 +207,7 @@ SCHEMAS: dict[str, ModuleSchema] = {
         'section.gallery',
         (
         Prop('heading', 'text', False, "Работы", {}, 'Заголовок галереи'),
-        Prop('images', 'text', False, None, {}, 'Адреса картинок через запятую; задаются кнопкой «Загрузить картинки»'),
+        Prop('images', 'textarea', False, None, {}, 'Адреса картинок через запятую; задаются кнопкой «Загрузить картинки»'),
         Prop('columns', 'number', False, 3, {"min":2,"max":5,"step":1}, 'Сколько изображений в ряд'),
         Prop('gap', 'number', False, 16, {"min":4,"max":48,"step":4}, 'Промежуток между кадрами, px'),
         ),

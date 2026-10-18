@@ -193,7 +193,7 @@ export const SCHEMAS: ModuleSchema[] = [
   ] },
   { moduleId: 'section.gallery', props: [
     { name: 'heading', type: 'text', required: false, default: "Работы", limits: {}, description: 'Заголовок галереи' },
-    { name: 'images', type: 'text', required: false, default: null, limits: {}, description: 'Адреса картинок через запятую; задаются кнопкой «Загрузить картинки»' },
+    { name: 'images', type: 'textarea', required: false, default: null, limits: {}, description: 'Адреса картинок через запятую; задаются кнопкой «Загрузить картинки»' },
     { name: 'columns', type: 'number', required: false, default: 3, limits: {"min":2,"max":5,"step":1}, description: 'Сколько изображений в ряд' },
     { name: 'gap', type: 'number', required: false, default: 16, limits: {"min":4,"max":48,"step":4}, description: 'Промежуток между кадрами, px' }
   ] },

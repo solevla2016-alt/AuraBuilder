@@ -302,7 +302,7 @@
         },
         {
           "name": "images",
-          "type": "text",
+          "type": "textarea",
           "required": false,
           "default": null,
           "limits": {},

@@ -37,6 +37,15 @@ COPY apps/ ./
 RUN useradd --system --create-home --uid 10001 aura \
     && mkdir -p /app/staticfiles \
     && chown -R aura:aura /app
+
+# Каталоги опубликованных сайтов и файлов медиатеки.
+#
+# Владелец задан здесь, а не в compose, потому что том создаётся при
+# первом запуске и наследует владельца каталога из образа. По умолчанию
+# том достаётся контейнеру от root, а процесс работает от пользователя
+# aura, и первая же публикация падала бы с «Permission denied».
+RUN mkdir -p /srv/published /srv/assets \
+    && chown -R aura:aura /srv
 USER aura
 
 # Сборка статики на этапе сборки образа, а не в каждом контейнере при
