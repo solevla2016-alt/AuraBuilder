@@ -7,6 +7,10 @@
 #
 # Отступление от ТЗ п.15.3 п.6: CI/CD через GitHub Actions — решение
 # заказчика (см. docs/TZ-GAPS.md).
+#
+# Образ раннера закреплён как ubuntu-24.04, а не через ubuntu-latest:
+# с 19 октября 2026 метка уезжает на Ubuntu 26 без предупреждения,
+# и смена образа ломает прогон целиком.
 
 name: CI
 
@@ -38,14 +42,9 @@ jobs:
   # Реестр модулей, схемы свойств и токены генерируются из документов.
   # Если в код попал результат, а документ правили позже, стенд и
   # документация разошлись. Проверка без сборки — самая быстрая.
-generated:
+  generated:
     name: Сгенерированные файлы актуальны
     runs-on: ubuntu-24.04
-    # Образ закреплён явно, а не через ubuntu-latest: с 19 октября
-    # 2026 метка уезжает на Ubuntu 26 без предупреждения, и прогон
-    # поехал бы на незнакомом образе. Проверяемся на том, на чём
-    # проверено.
-
     steps:
       - uses: actions/checkout@v5
 
@@ -75,7 +74,6 @@ generated:
   sbom:
     name: Реестр SBOM актуален
     runs-on: ubuntu-24.04
-
     steps:
       - uses: actions/checkout@v5
 
@@ -103,7 +101,6 @@ generated:
   licenses:
     name: Лицензии зависимостей
     runs-on: ubuntu-24.04
-
     steps:
       - uses: actions/checkout@v5
 
@@ -133,7 +130,6 @@ generated:
   frontend:
     name: Типы и сборка фронтенда
     runs-on: ubuntu-24.04
-
     steps:
       - uses: actions/checkout@v5
 
@@ -166,7 +162,6 @@ generated:
   backend:
     name: Тесты Control Plane на PostgreSQL
     runs-on: ubuntu-24.04
-
 
     # PostgreSQL из того же образа, что и в docker-compose: тесты на
     # другой версии базы проверяют не то, что пойдёт в стенд. JSONField
@@ -260,7 +255,6 @@ generated:
   runtime:
     name: Тесты рантайма
     runs-on: ubuntu-24.04
-
     steps:
       - uses: actions/checkout@v5
 
@@ -293,7 +287,6 @@ generated:
   runtime-site:
     name: Собранный сайт и рантайм в браузере
     runs-on: ubuntu-24.04
-
     steps:
       - uses: actions/checkout@v5
 
@@ -385,7 +378,6 @@ generated:
   browser:
     name: Редактор в браузере и LCP
     runs-on: ubuntu-24.04
-
     # Замер скорости идёт последним и только после остальных заданий.
     # Раньше он стартовал вместе со сборкой образов и SBOM, и на общем
     # раннере статика отдавалась с TTFB 4,3 с — красный статус
@@ -507,7 +499,6 @@ generated:
   docker:
     name: Сборка образов
     runs-on: ubuntu-24.04
-
     # Переменные объявлены на уровне job, а не на отдельных шагах:
     # compose подставляет их при чтении файла, поэтому шаг без них
     # падал с «required variable POSTGRES_PASSWORD is missing» ещё
