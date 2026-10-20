@@ -158,27 +158,43 @@ check('манифест отдаётся и разбирается', parsed && p
 check('в манифесте есть иконки', (parsed?.icons?.length ?? 0) >= 2);
 
 // Регистрация worker занимает время: браузер ставит его после загрузки.
-let registered = false;
-for (let i = 0; i < 40 && !registered; i += 1) {
-  if (i === 0) {
-    // Состояние worker печатается при первом ожидании: причина
-    // «не зарегистрирован» иначе видна только по догадкам, а
-    // регистрация может и падать, и зависать в installing.
-    const state = await evaluate(
-      `navigator.serviceWorker.getRegistration().then((r) => {
-         const w = r && (r.installing || r.waiting || r.active);
-         if (w) return w.state + ' / ' + w.scriptURL;
-         return navigator.serviceWorker.register('service-worker.js')
-           .then((reg) => 'регистрация: ' + reg.scope)
-           .catch((e) => 'ошибка регистрации: ' + e.message);
-       })`,
+//
+// В headless Chrome на общем раннере регистрация иногда не успевает с
+// первой загрузки: страница уже есть, а worker ещё нет. Тогда страница
+// перезагружается, и попытка повторяется — без этого проверка падала без
+// причины, и в логе было только «не зарегистрирован».
+const waitRegistered = async () => {
+  for (let i = 0; i < 40; i += 1) {
+    const ok = await evaluate(
+      "navigator.serviceWorker.getRegistrations().then((r) => r.length > 0)",
     );
-    console.log(`  worker: ${state}`);
+    if (ok) return true;
+    if (i === 0) {
+      // Состояние worker печатается при первом ожидании: причина
+      // «не зарегистрирован» иначе видна только по догадкам, а
+      // регистрация может и падать, и зависать в installing.
+      const state = await evaluate(
+        `navigator.serviceWorker.getRegistration().then((r) => {
+           const w = r && (r.installing || r.waiting || r.active);
+           if (w) return w.state + ' / ' + w.scriptURL;
+           return navigator.serviceWorker.register('service-worker.js')
+             .then((reg) => 'регистрация: ' + reg.scope)
+             .catch((e) => 'ошибка регистрации: ' + e.message);
+         })`,
+      );
+      console.log(`  worker: ${state}`);
+    }
+    await new Promise((r) => setTimeout(r, 500));
   }
-  registered = await evaluate(
-    "navigator.serviceWorker.getRegistrations().then((r) => r.length > 0)",
-  );
-  if (!registered) await new Promise((r) => setTimeout(r, 500));
+  return false;
+};
+
+let registered = await waitRegistered();
+for (let attempt = 0; attempt < 2 && !registered; attempt += 1) {
+  console.log(`  регистрация не удалась, перезагружаем страницу (${attempt + 1})`);
+  await send('Page.reload', { ignoreCache: false });
+  await new Promise((r) => setTimeout(r, 1500));
+  registered = await waitRegistered();
 }
 check('service worker зарегистрирован', registered);
 
@@ -193,11 +209,16 @@ await send('Network.emulateNetworkConditions', {
   offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0,
 });
 await send('Page.reload', { ignoreCache: false });
-await new Promise((r) => setTimeout(r, 2500));
 
-const offlineTitle = await evaluate(
-  "document.querySelector('h2, h1')?.textContent ?? document.title",
-);
+// Загрузка из кеша может занять время, поэтому страницу опрашиваем, а не
+// ждём фиксированную паузу: на медленном раннере 2,5 секунды не хватало.
+let offlineTitle = '';
+for (let i = 0; i < 12 && !offlineTitle; i += 1) {
+  await new Promise((r) => setTimeout(r, 500));
+  offlineTitle = await evaluate(
+    "document.querySelector('h2, h1')?.textContent ?? document.title",
+  );
+}
 check('без сети страница открывается из кеша', !!offlineTitle,
   String(offlineTitle ?? '').slice(0, 40));
 
