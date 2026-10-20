@@ -118,7 +118,7 @@ class UploadApiTests(AssetRootMixin, TestCase):
         # значит отдать посетителю чужой скрипт от имени клиента.
         response = self.send(upload('logo.svg', EVIL_SVG, 'image/svg+xml'))
         self.assertEqual(response.status_code, 400)
-        self.assertIn('исполняемый код', response.data['detail'])
+        self.assertIn('не принят', response.data['detail'])
 
     def test_renamed_executable_is_refused(self):
         response = self.send(upload('photo.png', b'MZ\x90\x00' + b'\x00' * 40))
@@ -167,6 +167,154 @@ class UploadApiTests(AssetRootMixin, TestCase):
         response = self.client.get(created['url'])
         self.assertEqual(response.status_code, 200)
         self.assertEqual(b''.join(response.streaming_content), PNG)
+
+
+class SvgSanitizerTests(TestCase):
+    """SVG: опасное не пропускается, а зачистка не превращает файл в мусор.
+
+    Проверяется именно обход: каждая попытка исполнить код из картинки
+    должна заканчиваться отказом, а не сайтом заказчика.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.override = override_settings(ASSET_ROOT=Path(self.tmp.name))
+        self.override.enable()
+        self.addCleanup(self.override.disable)
+
+        self.owner = User.objects.create_user('owner', password='pass-owner')
+        self.project = Project.objects.create(owner=self.owner, name='Магазин')
+
+    def save(self, content: bytes):
+        return store(self.project, upload('рисунок.svg', content, 'image/svg+xml'))
+
+    def stored(self, stored):
+        return (project_dir(self.project) / stored.name).read_text(encoding='utf-8')
+
+    def test_safe_svg_keeps_its_drawing(self):
+        stored = self.save(SAFE_SVG)
+        cleaned = self.stored(stored)
+        self.assertIn('rect', cleaned)
+        self.assertIn('fill="#fff"', cleaned)
+
+    def test_svg_with_script_is_refused(self):
+        with self.assertRaises(AssetRejected) as ctx:
+            self.save(b'<svg xmlns="http://www.w3.org/2000/svg">'
+                      b'<script>alert(1)</script></svg>')
+        self.assertIn('script', str(ctx.exception))
+
+    def test_foreign_object_with_html_is_refused(self):
+        # foreignObject открывает окно в HTML: через него страница получает
+        # доступ к DOM сайта, а не просто картинке.
+        with self.assertRaises(AssetRejected):
+            self.save(b'<svg xmlns="http://www.w3.org/2000/svg">'
+                      b'<foreignObject><body xmlns="http://www.w3.org/1999/xhtml">'
+                      b'<script>alert(1)</script></body></foreignObject></svg>')
+
+    def test_event_handler_is_refused(self):
+        with self.assertRaises(AssetRejected) as ctx:
+            self.save(b'<svg xmlns="http://www.w3.org/2000/svg" '
+                      b'onload="alert(1)"></svg>')
+        self.assertIn('onload', str(ctx.exception))
+
+    def test_javascript_href_is_refused(self):
+        with self.assertRaises(AssetRejected):
+            self.save(
+                '<svg xmlns="http://www.w3.org/2000/svg">'
+                '<a xlink:href="javascript:alert(1)"><text>жми</text></a>'
+                '</svg>'.encode('utf-8')
+            )
+
+    def test_data_href_is_refused(self):
+        with self.assertRaises(AssetRejected):
+            self.save(b'<svg xmlns="http://www.w3.org/2000/svg" '
+                      b'xmlns:xlink="http://www.w3.org/1999/xlink">'
+                      b'<use xlink:href="data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=">'
+                      b'</use></svg>')
+
+    def test_external_href_is_refused(self):
+        # Картинка не должна сообщать владельцу сервера, что её открыли.
+        with self.assertRaises(AssetRejected):
+            self.save(
+                '<svg xmlns="http://www.w3.org/2000/svg">'
+                '<image href="https://чужой.сервер/след.gif"/></svg>'.encode('utf-8')
+            )
+
+    def test_style_with_behavior_is_refused(self):
+        with self.assertRaises(AssetRejected):
+            self.save(b'<svg xmlns="http://www.w3.org/2000/svg">'
+                      b'<style>.a { behavior: url(#default#time2) }</style>'
+                      b'<rect class="a" width="10" height="10"/></svg>')
+
+    def test_inline_style_keeps_only_safe_properties(self):
+        # Внешнее свойство вырезается, но картинка остаётся картинкой:
+        # молча отказать в файле, у которого срезано одно свойство,
+        # значит потерять работу без причины.
+        stored = self.save(
+            b'<svg xmlns="http://www.w3.org/2000/svg">'
+            b'<rect width="10" height="10" '
+            b'style="fill: red; behavior: url(#x); stroke: blue"/></svg>'
+        )
+        cleaned = self.stored(stored)
+        self.assertIn('fill: red', cleaned)
+        self.assertIn('stroke: blue', cleaned)
+        self.assertNotIn('behavior', cleaned)
+
+    def test_internal_use_reference_is_kept(self):
+        stored = self.save(
+            b'<svg xmlns="http://www.w3.org/2000/svg">'
+            b'<defs><circle id="dot" r="3"/></defs>'
+            b'<use href="#dot"/></svg>'
+        )
+        self.assertIn('#dot', self.stored(stored))
+
+    def test_animation_element_is_removed_not_refused(self):
+        # Анимация не исполняет код: она вырезается, а не роняет загрузку.
+        stored = self.save(
+            b'<svg xmlns="http://www.w3.org/2000/svg">'
+            b'<rect width="10" height="10">'
+            b'<animate attributeName="width" from="10" to="20" dur="1s"/>'
+            b'</rect></svg>'
+        )
+        cleaned = self.stored(stored)
+        self.assertNotIn('animate', cleaned)
+        self.assertIn('rect', cleaned)
+
+    def test_comment_is_removed(self):
+        stored = self.save(
+            '<svg xmlns="http://www.w3.org/2000/svg">'
+            '<!-- спрятанный <script> --><rect width="10" height="10"/></svg>'
+            .encode('utf-8')
+        )
+        self.assertNotIn('script', self.stored(stored))
+
+    def test_unparsable_svg_is_refused(self):
+        with self.assertRaises(AssetRejected):
+            self.save(b'<svg xmlns="http://www.w3.org/2000/svg"><rect')
+
+    def test_non_svg_root_is_refused(self):
+        # XML с прологом — не картинка, и называть его SVG незачем.
+        with self.assertRaises(AssetRejected):
+            self.save('<?xml version="1.0"?><hello>мир</hello>'.encode('utf-8'))
+
+    def test_namespaced_svg_is_accepted(self):
+        stored = self.save(
+            b'<svg xmlns="http://www.w3.org/2000/svg">'
+            b'<path d="M0 0 L10 10" fill="red"/></svg>'
+        )
+        self.assertIn('path', self.stored(stored))
+
+    def test_stored_svg_is_valid_xml(self):
+        # Зачистка не должна оставить разобранный нами файл, который
+        # браузер уже не поймёт.
+        import xml.etree.ElementTree as ET
+
+        stored = self.save(
+            b'<svg xmlns="http://www.w3.org/2000/svg">'
+            b'<rect width="10" height="10" style="fill:red"/></svg>'
+        )
+        ET.fromstring(self.stored(stored))
 
 
 class StorageTests(AssetRootMixin, TestCase):

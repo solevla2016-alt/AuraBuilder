@@ -4,6 +4,9 @@
 и возвращаются без потерь, а невалидное дерево отвергается сервером.
 """
 
+from datetime import timedelta
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from rest_framework import status
@@ -296,11 +299,18 @@ class ProjectApiTests(APITestCase):
         # Статус проверяется явно: при отказе (например, по лимиту
         # частоты) updated_at не менялся бы, и падение выглядело бы как
         # «время не обновилось», хотя запрос просто не выполнился.
-        response = self.client.put(
-            f'/api/projects/{project.pk}/',
-            {'name': 'Переименован', 'tree': default_tree()},
-            format='json',
-        )
+        #
+        # Время подставляется: на быстрой машине две записи попадают в
+        # один тик системных часов, и метки совпадают до микросекунды —
+        # падение выглядело бы как «время не обновилось», хотя поле
+        # обновляется. Проверяется поведение, а не разрешение часов.
+        with patch('django.utils.timezone.now') as now:
+            now.return_value = first + timedelta(seconds=1)
+            response = self.client.put(
+                f'/api/projects/{project.pk}/',
+                {'name': 'Переименован', 'tree': default_tree()},
+                format='json',
+            )
         self.assertEqual(response.status_code, 200, response.data)
         project.refresh_from_db()
-        self.assertNotEqual(project.updated_at, first)
+        self.assertEqual(project.updated_at, first + timedelta(seconds=1))

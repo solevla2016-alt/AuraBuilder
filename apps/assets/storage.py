@@ -26,6 +26,8 @@ from django.utils.text import slugify
 
 from projects.models import Project
 
+from .svg_sanitize import SvgUnsafe, sanitize_svg
+
 
 class AssetRejected(ValueError):
     """Файл не принят: объяснение предназначено пользователю."""
@@ -49,15 +51,6 @@ RASTER = (
 WEBP = 'image/webp'
 
 SVG_ALLOWED = 'image/svg+xml'
-
-#: Что ищем в SVG. Это не полноценный санитайзер, а отказ от
-#: заведомо опасного содержимого: скрипты, обработчики событий,
-#: внешние ссылки и опасные элементы.
-SVG_FORBIDDEN = re.compile(
-    rb'<\s*script|<\s*foreignobject|<\s*iframe|<\s*embed|<\s*object'
-    rb'|\son\w+\s*=|javascript:|data:text/html',
-    re.IGNORECASE,
-)
 
 
 @dataclass(frozen=True)
@@ -90,7 +83,10 @@ def sniff(content_type: str, head: bytes) -> str | None:
             return mime
     if head[:4] == b'RIFF' and head[8:12] == b'WEBP':
         return WEBP
-    if b'<svg' in head[:200].lower() or head.lstrip()[:5] == b'<?xml':
+    # Только `<svg` и только в начале файла. Прежнее условие принимало
+    # любой XML с прологом `<?xml`, и посторонний файл уезжал в медиатеку
+    # картинкой. Корневой элемент проверяется ещё и при зачистке.
+    if b'<svg' in head[:200].lower():
         return SVG_ALLOWED
     return None
 
@@ -131,11 +127,19 @@ def store(project: Project, upload: UploadedFile) -> StoredAsset:
             'Поддерживаются только изображения: PNG, JPEG, GIF, WebP и SVG.',
         )
     if detected == SVG_ALLOWED:
-        if SVG_FORBIDDEN.search(content[:200_000]):
+        # Размер и содержимое читаются целиком: обрезать файл ради
+        # проверки значило бы либо пропустить начинку, либо оставить
+        # на диске половину картинки.
+        try:
+            content = sanitize_svg(content)
+        except SvgUnsafe as exc:
             raise AssetRejected(
-                'В SVG найден исполняемый код. Уберите <script>, обработчики '
-                'событий и внешние ссылки — и загрузите снова.',
-            )
+                f'SVG не принят: {exc}. Проверьте, что это действительно '
+                'векторная картинка, и загрузите снова.'
+            ) from exc
+        # Файл после зачистки может стать короче: дальше считается
+        # именно то, что ляжет на диск, а не присланное.
+        upload.size = len(content)
 
     name = _storage_name(upload.name, detected)
     directory = project_dir(project)
