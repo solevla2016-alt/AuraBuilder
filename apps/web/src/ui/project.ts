@@ -54,11 +54,35 @@ export interface PageTree {
   logic?: { nodes: unknown[]; edges: unknown[] };
 }
 
+/** Строка списка страниц: дерево приходит отдельным запросом. */
+export interface PageSummary {
+  id: string;
+  title: string;
+  slug: string;
+  order: number;
+  version: number;
+  updatedAt: string;
+}
+
+/** Страница вместе с деревом и SEO-полями. */
+export interface ProjectPage extends PageSummary {
+  tree: PageTree;
+  seoTitle: string;
+  seoDescription: string;
+  /** Версия проекта на момент ответа: нужна для сохранения главной. */
+  projectVersion: number;
+}
+
 export interface Project {
   id: string;
   name: string;
-  /** Дерево страницы; обновляется при сохранении. */
+  /** Дерево главной страницы; обновляется при сохранении. */
   tree: PageTree;
+  /**
+   * Дополнительные страницы. Главная в списке не значится: она живёт
+   * в поле tree и занимает первое место в навигации.
+   */
+  pages?: PageSummary[];
   /**
    * Номер версии документа (ТЗ п.3.2). Редактор предъявляет его при
    * сохранении: если документ успели изменить с другой вкладки,

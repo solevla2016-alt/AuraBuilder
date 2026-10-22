@@ -27,8 +27,9 @@ from django.db import transaction
 from component_library.models import ComponentStyle
 from data_sources.models import DataRecord, DataSource
 
-from .models import DocumentVersion, Project
+from .models import DocumentVersion, Page, Project
 from .module_registry import MODULE_IDS
+from .serializers import PAGE_SLUG_RE, RESERVED_SLUGS
 
 #: Версия формата. Растёт, когда меняется структура файла; импорт
 #: отказывает от более новой версии, а не гадает о содержимом.
@@ -66,11 +67,24 @@ def dump_project(project: Project) -> dict[str, Any]:
             'version': project.version,
             'tree': project.tree,
         },
+        # Дополнительные страницы: главная остаётся в project.tree.
+        'pages': [
+            {
+                'title': page.title,
+                'slug': page.slug,
+                'tree': page.tree,
+                'seoTitle': page.seo_title,
+                'seoDescription': page.seo_description,
+                'order': page.order,
+            }
+            for page in project.pages.order_by('order', 'created_at')
+        ],
         'versions': [
             {
                 'number': v.number,
                 'label': v.label,
                 'tree': v.tree,
+                'pages': v.pages,
                 'createdAt': _iso(v.created_at),
                 'author': v.author.username if v.author_id else None,
             }
@@ -177,6 +191,35 @@ def import_project(owner, payload: Any) -> Project:
 
     project = Project.objects.create(owner=owner, name=name, tree=tree)
 
+    # Страницы: адрес нормализуется, потому что файл мог быть собран
+    # другой версией формата или отредактирован руками.
+    seen: set[str] = set()
+    for index, item in enumerate(data.get('pages') or []):
+        if not isinstance(item, dict):
+            continue
+        page_tree = item.get('tree')
+        if not isinstance(page_tree, dict):
+            continue
+        base = str(item.get('slug') or f'page-{index + 1}').strip().lower()
+        if not PAGE_SLUG_RE.match(base) or base in RESERVED_SLUGS:
+            base = f'page-{index + 1}'
+        slug = base
+        suffix = 2
+        while slug in seen:
+            slug = f'{base}-{suffix}'
+            suffix += 1
+        seen.add(slug)
+        order = item.get('order')
+        Page.objects.create(
+            project=project,
+            title=str(item.get('title') or f'Страница {index + 1}')[:200],
+            slug=slug,
+            tree=_check_tree(page_tree, limits),
+            seo_title=str(item.get('seoTitle') or '')[:200],
+            seo_description=str(item.get('seoDescription') or '')[:300],
+            order=order if isinstance(order, int) and order >= 0 else index + 1,
+        )
+
     # История версий: без неё «полный бэкап» был бы половиной бэкапа,
     # и откатиться после переезда было бы нечем.
     for item in data.get('versions') or []:
@@ -188,10 +231,23 @@ def import_project(owner, payload: Any) -> Project:
         version_tree = item.get('tree')
         if not isinstance(version_tree, dict):
             continue
+        snapshot_pages = []
+        for page in item.get('pages') or []:
+            if not isinstance(page, dict) or not isinstance(page.get('tree'), dict):
+                continue
+            snapshot_pages.append({
+                'title': str(page.get('title') or '')[:200],
+                'slug': str(page.get('slug') or '')[:80],
+                'tree': _check_tree(page['tree'], limits),
+                'seo_title': str(page.get('seo_title') or '')[:200],
+                'seo_description': str(page.get('seo_description') or '')[:300],
+                'order': page.get('order') if isinstance(page.get('order'), int) else 0,
+            })
         DocumentVersion.objects.create(
             project=project,
             number=number,
             tree=_check_tree(version_tree, limits),
+            pages=snapshot_pages,
             label=str(item.get('label') or '')[:200],
             author=owner,
         )

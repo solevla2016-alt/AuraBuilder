@@ -39,15 +39,21 @@ from accounts.serializers import (
     audit,
     get_client_ip,
 )
-from billing.service import check_project_slot, check_scenario
+from billing.service import check_page_slot, check_project_slot, check_scenario
 
-from .models import DocumentVersion, Project
+from .models import DocumentVersion, Page, Project
 from .module_registry import CATEGORIES, MODULES, modules_for_stage
 from .export import ExportError
 from .package import PackageTooLarge
 from .package import build_package, package_zip, slugify, slugify_ascii
 from .versions import restore as restore_version, snapshot
-from .serializers import ProjectCreateSerializer, ProjectSerializer
+from .serializers import (
+    RESERVED_SLUGS,
+    PageSerializer,
+    PageSummarySerializer,
+    ProjectCreateSerializer,
+    ProjectSerializer,
+)
 
 
 @api_view(['GET'])
@@ -116,7 +122,11 @@ def project_list(request):
     POST — создание; владельцем становится тот, кто создал.
     """
     if request.method == 'GET':
-        items = readable_projects(request.user).select_related('owner')[:50]
+        items = (
+            readable_projects(request.user)
+            .select_related('owner')
+            .prefetch_related('pages')[:50]
+        )
         return Response(ProjectSerializer(items, many=True).data)
 
     serializer = ProjectCreateSerializer(data=request.data)
@@ -427,6 +437,167 @@ def version_restore(request, project_id: str, number: int):
         return Response({'detail': 'версия не найдена'}, status=status.HTTP_404_NOT_FOUND)
     created = restore_version(request, project, version)
     return Response(_version_payload(created))
+
+
+def _unique_slug(project: Project, base: str) -> str:
+    """Свободный адрес: «about», «about-2», «about-3»."""
+
+    candidate = base or 'page'
+    index = 2
+    while (
+        candidate in RESERVED_SLUGS
+        or Page.objects.filter(project=project, slug=candidate).exists()
+    ):
+        candidate = f'{base}-{index}'
+        index += 1
+    return candidate
+
+
+def _page_payload(page: Page) -> dict:
+    data = PageSerializer(page).data
+    # Версия проекта нужна редактору: после сохранения страницы она
+    # сдвигается, и следующее сохранение главной должно предъявить
+    # актуальный номер, иначе сервер справедливо ответит 409.
+    data['projectVersion'] = page.project.version
+    return data
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticatedUser])
+def page_list(request, project_id: str):
+    """Страницы проекта: список без деревьев и создание новой."""
+
+    project = _project_by_id(project_id)
+    if project is None or not can(request.user, project, VIEW):
+        return Response({'detail': 'проект не найден'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response(
+            {
+                'version': project.version,
+                'pages': PageSummarySerializer(
+                    project.pages.all(), many=True,
+                ).data,
+            }
+        )
+
+    if not can(request.user, project, EDIT_CONTENT):
+        return Response(
+            {'detail': 'Недостаточно прав для этого действия.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    # Главная тоже страница: она занимает место в тарифе. Поэтому
+    # «сколько будет» — это уже существующие плюс главная плюс новая.
+    denial = check_page_slot(request.user, project.pages.count() + 2)
+    if denial is not None:
+        return Response(
+            {'detail': denial.detail, 'reason': denial.reason},
+            status=status.HTTP_402_PAYMENT_REQUIRED,
+        )
+
+    payload = dict(request.data)
+    if not payload.get('slug') and payload.get('title'):
+        base = slugify_ascii(str(payload['title']))[:70] or 'page'
+        payload['slug'] = _unique_slug(project, base)
+
+    serializer = PageSerializer(data=payload, context={'project': project})
+    serializer.is_valid(raise_exception=True)
+    order = serializer.validated_data.get('order')
+    if order is None:
+        order = project.pages.count() + 1
+    page = serializer.save(project=project, order=order)
+
+    created = snapshot(
+        project,
+        project.tree,
+        author=request.user,
+        label=f'Создана страница «{page.title}»',
+    )
+    project.version = created.number
+    project.save(update_fields=['version', 'updated_at'])
+    audit(request, 'page.create', project, page.slug)
+    return Response(_page_payload(page), status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@permission_classes([IsAuthenticatedUser])
+def page_detail(request, project_id: str, page_id: str):
+    """Чтение, изменение и удаление одной страницы."""
+
+    project = _project_by_id(project_id)
+    if project is None or not can(request.user, project, VIEW):
+        return Response({'detail': 'проект не найден'}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        page = project.pages.filter(pk=uuid.UUID(page_id)).first()
+    except (ValueError, AttributeError, TypeError):
+        page = None
+    if page is None:
+        return Response({'detail': 'страница не найдена'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response(_page_payload(page))
+
+    if not can(request.user, project, EDIT_CONTENT):
+        return Response(
+            {'detail': 'Недостаточно прав для этого действия.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    if request.method == 'DELETE':
+        slug = page.slug
+        page.delete()
+        created = snapshot(
+            project,
+            project.tree,
+            author=request.user,
+            label=f'Удалена страница «{slug}»',
+        )
+        project.version = created.number
+        project.save(update_fields=['version', 'updated_at'])
+        audit(request, 'page.delete', project, slug)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    expected = request.data.get('expectedVersion')
+    if expected is not None:
+        try:
+            expected = int(expected)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'expectedVersion должен быть числом.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if expected != page.version:
+            return Response(
+                {
+                    'detail': 'Страницу изменил другой редактор.',
+                    'version': page.version,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+    serializer = PageSerializer(
+        page,
+        data=request.data,
+        partial=request.method == 'PATCH',
+        context={'project': project},
+    )
+    serializer.is_valid(raise_exception=True)
+    page = serializer.save()
+    page.version += 1
+    page.save(update_fields=['version', 'updated_at'])
+
+    created = snapshot(
+        project,
+        project.tree,
+        author=request.user,
+        label=f'Изменена страница «{page.title}»',
+    )
+    project.version = created.number
+    project.save(update_fields=['version', 'updated_at'])
+    audit(request, 'page.update', project, page.slug)
+    return Response(_page_payload(page))
 
 
 def _version_payload(version: DocumentVersion) -> dict:

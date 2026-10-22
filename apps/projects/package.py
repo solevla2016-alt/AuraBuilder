@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import zipfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -93,7 +94,7 @@ def slugify_ascii(value: str) -> str:
 
 
 def _page_html(project_name: str, body: str, title: str, description: str,
-               pwa: bool = False) -> str:
+               pwa: bool = False, prefix: str = '', nav: str = '') -> str:
     """Страница пакета.
 
     lang="ru" и charset заданы сразу: без них русский текст в браузере
@@ -105,7 +106,7 @@ def _page_html(project_name: str, body: str, title: str, description: str,
     """
 
     manifest_link = '<link rel="manifest" href="manifest.json">' if pwa else ''
-    scripts_extra = '<script src="assets/js/pwa.js" defer></script>' if pwa else ''
+    scripts_extra = f'<script src="{prefix}assets/js/pwa.js" defer></script>' if pwa else ''
 
     return f"""<!doctype html>
 <html lang="ru">
@@ -118,15 +119,16 @@ def _page_html(project_name: str, body: str, title: str, description: str,
 <meta property="og:description" content="{esc(description)}">
 <meta property="og:type" content="website">
 <meta name="generator" content="AuraBuilder">
-<link rel="stylesheet" href="assets/css/site.css">
+<link rel="stylesheet" href="{prefix}assets/css/site.css">
 {manifest_link}
 </head>
 <body>
+{nav}
 <main class="page">
 {body}
 </main>
-<script src="assets/js/runtime.js" defer></script>
-<script src="assets/js/logic.js" defer></script>
+<script src="{prefix}assets/js/runtime.js" defer></script>
+<script src="{prefix}assets/js/logic.js" defer></script>
 {scripts_extra}
 </body>
 </html>
@@ -188,12 +190,22 @@ def _collect_sources(project: Project, version: DocumentVersion) -> dict[str, li
     """
 
     referenced: set[str] = set()
-    for block in (version.tree or {}).get('blocks', []):
-        props = block.get('props')
-        if isinstance(props, dict):
-            source = props.get('source')
-            if isinstance(source, str) and source:
-                referenced.add(source)
+    trees = [version.tree]
+    pages = version.pages if isinstance(version.pages, list) else []
+    trees.extend(
+        page.get('tree') for page in pages if isinstance(page, dict)
+    )
+    for tree in trees:
+        if not isinstance(tree, dict):
+            continue
+        for block in tree.get('blocks') or []:
+            if not isinstance(block, dict):
+                continue
+            props = block.get('props')
+            if isinstance(props, dict):
+                source = props.get('source')
+                if isinstance(source, str) and source:
+                    referenced.add(source)
 
     out: dict[str, list[dict]] = {}
     _DATASETS.clear()
@@ -285,6 +297,7 @@ def _readme(project_name: str, manifest: dict) -> str:
 | Файл | Назначение |
 |------|-----------|
 | `index.html` | Главная страница |
+| `<slug>/index.html` | Внутренние страницы (кроме главной) |
 | `assets/css/site.css` | Стили, собранные из палитры проекта |
 | `build-manifest.json` | Версия документа, состав сборки, контрольные суммы |
 | `robots.txt`, `sitemap.xml` | Файлы для поисковиков |
@@ -423,35 +436,99 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
     sources = _collect_sources(project, version)
     styles = _component_styles(getattr(project, 'id', None))
 
-    rendered = []
-    for block in blocks:
-        if not isinstance(block, dict):
-            raise ExportError('Блок описан неверно.')
-        module_id = str(block.get('module', ''))
-        # Записи нужны и data.*, и коммерческим блокам: каталог и
-        # карточка товара читают тот же источник, что и узел данных.
-        wants_records = module_id.startswith(('data.', 'shop.', 'promo.'))
-        records = _records_for(block, sources) if wants_records else []
-        rendered.append(
-            render_block(block, records, _dataset_for(block, collect_datasets()))
+    pages = version.pages if isinstance(version.pages, list) else []
+    specs = [
+        {
+            'slug': '',
+            'title': project.name,
+            'seo_title': '',
+            'seo_description': '',
+            'tree': tree,
+        }
+    ]
+    for item in pages:
+        if not isinstance(item, dict) or not isinstance(item.get('tree'), dict):
+            raise ExportError('Страница в версии описана неверно.')
+        specs.append(
+            {
+                'slug': str(item.get('slug') or ''),
+                'title': str(item.get('title') or project.name),
+                'seo_title': str(item.get('seo_title') or ''),
+                'seo_description': str(item.get('seo_description') or ''),
+                'tree': item['tree'],
+            }
         )
 
-    body = '\n'.join(r.html for r in rendered)
-    title = project.name
-    html_files = {
-        'index.html': _page_html(
+    def render_tree(page_tree: dict) -> tuple[str, list]:
+        page_blocks = page_tree.get('blocks')
+        if not isinstance(page_blocks, list):
+            raise ExportError('В версии нет дерева страницы.')
+        rendered_blocks = []
+        for block in page_blocks:
+            if not isinstance(block, dict):
+                raise ExportError('Блок описан неверно.')
+            module_id = str(block.get('module', ''))
+            # Записи нужны и data.*, и коммерческим блокам: каталог и
+            # карточка товара читают тот же источник, что и узел данных.
+            wants_records = module_id.startswith(('data.', 'shop.', 'promo.'))
+            records = _records_for(block, sources) if wants_records else []
+            rendered_blocks.append(
+                render_block(block, records, _dataset_for(block, collect_datasets()))
+            )
+        return '\n'.join(r.html for r in rendered_blocks), rendered_blocks
+
+    def nav_for(prefix: str, active: str) -> str:
+        """Меню страниц. Ссылки относительные: пакет работает и в
+        подкаталоге хостинга, и с доменом — без правки адресов."""
+        if len(specs) < 2:
+            return ''
+        links = []
+        for spec in specs:
+            slug = spec['slug']
+            href = f'{prefix}{slug}/' if slug else (prefix or './')
+            current = ' aria-current="page"' if slug == active else ''
+            label = spec['title'] if slug else project.name
+            links.append(f'<a href="{href}"{current}>{esc(label)}</a>')
+        return (
+            '<nav class="site-nav" aria-label="Страницы сайта">'
+            + ''.join(links)
+            + '</nav>'
+        )
+
+    html_files: dict[str, FileContent] = {}
+    all_rendered = []
+    for spec in specs:
+        body, rendered_blocks = render_tree(spec['tree'])
+        all_rendered.extend(rendered_blocks)
+        slug = spec['slug']
+        name = f'{slug}/index.html' if slug else 'index.html'
+        prefix = '../' if slug else ''
+        title = spec['seo_title'] or spec['title']
+        description = spec['seo_description'] or (
+            f'{spec["title"]} — сайт, собранный в AuraBuilder'
+        )
+        html_files[name] = _page_html(
             project.name,
             body,
             title,
-            f'{project.name} — сайт, собранный в AuraBuilder',
-            pwa=pwa,
+            description,
+            # Приложение устанавливается с главной: манифест и worker
+            # привязаны к её адресу, а на внутренних страницах они не
+            # нужны.
+            pwa=pwa and not slug,
+            prefix=prefix,
+            nav=nav_for(prefix, slug),
         )
-    }
+
+    sitemap_pages = [
+        f'{spec["slug"]}/' if spec['slug'] else '' for spec in specs
+    ]
+    rendered = all_rendered
 
     files: dict[str, FileContent] = {
         'assets/css/site.css': build_css(styles),
         'robots.txt': _robots_txt(base_url),
-        'sitemap.xml': _sitemap_xml(base_url, ['index.html']),
+        'sitemap.xml': _sitemap_xml(base_url, sitemap_pages),
         # Клиент и настройка кладутся всегда, а не только когда есть
         # блоки корзины: страница могла быть собрана без них, и
         # добавить блок после сборки — обычное дело.
@@ -526,6 +603,17 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
             'actions': logic['actions'],
             'requiresRuntime': logic['hasRuntimeNodes'],
         },
+        # Состав страниц: по манифесту видно, что именно уехало в архив,
+        # не распаковывая его.
+        'pages': [
+            {
+                'slug': spec['slug'],
+                'title': spec['title'],
+                'file': f'{spec["slug"]}/index.html' if spec['slug'] else 'index.html',
+                'blocks': len(spec['tree'].get('blocks') or []),
+            }
+            for spec in specs
+        ],
         # Контрольные суммы считаются ниже: к этому моменту ссылки на
         # медиатеку ещё не стали локальными.
         'files': {},
@@ -546,6 +634,16 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
     # раньше слияния, и ни одна картинка не переезжала в архив.
     files.update(html_files)
     media = collect_assets(project, files)
+    # Вложенные страницы лежат в <slug>/index.html, поэтому пути к
+    # общим ресурсам из них ведут на уровень выше. Правка делается
+    # после медиатеки: она переписывает ссылки на `assets/img/...`, и
+    # до неё префикс был бы затёрт.
+    for name, content in list(files.items()):
+        if name == 'index.html' or not name.endswith('.html') or not isinstance(content, str):
+            continue
+        files[name] = re.sub(
+            r'((?:src|href|poster)=")assets/', r'\1../assets/', content,
+        )
     manifest['assets'] = manifest_entry(media)
     # Ссылка на файл, которого в проекте уже нет, остаётся в HTML.
     # Это не ошибка сборки — сайт отдаётся, — но такая зависимость

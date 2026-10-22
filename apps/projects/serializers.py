@@ -6,11 +6,12 @@
 """
 
 import math
+import re
 from typing import Any
 
 from rest_framework import serializers
 
-from .models import Project, default_tree
+from .models import Page, Project, default_tree
 from .module_registry import MODULE_IDS, schema_for
 
 MAX_BLOCKS = 500
@@ -195,6 +196,85 @@ def validate_props(module_id: str, value: Any, prefix: str) -> str | None:
     return None
 
 
+#: Адрес страницы: строчная латиница, цифры и дефис. Кириллический
+#: заголовок транслитерируется при создании, но пришедший от клиента
+#: slug проверяется как есть — иначе в URL попали бы пробелы и «?».
+PAGE_SLUG_RE = re.compile(r'^[a-z0-9]+(?:-[a-z0-9]+)*$')
+
+#: Служебные адреса: они заняты платформой и файлами пакета.
+RESERVED_SLUGS = frozenset({
+    'api', 'admin', 'assets', 'static', 'media', 'build-manifest',
+    'robots', 'sitemap', 'index', 'service-worker',
+})
+
+
+class PageSerializer(serializers.ModelSerializer):
+    """Страница проекта: чтение и запись дерева, адреса и SEO-полей."""
+
+    seoTitle = serializers.CharField(
+        source='seo_title', max_length=200, required=False, allow_blank=True,
+    )
+    seoDescription = serializers.CharField(
+        source='seo_description', max_length=300, required=False, allow_blank=True,
+    )
+    updatedAt = serializers.DateTimeField(source='updated_at', read_only=True)
+    createdAt = serializers.DateTimeField(source='created_at', read_only=True)
+
+    class Meta:
+        model = Page
+        fields = [
+            'id', 'title', 'slug', 'tree', 'seoTitle', 'seoDescription',
+            'order', 'version', 'createdAt', 'updatedAt',
+        ]
+        read_only_fields = ['id', 'version', 'createdAt', 'updatedAt']
+        extra_kwargs = {
+            'title': {'required': False, 'allow_blank': False},
+            'slug': {'required': False},
+        }
+
+    def validate_title(self, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError('название не может быть пустым')
+        return value
+
+    def validate_slug(self, value: str) -> str:
+        value = value.strip().lower()
+        if not PAGE_SLUG_RE.match(value):
+            raise serializers.ValidationError(
+                'адрес: строчная латиница, цифры и дефис, например "about"'
+            )
+        if value in RESERVED_SLUGS:
+            raise serializers.ValidationError(f'адрес "{value}" занят платформой')
+        project = (
+            self.instance.project if self.instance is not None
+            else self.context.get('project')
+        )
+        if project is not None:
+            duplicates = Page.objects.filter(project=project, slug=value)
+            if self.instance is not None:
+                duplicates = duplicates.exclude(pk=self.instance.pk)
+            if duplicates.exists():
+                raise serializers.ValidationError('страница с таким адресом уже есть')
+        return value
+
+    def validate_tree(self, value: Any) -> Any:
+        error = validate_tree(value)
+        if error:
+            raise serializers.ValidationError(error)
+        return value
+
+
+class PageSummarySerializer(serializers.ModelSerializer):
+    """Строка списка страниц: без дерева, оно тяжёлое."""
+
+    updatedAt = serializers.DateTimeField(source='updated_at', read_only=True)
+
+    class Meta:
+        model = Page
+        fields = ['id', 'title', 'slug', 'order', 'version', 'updatedAt']
+
+
 class ProjectSerializer(serializers.ModelSerializer):
     """Чтение и запись проекта целиком.
 
@@ -205,14 +285,22 @@ class ProjectSerializer(serializers.ModelSerializer):
 
     createdAt = serializers.DateTimeField(source='created_at', read_only=True)
     updatedAt = serializers.DateTimeField(source='updated_at', read_only=True)
+    # Список страниц нужен редактору сразу: без него переключатель
+    # страниц делал бы второй запрос на каждое открытие проекта.
+    pages = serializers.SerializerMethodField()
 
     class Meta:
         model = Project
         # version обязателен в ответе: клиент предъявляет его при
         # следующем сохранении, и без него проверка конфликта (ТЗ п.3.2)
         # не работает.
-        fields = ['id', 'name', 'tree', 'version', 'createdAt', 'updatedAt']
+        fields = ['id', 'name', 'tree', 'version', 'pages', 'createdAt', 'updatedAt']
         read_only_fields = ['id', 'version', 'created_at', 'updated_at']
+
+    def get_pages(self, obj: Project) -> list[dict[str, Any]]:
+        return PageSummarySerializer(
+            obj.pages.all(), many=True,
+        ).data
 
     def validate_name(self, value: str) -> str:
         value = value.strip()

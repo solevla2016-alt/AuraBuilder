@@ -96,6 +96,76 @@
   display: flex;
 }
 
+/* Панель страниц: висит над холстом, поэтому не отнимает у него
+   высоту и не сдвигает блоки при появлении формы. */
+.editor__pages {
+  position: absolute;
+  z-index: var(--layer-drawer);
+  top: var(--space-md);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  max-width: calc(100% - 360px);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.editor__pages-label {
+  font-size: var(--text-sm);
+  color: var(--textSecondary);
+}
+
+.editor__pages-select,
+.editor__pages-input {
+  height: var(--min-target);
+  padding: 0 var(--space-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--appBg);
+  color: var(--textPrimary);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.editor__pages-select {
+  max-width: 220px;
+}
+
+.editor__pages-add {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.editor__pages-input {
+  width: 180px;
+}
+
+@media (max-width: 1100px) {
+  .editor__pages {
+    max-width: calc(100% - 300px);
+  }
+}
+
+@media (max-width: 780px) {
+  .editor__pages {
+    left: var(--space-md);
+    right: var(--space-md);
+    transform: none;
+    max-width: none;
+    flex-wrap: wrap;
+  }
+
+  .editor__pages-label {
+    display: none;
+  }
+}
+
 /* Отступ под панель свойств: холст центрируется, но не должен
    уезжать под панель. Правая палитра модулей наезжает поверх —
    она показывается по требованию и холст не сдвигает. */

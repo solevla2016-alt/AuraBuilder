@@ -18,6 +18,12 @@ urlpatterns = [
     # Импорт объявлен раньше <str:project_id>: иначе строка 'import'
     # разбиралась бы как идентификатор проекта.
     path('import/', project_config_import, name='project-config-import'),
+    path('<str:project_id>/pages/', views.page_list, name='project-pages'),
+    path(
+        '<str:project_id>/pages/<str:page_id>/',
+        views.page_detail,
+        name='project-page-detail',
+    ),
     path('<str:project_id>/members/', views.project_members, name='project-members'),
     path('<str:project_id>/audit/', views.audit_log, name='project-audit'),
     # Версии объявлены раньше деталей проекта: иначе строка «versions»

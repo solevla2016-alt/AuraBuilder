@@ -9,7 +9,7 @@
  * сейчас запросы идут без них, как и предполагает стенд.
  */
 
-import type { DocumentVersionRow, Project } from './project';
+import type { DocumentVersionRow, Project, ProjectPage } from './project';
 import { BASE, request, setTokens, getRefreshToken, clearTokens } from './apiClient';
 
 // Общий слой запросов живёт в apiClient.ts: узлы данных ходят в API
@@ -84,6 +84,40 @@ export const api = {
         tree,
         ...(expectedVersion === undefined ? {} : { expectedVersion }),
       }),
+    }),
+
+  /**
+   * Страницы проекта.
+   *
+   * Главная сюда не входит: её дерево приходит в getProject. Так
+   * старые проекты и клиенты продолжают работать без миграции данных.
+   */
+  createPage: (projectId: string, title: string, slug?: string) =>
+    request<ProjectPage>(`/projects/${projectId}/pages/`, {
+      method: 'POST',
+      body: JSON.stringify({ title, ...(slug ? { slug } : {}) }),
+    }),
+
+  getPage: (projectId: string, pageId: string) =>
+    request<ProjectPage>(`/projects/${projectId}/pages/${pageId}/`),
+
+  savePage: (
+    projectId: string,
+    pageId: string,
+    tree: unknown,
+    expectedVersion?: number,
+  ) =>
+    request<ProjectPage>(`/projects/${projectId}/pages/${pageId}/`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        tree,
+        ...(expectedVersion === undefined ? {} : { expectedVersion }),
+      }),
+    }),
+
+  deletePage: (projectId: string, pageId: string) =>
+    request<void>(`/projects/${projectId}/pages/${pageId}/`, {
+      method: 'DELETE',
     }),
 
   /** История версий документа. */

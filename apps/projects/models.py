@@ -106,6 +106,54 @@ class Project(models.Model):
         return self.name
 
 
+class Page(models.Model):
+    """Дополнительная страница проекта.
+
+    Главная страница остаётся в Project.tree: так уже сохранённые
+    проекты и клиенты продолжают работать без миграции данных. Здесь
+    лежат только остальные страницы, адрес каждой — /<slug>/.
+    """
+
+    id = models.UUIDField(primary_key=True, editable=False, default=uuid4)
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='pages',
+    )
+    title = models.CharField('название', max_length=200)
+    slug = models.SlugField('адрес', max_length=80)
+    tree = models.JSONField('дерево страницы', default=default_tree)
+    seo_title = models.CharField('SEO-заголовок', max_length=200, blank=True)
+    seo_description = models.CharField('SEO-описание', max_length=300, blank=True)
+    order = models.PositiveIntegerField('порядок', default=0)
+    version = models.PositiveIntegerField('версия', default=1)
+    created_at = models.DateTimeField('создана', auto_now_add=True)
+    updated_at = models.DateTimeField('изменена', auto_now=True)
+
+    class Meta:
+        verbose_name = 'страница'
+        verbose_name_plural = 'страницы'
+        ordering = ['order', 'created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['project', 'slug'],
+                name='unique_page_slug_per_project',
+            ),
+        ]
+
+    def clean(self) -> None:
+        super().clean()
+        modules = count_modules(self.tree)
+        limit = settings.LIMITS['MAX_MODULES_PER_PROJECT']
+        if modules > limit:
+            raise ValidationError({
+                'tree': LIMIT_ERROR.format(what='модулей', count=modules, limit=limit),
+            })
+
+    def __str__(self) -> str:
+        return f'{self.project_id}: /{self.slug}/'
+
+
 class DocumentVersion(models.Model):
     """Снимок дерева проекта (ТЗ п.3.2).
 
@@ -130,6 +178,9 @@ class DocumentVersion(models.Model):
     # успела уехать вперёд.
     number = models.PositiveIntegerField('номер')
     tree = models.JSONField('дерево')
+    # Дополнительные страницы на момент снимка. Пустой список у старых
+    # версий: до многостраничности страница была одна.
+    pages = models.JSONField('страницы', default=list, blank=True)
     label = models.CharField('подпись', max_length=200, blank=True)
     author = models.ForeignKey(
         'auth.User',

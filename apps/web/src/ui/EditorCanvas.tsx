@@ -13,10 +13,26 @@
  * работает клавиатура. z-index берётся из шкалы слоёв токенов.
  */
 
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from 'react';
 import { Icon, type IconName } from './icons';
 import { api, ApiError } from './api';
-import { defaultTree, newBlockId, validateTree, type Block, type PageTree, type Project } from './project';
+import {
+  defaultTree,
+  newBlockId,
+  validateTree,
+  type Block,
+  type PageSummary,
+  type PageTree,
+  type Project,
+} from './project';
 import { MODULE_CATEGORIES, MODULES, kindOf, propDefaults } from './moduleRegistry';
 import type { ModuleDef } from './moduleRegistry';
 import { ModulePalette } from './ModulePalette';
@@ -95,6 +111,16 @@ export function EditorCanvas({
   // заранее, пока база пуста, а без него сохранение уходит не туда.
   const [projectId, setProjectId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Дополнительные страницы. Главная не входит в список: её дерево
+  // приходит в project.tree, и activePageId === null означает именно её.
+  const [pages, setPages] = useState<PageSummary[]>(project.pages ?? []);
+  const [activePageId, setActivePageId] = useState<string | null>(null);
+  const [pageVersion, setPageVersion] = useState<number | undefined>(undefined);
+  const [pageBusy, setPageBusy] = useState(false);
+  const [addingPage, setAddingPage] = useState(false);
+  const [pageTitle, setPageTitle] = useState('');
+  const [confirmingPageDelete, setConfirmingPageDelete] = useState(false);
 
   /*
    * Библиотека компонентов (ТЗ п.3.1).
@@ -187,6 +213,11 @@ export function EditorCanvas({
     [tree.blocks, selectedId],
   );
 
+  const activePage = useMemo(
+    () => pages.find((p) => p.id === activePageId) ?? null,
+    [pages, activePageId],
+  );
+
   // Загрузка проекта при старте. При недоступном API остаётся дерево
   // по умолчанию и показывается причина: редактор должен открываться
   // и без бэкенда, иначе стенд 1С блокирует фронтенд-работу.
@@ -200,6 +231,7 @@ export function EditorCanvas({
         // Версия документа нужна для первого сохранения: без неё сервер
         // не сможет отличить правку этой вкладки от чужой.
         setDocumentVersion(p.version);
+        setPages(p.pages ?? []);
         // reset, а не commit: то, что пришло с сервера, не должно
         // попадать в историю и отменяться по Ctrl+Z.
         history.reset(p.tree);
@@ -401,25 +433,59 @@ export function EditorCanvas({
     // 409, если документ изменили с другой вкладки. Молча перезаписать
     // чужую работу нельзя, поэтому конфликт останавливает автосохранение
     // и показывается пользователю.
-    let saved;
     try {
-      saved = await api.saveProject(projectId, project.name, tree, documentVersion);
+      if (activePageId !== null) {
+        // Внутренняя страница живёт отдельно от главной и имеет свою
+        // версию: иначе правка «О нас» отвергалась бы из-за изменения
+        // главной в другой вкладке.
+        const savedPage = await api.savePage(
+          projectId,
+          activePageId,
+          tree,
+          pageVersion,
+        );
+        history.markSaved(savedPage.tree);
+        setPageVersion(savedPage.version);
+        // Версия проекта сдвинулась вместе со снимком: следующее
+        // сохранение главной должно предъявить её, а не старую.
+        setDocumentVersion(savedPage.projectVersion);
+        setPages((prev) =>
+          prev.map((p) =>
+            p.id === activePageId
+              ? {
+                  ...p,
+                  title: savedPage.title,
+                  slug: savedPage.slug,
+                  version: savedPage.version,
+                  updatedAt: savedPage.updatedAt,
+                }
+              : p,
+          ),
+        );
+      } else {
+        const saved = await api.saveProject(
+          projectId,
+          project.name,
+          tree,
+          documentVersion,
+        );
+        // Ответ сервера помечается сохранённым, но история не
+        // сбрасывается: сброс здесь означал бы, что Ctrl+Z перестаёт
+        // работать через секунду после каждой правки — отмена
+        // пропадала бы именно в тот момент, когда пользователь
+        // вернулся к работе.
+        history.markSaved(saved.tree);
+        setDocumentVersion(saved.version);
+      }
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         setConflict(
           'Документ изменил другой редактор. Автосохранение остановлено, ' +
             'чтобы не затереть его работу: откройте «Версии» и восстановите нужное состояние.',
         );
-        throw e;
       }
       throw e;
     }
-    // Ответ сервера помечается сохранённым, но история не сбрасывается:
-    // сброс здесь означал бы, что Ctrl+Z перестаёт работать через
-    // секунду после каждой правки — отмена пропадала бы именно в тот
-    // момент, когда пользователь вернулся к работе.
-    history.markSaved(saved.tree);
-    setDocumentVersion(saved.version);
     setConflict(null);
     setSaveError(null);
   }
@@ -492,13 +558,130 @@ export function EditorCanvas({
     return () => window.removeEventListener('keydown', onKey);
   }, [history, selectedId, duplicateSelected, deleteSelected, autosave]);
 
+  /**
+   * Переключение страниц.
+   *
+   * Перед сменой дерева несохранённая работа дописывается на сервер:
+   * иначе она молча уехала бы в новую страницу — холст-то общий.
+   * Если сохранить не удалось, переключение отменяется.
+   */
+  async function openPage(id: string | null) {
+    if (id === activePageId || pageBusy) return;
+    setPageBusy(true);
+    setSaveError(null);
+    try {
+      if (history.dirty) await handleSave();
+      if (id === null) {
+        const fresh = await api.getProject(project.id);
+        history.reset(fresh.tree);
+        setPages(fresh.pages ?? []);
+        setDocumentVersion(fresh.version);
+        setPageVersion(undefined);
+      } else {
+        const page = await api.getPage(project.id, id);
+        history.reset(page.tree);
+        setPageVersion(page.version);
+        setDocumentVersion(page.projectVersion);
+        setPages((prev) =>
+          prev.map((p) =>
+            p.id === id
+              ? {
+                  ...p,
+                  title: page.title,
+                  slug: page.slug,
+                  version: page.version,
+                  updatedAt: page.updatedAt,
+                }
+              : p,
+          ),
+        );
+      }
+      setActivePageId(id);
+      setSelectedId(null);
+      setConflict(null);
+      setConfirmingPageDelete(false);
+    } catch (e) {
+      setSaveError(
+        e instanceof Error ? e.message : 'Не удалось открыть страницу',
+      );
+    } finally {
+      setPageBusy(false);
+    }
+  }
+
+  async function createPage(event: FormEvent) {
+    event.preventDefault();
+    const title = pageTitle.trim();
+    if (!title || pageBusy) return;
+    setPageBusy(true);
+    setSaveError(null);
+    try {
+      if (history.dirty) await handleSave();
+      const created = await api.createPage(project.id, title);
+      setPages((prev) => [...prev, {
+        id: created.id,
+        title: created.title,
+        slug: created.slug,
+        order: created.order,
+        version: created.version,
+        updatedAt: created.updatedAt,
+      }]);
+      setActivePageId(created.id);
+      setPageVersion(created.version);
+      setDocumentVersion(created.projectVersion);
+      history.reset(created.tree);
+      setSelectedId(null);
+      setAddingPage(false);
+      setPageTitle('');
+      setConflict(null);
+    } catch (e) {
+      setSaveError(
+        e instanceof Error ? e.message : 'Не удалось создать страницу',
+      );
+    } finally {
+      setPageBusy(false);
+    }
+  }
+
+  async function removeCurrentPage() {
+    if (!activePageId || pageBusy) return;
+    // Удаление необратимо, поэтому первый клик только спрашивает.
+    if (!confirmingPageDelete) {
+      setConfirmingPageDelete(true);
+      return;
+    }
+    setPageBusy(true);
+    setSaveError(null);
+    try {
+      await api.deletePage(project.id, activePageId);
+      const fresh = await api.getProject(project.id);
+      history.reset(fresh.tree);
+      setPages(fresh.pages ?? []);
+      setDocumentVersion(fresh.version);
+      setActivePageId(null);
+      setPageVersion(undefined);
+      setSelectedId(null);
+      setConfirmingPageDelete(false);
+      setConflict(null);
+    } catch (e) {
+      setSaveError(
+        e instanceof Error ? e.message : 'Не удалось удалить страницу',
+      );
+    } finally {
+      setPageBusy(false);
+    }
+  }
+
   return (
     <div className="editor">
       <header className="top-bar" role="banner">
         <div className="top-bar__group">
           <span className="top-bar__brand">AuraBuilder</span>
           <span className="top-bar__sep" aria-hidden="true" />
-          <span className="top-bar__project">Интернет-магазин «Цветы»</span>
+          <span className="top-bar__project">
+            {project.name}
+            {activePage ? ` / ${activePage.title}` : ''}
+          </span>
         </div>
         <div className="top-bar__group">
           <button
@@ -679,6 +862,88 @@ export function EditorCanvas({
       ) : null}
 
       <div className="editor__body">
+        <div className="editor__pages" role="group" aria-label="Страницы сайта">
+          <label className="editor__pages-label" htmlFor="page-select">
+            Страница
+          </label>
+          <select
+            id="page-select"
+            className="editor__pages-select"
+            value={activePageId ?? ''}
+            disabled={loading || pageBusy}
+            onChange={(e) => void openPage(e.target.value || null)}
+          >
+            <option value="">{project.name} — главная</option>
+            {pages.map((page) => (
+              <option key={page.id} value={page.id}>
+                {page.title}
+              </option>
+            ))}
+          </select>
+
+          {addingPage ? (
+            <form className="editor__pages-add" onSubmit={(e) => void createPage(e)}>
+              <input
+                className="editor__pages-input"
+                aria-label="Название новой страницы"
+                placeholder="Например, О нас"
+                value={pageTitle}
+                maxLength={200}
+                autoFocus
+                disabled={pageBusy}
+                onChange={(e) => setPageTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setAddingPage(false);
+                    setPageTitle('');
+                  }
+                }}
+              />
+              <button
+                type="submit"
+                className="btn btn--primary"
+                disabled={pageBusy || !pageTitle.trim()}
+              >
+                Создать
+              </button>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => {
+                  setAddingPage(false);
+                  setPageTitle('');
+                }}
+              >
+                Отмена
+              </button>
+            </form>
+          ) : (
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setAddingPage(true)}
+              disabled={pageBusy}
+              title="Добавить страницу"
+            >
+              <Icon name="plus" size={14} />
+              <span>Страница</span>
+            </button>
+          )}
+
+          {activePageId ? (
+            <button
+              type="button"
+              className={confirmingPageDelete ? 'btn btn--danger' : 'btn btn--ghost'}
+              onClick={() => void removeCurrentPage()}
+              disabled={pageBusy}
+              title="Удалить текущую страницу"
+            >
+              <Icon name="close" size={14} />
+              <span>{confirmingPageDelete ? 'Точно удалить?' : 'Удалить'}</span>
+            </button>
+          ) : null}
+        </div>
+
         <main
           className="canvas"
           aria-label="Холст редактора"

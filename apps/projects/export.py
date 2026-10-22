@@ -1917,6 +1917,24 @@ body {{
   line-height: 1.5;
 }}
 
+.site-nav {{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--fill-section);
+}}
+
+.site-nav a {{
+  color: var(--text);
+  text-decoration: none;
+}}
+
+.site-nav a[aria-current="page"] {{
+  font-weight: 600;
+}}
+
 .section {{
   background: var(--fill-section);
   border-radius: var(--radius-section);

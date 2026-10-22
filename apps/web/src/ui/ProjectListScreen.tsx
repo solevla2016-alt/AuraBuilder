@@ -302,7 +302,7 @@ export function ProjectListScreen({
               Удалить проект?
             </h2>
             <p className="modal__text">
-              Проект «{pendingDelete.name}» и его страница будут удалены безвозвратно.
+              Проект «{pendingDelete.name}» и все его страницы будут удалены безвозвратно.
               Отменить это нельзя.
             </p>
             <div className="modal__actions">
