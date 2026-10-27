@@ -47,7 +47,11 @@ export type IconName =
   /** Возврат к списку проектов. */
   | 'back'
   /** Переход к опубликованной версии. */
-  | 'external';
+  | 'external'
+  /** Устройства предпросмотра: компьютер, планшет, телефон. */
+  | 'monitor'
+  | 'tablet'
+  | 'phone';
 
 const PATHS: Record<IconName, string> = {
   cursor: 'M5 3l14 8-6 1.5L10 19 5 3z',
@@ -71,6 +75,9 @@ const PATHS: Record<IconName, string> = {
   close: 'M6 6l12 12M18 6L6 18',
   back: 'M15 5l-7 7 7 7',
   external: 'M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5',
+  monitor: 'M4 5h16v11H4zM9 20h6m-3-4v4',
+  tablet: 'M6 3h12v18H6zM10 18h4',
+  phone: 'M8 3h8v18H8zM10 18h4',
   check: 'M5 12.5l4.5 4.5L19 7.5',
   plus: 'M12 5v14M5 12h14',
   minus: 'M5 12h14',

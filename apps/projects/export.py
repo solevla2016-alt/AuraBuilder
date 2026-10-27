@@ -545,9 +545,9 @@ def _render_table(block: dict) -> str:
     # место, и исчезновение таблицы оставляет дыру в вёрстке.
     if not lines:
         return (
-            '<section class="block block--table"><table>'
+            '<section class="block block--table"><div class="table-scroll"><table>'
             '<thead><tr><th scope="col"></th></tr></thead>'
-            '<tbody></tbody></table>'
+            '<tbody></tbody></table></div>'
             '<p class="data__empty">Таблица пуста.</p></section>'
         )
 
@@ -566,8 +566,8 @@ def _render_table(block: dict) -> str:
     head_block = f'<h2>{esc(heading)}</h2>' if heading else ''
     return (
         '<section class="block block--table">'
-        f'{head_block}<table><thead><tr>{head_html}</tr></thead>'
-        f'<tbody>{body}</tbody></table></section>'
+        f'{head_block}<div class="table-scroll"><table><thead><tr>{head_html}</tr></thead>'
+        f'<tbody>{body}</tbody></table></div></section>'
     )
 
 
@@ -883,10 +883,10 @@ def _render_compare(block: dict, records: list[dict] | None = None,
 
     return (
         '<section class="section section--compare">'
-        '<table class="compare"><thead><tr>'
+        '<div class="table-scroll"><table class="compare"><thead><tr>'
         f'{first_head}{head}{tail_head}'
         '</tr></thead>'
-        f'<tbody>{body}</tbody></table></section>'
+        f'<tbody>{body}</tbody></table></div></section>'
     )
 
 
@@ -1909,18 +1909,33 @@ def build_css(styles: dict[str, dict]) -> str:
 
 * {{ box-sizing: border-box; }}
 
+html {{ -webkit-text-size-adjust: 100%; }}
+
 body {{
   margin: 0;
   font-family: var(--font);
   color: var(--text);
   background: var(--fill-text);
   line-height: 1.5;
+  overflow-wrap: break-word;
+}}
+
+img, video, iframe {{ max-width: 100%; }}
+img, video {{ height: auto; }}
+
+/* Потоковая колонка: на широком экране текст не растягивается на
+   всю ширину монитора, на телефоне остаётся поля 12–16 px. */
+.page {{
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: clamp(16px, 3vw, 32px);
 }}
 
 .site-nav {{
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 12px 16px;
   padding: 12px 20px;
   border-bottom: 1px solid var(--border);
   background: var(--fill-section);
@@ -1979,9 +1994,15 @@ body {{
   margin: 0;
 }}
 
-@media (width <= 720px) {{
-  .gallery__grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+/* Широкие таблицы не ломают страницу: скролл живёт внутри блока,
+   а не растягивает весь документ по горизонтали. */
+.table-scroll {{
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }}
+.table-scroll table {{ min-width: 480px; }}
+.table-scroll .compare {{ min-width: 520px; }}
 
 .button {{
   display: inline-block;
@@ -2079,6 +2100,33 @@ body {{
    читалась как «здесь будет блок», а не как готовый пустой блок. */
 .section--needs-runtime {{ border: 1px dashed var(--border); }}
 .section--needs-runtime h2 {{ margin: 0 0 8px; font-size: 20px; }}
+
+/* Планшеты и телефоны. Сетки перестраиваются по фактической ширине,
+   отступы сжимаются, типографика остаётся читаемой. */
+@media (width <= 720px) {{
+  .page {{ padding: 16px; }}
+  .section {{
+    padding: min(var(--padding-section), 5vw);
+    margin-bottom: 16px;
+  }}
+  .section__title {{ font-size: clamp(20px, 5vw, 24px); }}
+  .banner {{ padding: clamp(18px, 5vw, 32px); }}
+  .banner h2 {{ font-size: clamp(22px, 6vw, 28px); }}
+  .stock__value {{ font-size: clamp(28px, 8vw, 40px); }}
+  .gallery__grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+}}
+
+@media (width <= 480px) {{
+  .page {{ padding: 12px 12px 28px; }}
+  .site-nav {{ gap: 10px 14px; padding: 10px 12px; font-size: 14px; }}
+  .cards, .split, .plans {{ grid-template-columns: 1fr; }}
+  .split {{ gap: 16px; }}
+  .gallery__grid {{ grid-template-columns: 1fr; }}
+  .button, .banner__action {{ width: 100%; text-align: center; }}
+  .form, .rt-form {{ max-width: 100%; }}
+  .rt-cart__row {{ flex-wrap: wrap; }}
+  .rt-search input {{ flex-basis: 100%; min-width: 0; }}
+}}
 
 @media (prefers-color-scheme: dark) {{
   :root {{

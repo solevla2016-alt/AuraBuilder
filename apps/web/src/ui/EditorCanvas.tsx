@@ -67,6 +67,14 @@ const TOOLS: Tool[] = [
   { id: 'flow', icon: 'flow', label: 'Логика', hint: 'Граф правил (F)' },
 ];
 
+type Viewport = 'desktop' | 'tablet' | 'mobile';
+
+const DEVICES: { id: Viewport; icon: IconName; label: string }[] = [
+  { id: 'desktop', icon: 'monitor', label: 'Компьютер' },
+  { id: 'tablet', icon: 'tablet', label: 'Планшет' },
+  { id: 'mobile', icon: 'phone', label: 'Телефон' },
+];
+
 /* ------------------------------------------------------------------ */
 /*  Состояние сохранения                                               */
 /* ------------------------------------------------------------------ */
@@ -104,6 +112,9 @@ export function EditorCanvas({
   onSignOut: () => void;
 }) {
   const [tool, setTool] = useState('select');
+  // Предпросмотр не меняет дерево: на планшете и телефоне блоки
+  // показываются потоком, а редактирование остаётся на компьютере.
+  const [viewport, setViewport] = useState<Viewport>('desktop');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -820,6 +831,7 @@ export function EditorCanvas({
             onClick={() => void autosave.saveNow()}
             disabled={autosave.state === 'saving'}
             title="Сохранить сейчас (Ctrl+S)"
+            aria-label="Сохранить сейчас"
           >
             <Icon name="download" size={16} />
             Сохранить
@@ -838,7 +850,13 @@ export function EditorCanvas({
             <Icon name="download" size={16} />
             Выгрузить
           </a>
-          <button type="button" className="btn btn--primary">
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={onOpenPublish}
+            title="Публикация и экспорт"
+            aria-label="Публикация и экспорт"
+          >
             <Icon name="rocket" />
             Опубликовать
           </button>
@@ -942,6 +960,23 @@ export function EditorCanvas({
               <span>{confirmingPageDelete ? 'Точно удалить?' : 'Удалить'}</span>
             </button>
           ) : null}
+
+          <span className="editor__pages-sep" aria-hidden="true" />
+          <div className="device-switch" role="group" aria-label="Предпросмотр устройства">
+            {DEVICES.map((device) => (
+              <button
+                key={device.id}
+                type="button"
+                className={`device-switch__btn ${viewport === device.id ? 'is-active' : ''}`}
+                aria-pressed={viewport === device.id}
+                onClick={() => setViewport(device.id)}
+                title={device.label}
+                aria-label={device.label}
+              >
+                <Icon name={device.icon} size={18} />
+              </button>
+            ))}
+          </div>
         </div>
 
         <main
@@ -952,6 +987,7 @@ export function EditorCanvas({
           // отрисовки (tools/screenshot-editor.mjs), которая не может
           // заглянуть внутрь Konva.
           data-blocks={tree.blocks.length}
+          data-viewport={viewport}
           data-selected={selectedId ?? ''}
           // Идентификатор проекта в разметке: без него проверка
           // сохранённых стилей гадала бы, какой из проектов открыт,
@@ -961,6 +997,7 @@ export function EditorCanvas({
           <Suspense fallback={<div className="canvas__loading" role="status">Загрузка холста…</div>}>
             <Canvas
               blocks={tree.blocks}
+              viewport={viewport}
               records={records}
               styles={styles}
               selectedId={selectedId}

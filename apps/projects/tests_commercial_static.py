@@ -137,6 +137,13 @@ class CompareTests(SimpleTestCase):
     def test_empty_compare_says_so(self):
         self.assertIn('section--compare', html_for('shop.compare', {}))
 
+    def test_compare_scrolls_on_phone(self):
+        """Широкая таблица сравнения не растягивает документ."""
+        html = html_for('shop.compare', {
+            'titleField': 'name', 'fields': 'cost\nweight',
+        }, self.ROWS)
+        self.assertIn('<div class="table-scroll">', html)
+
 
 class ReviewsTests(SimpleTestCase):
     ROWS = [

@@ -25,8 +25,17 @@ import { modulePreview } from './moduleViews';
 import { useCanvasTokens } from './useCanvasTokens';
 import { resolveStyle, type ComponentStyle, type ResolvedStyle } from './components';
 
+/** Устройство предпросмотра. Меняет только отрисовку, не дерево блоков. */
+export type CanvasViewport = 'desktop' | 'tablet' | 'mobile';
+
 export interface CanvasProps {
   blocks: Block[];
+  /**
+   * Планшет и телефон показываются потоком: блоки идут сверху вниз и
+   * занимают ширину экрана. Экспорт устроен так же, а координаты
+   * холста нужны только для свободного редактирования.
+   */
+  viewport?: CanvasViewport;
   /**
    * Записи источников данных по id источника. Холст рисует их вместо
    * пустого каркаса: блок коллекции без записей выглядит поломкой,
@@ -51,8 +60,18 @@ const PAGE_WIDTH = 720;
 const PAD_FOR_LABEL = 14;
 const PAGE_HEIGHT = 900;
 
+const VIEWPORTS: Record<
+  CanvasViewport,
+  { width: number; margin: number; gap: number }
+> = {
+  desktop: { width: PAGE_WIDTH, margin: 0, gap: 0 },
+  tablet: { width: 768, margin: 24, gap: 16 },
+  mobile: { width: 390, margin: 16, gap: 12 },
+};
+
 export default function Canvas({
   blocks,
+  viewport = 'desktop',
   records = {},
   styles = null,
   selectedId,
@@ -62,8 +81,64 @@ export default function Canvas({
 }: CanvasProps) {
   const stageRef = useRef<Konva.Stage>(null);
   const trRef = useRef<Konva.Transformer>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
+  const [fit, setFit] = useState(1);
   const tokens = useCanvasTokens();
+
+  const frame = VIEWPORTS[viewport];
+  const preview = viewport !== 'desktop';
+  const canvasWidth = frame.width;
+
+  /*
+   * В режимах планшета и телефона блоки переставляются в поток.
+   * Координаты и ширины дерева не меняются: это только предпросмотр,
+   * поэтому перетаскивание и трансформер здесь выключены.
+   */
+  const displayBlocks = useMemo(() => {
+    if (!preview) return blocks;
+    let cursor = frame.margin;
+    return [...blocks]
+      .sort((a, b) => a.y - b.y || a.x - b.x)
+      .map((block) => {
+        const next = {
+          ...block,
+          x: frame.margin,
+          y: cursor,
+          width: canvasWidth - frame.margin * 2,
+        };
+        cursor += block.height + frame.gap;
+        return next;
+      });
+  }, [blocks, canvasWidth, frame, preview]);
+
+  const contentHeight = displayBlocks.reduce(
+    (max, block) => Math.max(max, block.y + block.height),
+    0,
+  );
+  const pageHeight = Math.max(
+    PAGE_HEIGHT,
+    contentHeight + (preview ? frame.margin : 40),
+  );
+
+  // Холст вписывается в доступную ширину. На узком окне редактора
+  // страница уменьшается целиком, а не уезжает под панель свойств.
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const measure = () => {
+      const available = el.clientWidth || canvasWidth;
+      setFit(Math.min(1, available / canvasWidth));
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure);
+      return () => window.removeEventListener('resize', measure);
+    }
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [canvasWidth]);
 
   /*
    * Закладка блока и содержимое модуля.
@@ -103,102 +178,110 @@ export default function Canvas({
     const node = selectedId ? stage.findOne(`#${selectedId}`) : null;
     tr.nodes(node ? [node] : []);
     tr.getLayer()?.batchDraw();
-  }, [selectedId, ready, blocks]);
+  }, [selectedId, ready, blocks, viewport]);
 
   const clearSelection = (e: Konva.KonvaEventObject<Event>) => {
     if (e.target === e.target.getStage()) onSelect(null);
   };
 
   return (
-    <Stage
-      ref={stageRef}
-      width={PAGE_WIDTH}
-      height={PAGE_HEIGHT}
-      onClick={clearSelection}
-      onTap={clearSelection}
+    <div
+      ref={wrapRef}
+      className="canvas__stage"
+      data-viewport={viewport}
     >
-      <Layer>
-        {/* Фон страницы пользователя — нейтральный, чтобы не тинтить дизайн */}
-        <Rect
-          x={0}
-          y={0}
-          width={PAGE_WIDTH}
-          height={PAGE_HEIGHT}
-          fill={tokens.canvas}
-          cornerRadius={4}
-          shadowColor="rgba(15,16,18,0.12)"
-          shadowBlur={24}
-          shadowOpacity={0.5}
-          shadowOffsetY={4}
-        />
+      <Stage
+        ref={stageRef}
+        width={Math.round(canvasWidth * fit)}
+        height={Math.round(pageHeight * fit)}
+        onClick={clearSelection}
+        onTap={clearSelection}
+      >
+        <Layer scaleX={fit} scaleY={fit}>
+          {/* Фон страницы пользователя — нейтральный, чтобы не тинтить дизайн */}
+          <Rect
+            x={0}
+            y={0}
+            width={canvasWidth}
+            height={pageHeight}
+            fill={tokens.canvas}
+            cornerRadius={preview ? 18 : 4}
+            shadowColor="rgba(15,16,18,0.12)"
+            shadowBlur={24}
+            shadowOpacity={0.5}
+            shadowOffsetY={4}
+          />
 
-        {blocks.map((b) => {
-          const style = styleByKind[kindOf(b.module)];
-          const isSelected = selectedId === b.id;
-          return (
-            <Rect
-              key={b.id}
-              id={b.id}
-              x={b.x}
-              y={b.y}
-              width={b.width}
-              height={b.height}
-              fill={style.fill}
-              stroke={isSelected ? tokens.selectionBorder : tokens.border}
-              // Выделение всегда в 2 пикселя: иначе на блоке с нулевой
-              // рамкой его не было бы видно совсем.
-              strokeWidth={isSelected ? 2 : style.border}
-              cornerRadius={style.radius}
-              draggable={tool === 'select'}
-              onClick={() => onSelect(b.id === selectedId ? null : b.id)}
-              onTap={() => onSelect(b.id === selectedId ? null : b.id)}
-              onDragEnd={(e) => onMove(b.id, e.target.x(), e.target.y())}
+          {displayBlocks.map((b) => {
+            const style = styleByKind[kindOf(b.module)];
+            const isSelected = selectedId === b.id;
+            return (
+              <Rect
+                key={b.id}
+                id={b.id}
+                x={b.x}
+                y={b.y}
+                width={b.width}
+                height={b.height}
+                fill={style.fill}
+                stroke={isSelected ? tokens.selectionBorder : tokens.border}
+                // Выделение всегда в 2 пикселя: иначе на блоке с нулевой
+                // рамкой его не было бы видно совсем.
+                strokeWidth={isSelected ? 2 : style.border}
+                cornerRadius={preview ? Math.min(style.radius, 12) : style.radius}
+                draggable={!preview && tool === 'select'}
+                onClick={() => onSelect(b.id === selectedId ? null : b.id)}
+                onTap={() => onSelect(b.id === selectedId ? null : b.id)}
+                onDragEnd={(e) => onMove(b.id, e.target.x(), e.target.y())}
+              />
+            );
+          })}
+
+          {/* Содержимое модулей. Отрисовывается после прямоугольников и
+              с listening=false: кликом по содержимому должен выбираться
+              блок целиком, а не отдельная буква внутри заголовка. */}
+          {displayBlocks.map((b) =>
+            modulePreview(b, tokens, records[b.props?.source as string] ?? [], styleByKind),
+          )}
+
+          {/* Идентификатор модуля остаётся на холсте только у выбранного
+              блока: постоянная подпись превращала бы редактор в простыню
+              технических подписей. */}
+          {selectedId === null
+            ? null
+            : displayBlocks
+                .filter((b) => b.id === selectedId)
+                .map((b) => (
+                  <Text
+                    key={`${b.id}-module`}
+                    x={b.x + PAD_FOR_LABEL}
+                    y={b.y + b.height - 20}
+                    text={b.module}
+                    fontSize={11}
+                    fontFamily="'JetBrains Mono', monospace"
+                    fill={tokens.textDisabled}
+                    listening={false}
+                  />
+                ))}
+
+          {preview ? null : (
+            <Transformer
+              ref={trRef}
+              rotateEnabled={false}
+              borderStroke={tokens.selectionBorder}
+              anchorFill={tokens.guideLine}
+              anchorStroke={tokens.selectionBorder}
+              anchorSize={10}
+              anchorCornerRadius={2}
+              padding={2}
+              enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right']}
+              boundBoxFunc={(oldBox, newBox) =>
+                newBox.width < 40 || newBox.height < 24 ? oldBox : newBox
+              }
             />
-          );
-        })}
-
-        {/* Содержимое модулей. Отрисовывается после прямоугольников и
-            с listening=false: кликом по содержимому должен выбираться
-            блок целиком, а не отдельная буква внутри заголовка. */}
-        {blocks.map((b) =>
-          modulePreview(b, tokens, records[b.props?.source as string] ?? [], styleByKind),
-        )}
-
-        {/* Идентификатор модуля остаётся на холсте только у выбранного
-            блока: постоянная подпись превращала бы редактор в простыню
-            технических подписей. */}
-        {selectedId === null
-          ? null
-          : blocks
-              .filter((b) => b.id === selectedId)
-              .map((b) => (
-                <Text
-                  key={`${b.id}-module`}
-                  x={b.x + PAD_FOR_LABEL}
-                  y={b.y + b.height - 20}
-                  text={b.module}
-                  fontSize={11}
-                  fontFamily="'JetBrains Mono', monospace"
-                  fill={tokens.textDisabled}
-                  listening={false}
-                />
-              ))}
-
-        <Transformer
-          ref={trRef}
-          rotateEnabled={false}
-          borderStroke={tokens.selectionBorder}
-          anchorFill={tokens.guideLine}
-          anchorStroke={tokens.selectionBorder}
-          anchorSize={10}
-          anchorCornerRadius={2}
-          padding={2}
-          enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right']}
-          boundBoxFunc={(oldBox, newBox) =>
-            newBox.width < 40 || newBox.height < 24 ? oldBox : newBox
-          }
-        />
-      </Layer>
-    </Stage>
+          )}
+        </Layer>
+      </Stage>
+    </div>
   );
 }

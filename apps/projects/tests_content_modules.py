@@ -75,6 +75,11 @@ class TableTests(SimpleTestCase):
         html = html_of('text.table', {'rows': 'A;B\n1;2\n3;4'})
         self.assertEqual(html.count('<tr>'), 3)
 
+    def test_wide_table_scrolls_inside_block(self):
+        """На телефоне таблица скроллится сама, а не ломает страницу."""
+        html = html_of('text.table', {'rows': 'A;B\n1;2'})
+        self.assertIn('<div class="table-scroll">', html)
+
 
 class SocialTests(SimpleTestCase):
     def test_links_are_rendered(self):

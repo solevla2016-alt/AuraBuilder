@@ -128,7 +128,7 @@ python -m venv .venv
 copy apps\.env.example apps\.env      # Windows; Linux: cp
 cd apps
 ..\.venv\Scripts\python manage.py migrate
-..\.venv\Scripts\python manage.py runserver 8000
+..\.venv\Scripts\python manage.py runserver 8001
 ```
 
 Базу создаёт администратор, приложение только работает со схемой:

@@ -574,6 +574,33 @@ class CatalogItemIdTests(ExportTestCase):
         )
 
 
+class ResponsiveStylesTests(ExportTestCase):
+    """Адаптивность экспорта: брейкпоинты, поток и скролл таблиц."""
+
+    def test_stylesheet_has_mobile_breakpoints(self):
+        files = self.build(self.snapshot())['files']
+        css = files['assets/css/site.css']
+        self.assertIn('@media (width <= 720px)', css)
+        self.assertIn('@media (width <= 480px)', css)
+        self.assertIn('.page {', css)
+        self.assertIn('grid-template-columns: 1fr', css)
+        self.assertIn('.table-scroll', css)
+
+    def test_exported_table_is_wrapped_for_scroll(self):
+        tree = {
+            'width': 720,
+            'blocks': [
+                {
+                    'id': 'b1', 'module': 'text.table', 'x': 0, 'y': 0,
+                    'width': 640, 'height': 200, 'label': 'Таблица',
+                    'props': {'rows': 'Услуга;Цена\nАудит;30000'},
+                },
+            ],
+        }
+        files = self.build(self.snapshot(tree=tree))['files']
+        self.assertIn('<div class="table-scroll">', files['index.html'])
+
+
 class HelperTests(APITestCase):
     """Мелочи, на которых держится остальное."""
 
