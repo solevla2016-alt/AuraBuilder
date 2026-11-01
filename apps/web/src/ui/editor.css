@@ -107,12 +107,24 @@
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  max-width: calc(100% - 360px);
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  max-width: min(calc(100% - 420px), 720px);
   padding: var(--space-xs) var(--space-sm);
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
+}
+
+.editor__pages-label {
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.editor__pages-select {
+  min-width: 140px;
+  max-width: 260px;
 }
 
 .editor__pages-label {

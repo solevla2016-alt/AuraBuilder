@@ -242,7 +242,7 @@ def _render_section(block: dict, records: list[dict] | None = None) -> str:
     body = block.get('content')
     if isinstance(body, str) and body.strip():
         parts.append(f'<div class="section__body">{esc(body)}</div>')
-    button = _text(block, 'buttonLabel')
+    button = _own(block, 'buttonLabel', '')
     link = _text(block, 'buttonLink', '#')
     if button:
         parts.append(
@@ -281,7 +281,7 @@ def _render_split(block: dict, records: list[dict] | None = None) -> str:
 
 def _render_cta(block: dict, records: list[dict] | None = None) -> str:
     heading = _text(block, 'heading') or _text(block, 'text') or 'Готовы начать?'
-    button = _text(block, 'buttonLabel', 'Начать')
+    button = _own(block, 'buttonLabel', 'Начать')
     link = _text(block, 'buttonLink', '#')
     return (
         '<section class="section section--cta">'
@@ -1570,14 +1570,35 @@ def _render_form(block: dict, records: list[dict] | None = None) -> str:
     честной подписью — иначе посетитель отправил бы данные в никуда.
     """
 
-    title = _text(block, 'title', _text(block, 'label', 'Форма'))
-    action = _text(block, 'action', '')
+    title = _text(block, 'title') or _text(block, 'heading') or _text(block, 'label', 'Форма')
+    action = _own(block, 'action', '')
     method = _text(block, 'method', 'post').lower()
     method = method if method in ('post', 'get') else 'post'
     fields = []
     raw = _props(block).get('fields')
+    if isinstance(raw, str) and raw.strip():
+        # Панель свойств хранит поля одной строкой «Имя;Телефон;Комментарий».
+        # Разбираем её в те же поля, что и список объектов: иначе форма из
+        # редактора выгружалась бы пустой заглушкой.
+        raw = [
+            part.strip()
+            for chunk in raw.splitlines()
+            for part in chunk.split(';')
+            if part.strip()
+        ]
     if isinstance(raw, list):
-        for item in raw:
+        for index, item in enumerate(raw):
+            if isinstance(item, str):
+                label = item
+                item = {
+                    'name': f'field{index + 1}',
+                    'label': label,
+                    'type': 'textarea' if any(
+                        word in label.lower()
+                        for word in ('коммент', 'задач', 'сообщен', 'описан', 'сделать')
+                    ) else 'text',
+                    'required': index < 2,
+                }
             if not isinstance(item, dict):
                 continue
             name = str(item.get('name') or item.get('label') or 'field')
@@ -1610,10 +1631,14 @@ def _render_form(block: dict, records: list[dict] | None = None) -> str:
             + ''.join(f'<li class="cart__item">{esc(row)}</li>' for row in records)
             + '</ul>'
         )
-    body = fields or '<p class="field">Поля появятся после настройки модуля.</p>'
+    body = (
+        ''.join(fields) if isinstance(fields, list) else fields
+    ) or '<p class="field">Поля появятся после настройки модуля.</p>'
+    submit = _text(block, 'submitText', 'Отправить')
     return (
         f'<section class="section section--form"><h2>{esc(title)}</h2>'
-        f'<form method="{method}" action="{esc(action)}" class="form">{body}</form>'
+        f'<form method="{method}" action="{esc(action)}" class="form">{body}'
+        f'<button type="submit">{esc(submit)}</button></form>'
         '</section>'
     )
 
