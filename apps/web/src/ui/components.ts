@@ -127,9 +127,14 @@ export const componentsApi = {
     request<void>(`/projects/${projectId}/component-styles/${kind}/`, { method: 'DELETE' }),
 };
 
+/** Свой цвет в формате #RRGGBB: сервер принимает только его. */
+export function isHexColor(value: string): boolean {
+  return /^#[0-9a-f]{6}$/i.test(value);
+}
+
 /** Цвет для Konva: токен палитры читается через CSS-переменную. */
 export function colorValue(token: string, fallback: string): string {
-  if (/^#[0-9a-f]{6}$/i.test(token)) return token;
+  if (isHexColor(token)) return token;
   const value = getComputedStyle(document.documentElement)
     .getPropertyValue(`--${token}`)
     .trim();
@@ -225,12 +230,28 @@ export function pairContrast(background: string, text: string): number {
  */
 export function worstPairContrast(background: string, text: string): number {
   const value = (token: string, theme: Record<string, string>, fallback: string) =>
-    /^#[0-9a-f]{6}$/i.test(token) ? token : (theme[token] ?? fallback);
+    isHexColor(token) ? token : (theme[token] ?? fallback);
   const ratios = Object.values(palette).map((theme) =>
     contrastRatio(value(text, theme, '#1A1C1E'), value(background, theme, '#FFFFFF')),
   );
   // Ноль, если токен неизвестен палитре: неизвестное не считаем прочитанным.
   return ratios.some((r) => r === 0) ? 0 : Math.min(...ratios);
+}
+
+/* --- Подбор читаемого текста --- */
+
+/**
+ * Самый контрастный из двух полюсов текста для произвольного фона.
+ *
+ * Белый и почти чёрный — крайние точки шкалы яркости, и для любого фона
+ * один из них даёт не меньше 4.58:1. Это выше порога WCAG AA (4.5:1),
+ * поэтому «фирменный акцент» всегда получает читаемую подпись, а не
+ * предупреждение о контрасте.
+ */
+export function readableText(background: string): string {
+  return contrastRatio('#FFFFFF', background) >= contrastRatio('#111827', background)
+    ? '#FFFFFF'
+    : '#111827';
 }
 
 export { MIN_CONTRAST };

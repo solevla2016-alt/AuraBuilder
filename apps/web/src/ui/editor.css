@@ -611,6 +611,14 @@
   color: var(--textSecondary);
 }
 
+/* Подсказка под полем. Без неё текст подсказки наследовал размер абзаца
+   и выглядел как ещё одно поле, а не как пояснение мелким шрифтом. */
+.prop__hint {
+  font-size: var(--text-xs);
+  color: var(--textSecondary);
+  line-height: 1.45;
+}
+
 .prop__input,
 .props__textarea {
   width: 100%;
@@ -1771,6 +1779,85 @@ select.prop__input option {
 .comps__fields {
   display: grid;
   gap: var(--space-md);
+}
+
+/* Свой цвет: системная палитра и поле #RRGGBB в одной строке.
+   Без строки значение нельзя скопировать, без образца — увидеть. */
+.comps__color-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  align-items: center;
+  margin-top: var(--space-xs);
+}
+
+.comps__color {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 36px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--canvas);
+  cursor: pointer;
+}
+
+.comps__hex {
+  flex: 1 1 96px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  text-transform: uppercase;
+}
+
+.comps__auto {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.comps__accent {
+  display: grid;
+  gap: var(--space-sm);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border);
+}
+
+.comps__accent-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.comps__accent-value {
+  font-size: var(--text-xs);
+  color: var(--textSecondary);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+.comps__swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+/* Кружок, а не квадрат: образцы стоят рядом с рамками и полями и
+   должны читаться как палитра, а не как ещё одна кнопка. */
+.comps__swatch-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.comps__swatch-btn:hover {
+  border-color: var(--borderStrong);
+}
+
+.comps__swatch-btn.is-active {
+  outline: 2px solid var(--accentSurface);
+  outline-offset: 2px;
+  border-color: transparent;
 }
 
 @media (width <= 720px) {
