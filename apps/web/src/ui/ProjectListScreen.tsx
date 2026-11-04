@@ -24,6 +24,7 @@ import { ApiError, api } from './api';
 import type { UserProfile } from './api';
 import type { Project } from './project';
 import { Icon } from './icons';
+import { StartPage } from './StartPage';
 
 const ROLE_LABELS: Record<string, string> = {
   owner: 'Владелец',
@@ -136,55 +137,112 @@ export function ProjectListScreen({
     }
   }
 
+  /**
+   * Первый шаг со стартовой страницы: открыть поле имени и показать его.
+   * Без прокрутки кнопка в герое визуально ничего не меняла бы — форма
+   * появляется ниже, за пределами первого экрана.
+   */
+  function startProject() {
+    setCreating(true);
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.requestAnimationFrame(() => {
+      document.getElementById('projects')?.scrollIntoView({
+        behavior: reduced ? 'auto' : 'smooth',
+        block: 'start',
+      });
+    });
+  }
+
   return (
     <main className="dash">
       <header className="dash__top">
         <div className="dash__brand">
           <span className="dash__mark" aria-hidden="true" />
           <div>
-            <h1 className="dash__title">Проекты</h1>
+            <span className="dash__title">AuraBuilder</span>
             <p className="dash__user">{user.email || user.username}</p>
           </div>
         </div>
-        <button type="button" className="btn btn--ghost" onClick={onSignOut}>
-          Выйти
-        </button>
+        <nav className="dash__nav" aria-label="Разделы кабинета">
+          <a className="btn btn--ghost" href="#features">
+            Возможности
+          </a>
+          <a className="btn btn--ghost" href="#projects">
+            Мои проекты
+          </a>
+          <button type="button" className="btn btn--ghost" onClick={onSignOut}>
+            Выйти
+          </button>
+        </nav>
       </header>
 
-      <section className="dash__toolbar">
-        {creating ? (
-          <div className="dash__create">
-            <input
-              className="dash__input"
-              placeholder="Название проекта"
-              value={newName}
-              maxLength={200}
-              autoFocus
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void create();
-                if (e.key === 'Escape') setCreating(false);
-              }}
-            />
-            <button
-              type="button"
-              className="btn btn--primary"
-              disabled={busy || !newName.trim()}
-              onClick={() => void create()}
-            >
-              Создать
-            </button>
-            <button type="button" className="btn btn--ghost" onClick={() => setCreating(false)}>
-              Отмена
-            </button>
+      <StartPage projectCount={projects?.length ?? null} onCreate={startProject} />
+
+      <section
+        className="dash__projects"
+        id="projects"
+        aria-labelledby="projects-title"
+      >
+        <header className="dash__section-head">
+          <div>
+            <h2 id="projects-title">Мои проекты</h2>
+            <p>
+              {projects === null
+                ? 'Загружаем проекты…'
+                : projects.length === 0
+                  ? 'Пока пусто — создайте первый проект.'
+                  : `${projects.length} ${plural(
+                      projects.length,
+                      'проект',
+                      'проекта',
+                      'проектов',
+                    )} · выберите карточку, чтобы открыть холст`}
+            </p>
           </div>
-        ) : (
-          <button type="button" className="btn btn--primary" onClick={() => setCreating(true)}>
-            <Icon name="plus" />
-            <span>Новый проект</span>
-          </button>
-        )}
-      </section>
+
+          <div className="dash__toolbar">
+            {creating ? (
+              <div className="dash__create">
+                <input
+                  className="dash__input"
+                  placeholder="Название проекта"
+                  value={newName}
+                  maxLength={200}
+                  autoFocus
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void create();
+                    if (e.key === 'Escape') setCreating(false);
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  disabled={busy || !newName.trim()}
+                  onClick={() => void create()}
+                >
+                  Создать
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => setCreating(false)}
+                >
+                  Отмена
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => setCreating(true)}
+              >
+                <Icon name="plus" />
+                <span>Новый проект</span>
+              </button>
+            )}
+          </div>
+        </header>
 
       {error ? (
         <p className="dash__error" role="alert">
@@ -294,6 +352,7 @@ export function ProjectListScreen({
           ))}
         </ul>
       )}
+      </section>
 
       {pendingDelete ? (
         <div className="modal" role="dialog" aria-modal="true" aria-labelledby="del-title">
@@ -343,4 +402,13 @@ function formatDate(value: string | undefined): string {
   return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}, ${pad(
     date.getHours(),
   )}:${pad(date.getMinutes())}`;
+}
+
+/** Русское склонение: 1 проект, 2 проекта, 5 проектов. */
+function plural(n: number, one: string, few: string, many: string): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
+  return many;
 }

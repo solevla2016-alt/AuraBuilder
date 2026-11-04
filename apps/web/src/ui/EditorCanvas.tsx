@@ -19,8 +19,10 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
+  type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { Icon, type IconName } from './icons';
 import { api, ApiError } from './api';
@@ -74,6 +76,75 @@ const DEVICES: { id: Viewport; icon: IconName; label: string }[] = [
   { id: 'tablet', icon: 'tablet', label: 'Планшет' },
   { id: 'mobile', icon: 'phone', label: 'Телефон' },
 ];
+
+/* ------------------------------------------------------------------ */
+/*  Слои страницы                                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Дерево блоков в порядке страницы.
+ *
+ * Отдельная панель, а не выпадающий список: на длинной странице нужно
+ * видеть соседей выбранного блока. Порядок — сверху вниз, как на холсте,
+ * а не порядок в массиве дерева.
+ */
+function LayersPanel({
+  blocks,
+  selectedId,
+  onSelect,
+}: {
+  blocks: Block[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  const ordered = useMemo(
+    () => [...blocks].sort((a, b) => a.y - b.y || a.x - b.x),
+    [blocks],
+  );
+
+  return (
+    <div className="layers">
+      <div className="layers__head">
+        <span className="layers__title">Слои страницы</span>
+        <span className="layers__count">{blocks.length}</span>
+      </div>
+
+      {ordered.length === 0 ? (
+        <p className="layers__empty">На странице пока нет блоков</p>
+      ) : (
+        <ul className="layers__list" aria-label="Блоки страницы">
+          {ordered.map((block) => {
+            const active = block.id === selectedId;
+            return (
+              <li key={block.id}>
+                <button
+                  type="button"
+                  className={`layers__item ${active ? 'is-active' : ''}`}
+                  aria-current={active ? 'true' : undefined}
+                  onClick={() => onSelect(block.id)}
+                  title={block.module}
+                >
+                  <span
+                    className={`layers__kind layers__kind--${kindOf(block.module)}`}
+                    aria-hidden="true"
+                  />
+                  <span className="layers__text">
+                    <b>{block.label || block.module}</b>
+                    <code>{block.module}</code>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <p className="layers__hint">
+        Выберите строку, чтобы подсветить блок на холсте.
+      </p>
+    </div>
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /*  Состояние сохранения                                               */
@@ -199,6 +270,98 @@ export function EditorCanvas({
   const [modules, setModules] = useState<ModuleDef[]>(() => MODULES);
   const [modulesLoading, setModulesLoading] = useState(false);
   const [category, setCategory] = useState<string | null>(null);
+
+  /*
+   * Активация инструмента.
+   *
+   * «Данные» и «Логика» — не режимы холста, а отдельные экраны: они
+   * открываются сразу. «Текст» и «Медиа» показывают ту же библиотеку
+   * модулей, но только свои модули (text.* и media.*).
+   */
+  const activateTool = useCallback(
+    (id: string) => {
+      if (id === 'data') {
+        onOpenData();
+        return;
+      }
+      if (id === 'flow') {
+        onOpenLogic();
+        return;
+      }
+      if (id === 'text' || id === 'image') {
+        // Фильтр по категории и префикс id складываются: старый выбор
+        // «Структурные секции» скрыл бы все текстовые модули.
+        setCategory(null);
+      }
+      setTool(id);
+    },
+    [onOpenData, onOpenLogic],
+  );
+
+  /*
+   * Панорамирование холста инструментом «Перемещение».
+   *
+   * Двигаем scrollLeft/scrollTop контейнера, а не сцену Konva: масштаб
+   * вписывания и координаты блоков остаются прежними, а страница ведёт
+   * себя как лист в графическом редакторе. Указатель захватывается,
+   * поэтому жест не обрывается, если курсор вышел за холст.
+   */
+  const panStart = useRef<{
+    pointerId: number;
+    x: number;
+    y: number;
+    left: number;
+    top: number;
+  } | null>(null);
+  const [panning, setPanning] = useState(false);
+
+  const startPan = (e: ReactPointerEvent<HTMLElement>) => {
+    if (tool !== 'hand' || e.button !== 0) return;
+    const el = e.currentTarget;
+    // capture может не сработать, если указатель уже отпущен (например,
+    // при программной эмуляции событий). Панорамирование от этого не
+    // ломается: движение всё равно приходит на холст.
+    try {
+      el.setPointerCapture(e.pointerId);
+    } catch {
+      /* указатель неактивен */
+    }
+    panStart.current = {
+      pointerId: e.pointerId,
+      x: e.clientX,
+      y: e.clientY,
+      left: el.scrollLeft,
+      top: el.scrollTop,
+    };
+    setPanning(true);
+    e.preventDefault();
+  };
+
+  const movePan = (e: ReactPointerEvent<HTMLElement>) => {
+    const start = panStart.current;
+    if (!start || start.pointerId !== e.pointerId) return;
+    const el = e.currentTarget;
+    el.scrollLeft = start.left - (e.clientX - start.x);
+    el.scrollTop = start.top - (e.clientY - start.y);
+  };
+
+  const endPan = (e: ReactPointerEvent<HTMLElement>) => {
+    const start = panStart.current;
+    if (!start) return;
+    panStart.current = null;
+    setPanning(false);
+    const el = e.currentTarget;
+    if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+  };
+
+  // Смена инструмента во время жеста (например, клавишей V) не должна
+  // оставлять холст в состоянии «тащим».
+  useEffect(() => {
+    if (tool !== 'hand' && panStart.current) {
+      panStart.current = null;
+      setPanning(false);
+    }
+  }, [tool]);
 
   useEffect(() => {
     let cancelled = false;
@@ -558,16 +721,21 @@ export function EditorCanvas({
         deleteSelected();
         return;
       }
+      // Escape возвращает к выбору и закрывает боковую панель.
+      if (e.key === 'Escape') {
+        if (tool !== 'select') setTool('select');
+        return;
+      }
       // Инструменты переключаются буквами — как в Figma и Sketch.
       const byKey: Record<string, string> = { v: 'select', h: 'hand', l: 'layers', m: 'modules', t: 'text', i: 'image', d: 'data', f: 'flow' };
       if (!mod && !e.altKey && byKey[key]) {
-        setTool(byKey[key]);
+        activateTool(byKey[key]);
       }
     };
 
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [history, selectedId, duplicateSelected, deleteSelected, autosave]);
+  }, [history, selectedId, duplicateSelected, deleteSelected, autosave, tool, activateTool]);
 
   /**
    * Переключение страниц.
@@ -682,6 +850,11 @@ export function EditorCanvas({
       setPageBusy(false);
     }
   }
+
+  // Панель справа открыта не только для «Модулей»: «Слои» показывают
+  // дерево страницы, а «Текст» и «Медиа» — отфильтрованный каталог.
+  const panelOpen =
+    tool === 'modules' || tool === 'layers' || tool === 'text' || tool === 'image';
 
   return (
     <div className="editor">
@@ -980,9 +1153,12 @@ export function EditorCanvas({
         </div>
 
         <main
-          className="canvas"
+          className={`canvas ${panning ? 'canvas--panning' : ''}`}
           aria-label="Холст редактора"
           aria-busy={loading}
+          // Инструмент в data-атрибуте: по нему настраивается курсор
+          // и его же проверяет автопроверка отрисовки.
+          data-tool={tool}
           // Состояние в data-атрибутах: используется автопроверкой
           // отрисовки (tools/screenshot-editor.mjs), которая не может
           // заглянуть внутрь Konva.
@@ -993,6 +1169,10 @@ export function EditorCanvas({
           // сохранённых стилей гадала бы, какой из проектов открыт,
           // а их у пользователя может быть несколько.
           data-project={project.id}
+          onPointerDown={startPan}
+          onPointerMove={movePan}
+          onPointerUp={endPan}
+          onPointerCancel={endPan}
         >
           <Suspense fallback={<div className="canvas__loading" role="status">Загрузка холста…</div>}>
             <Canvas
@@ -1028,23 +1208,40 @@ export function EditorCanvas({
           />
         </aside>
 
-        {/* Палитра модулей V7. Открывается инструментом «Модули»,
-            но панель присутствует в разметке всегда: иначе её появление
+        {/* Правая панель: каталог модулей, слои страницы или
+            отфильтрованные модули для инструментов «Текст»/«Медиа».
+            Панель присутствует в разметке всегда: иначе её появление
             сдвигало бы холст. */}
         <aside
-          className={`modules-panel ${tool === 'modules' ? 'is-open' : ''}`}
+          className={`modules-panel ${panelOpen ? 'is-open' : ''}`}
           style={{ zIndex: 'var(--layer-drawer)' }}
-          aria-hidden={tool !== 'modules'}
+          aria-hidden={!panelOpen}
+          inert={!panelOpen}
         >
-          <ModulePalette
-            modules={modules}
-            categories={MODULE_CATEGORIES}
-            activeCategory={category}
-            onCategoryChange={setCategory}
-            onPick={insertModule}
-            onOpenFullCatalog={() => setTool('modules')}
-            loading={modulesLoading}
-          />
+          {tool === 'layers' ? (
+            <LayersPanel
+              blocks={tree.blocks}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+            />
+          ) : (
+            <ModulePalette
+              // Ключ сбрасывает поиск при смене инструмента: запрос,
+              // набранный для «Модулей», не должен скрывать все
+              // текстовые модули в инструменте «Текст».
+              key={tool}
+              modules={modules}
+              categories={MODULE_CATEGORIES}
+              activeCategory={category}
+              onCategoryChange={setCategory}
+              onPick={insertModule}
+              onOpenFullCatalog={() => setTool('modules')}
+              loading={modulesLoading}
+              idPrefix={
+                tool === 'text' ? 'text.' : tool === 'image' ? 'media.' : null
+              }
+            />
+          )}
         </aside>
 
         {/* Плавающая палитра — V1. Слой --layer-floating-palette. */}
@@ -1075,7 +1272,7 @@ export function EditorCanvas({
                   role="radio"
                   aria-checked={tool === t.id}
                   className={`palette__tool ${tool === t.id ? 'is-active' : ''}`}
-                  onClick={() => setTool(t.id)}
+                  onClick={() => activateTool(t.id)}
                   title={`${t.label} — ${t.hint}`}
                 >
                   <Icon name={t.icon} />

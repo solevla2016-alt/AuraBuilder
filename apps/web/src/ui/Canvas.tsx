@@ -181,6 +181,7 @@ export default function Canvas({
   }, [selectedId, ready, blocks, viewport]);
 
   const clearSelection = (e: Konva.KonvaEventObject<Event>) => {
+    if (tool === 'hand') return;
     if (e.target === e.target.getStage()) onSelect(null);
   };
 
@@ -230,8 +231,17 @@ export default function Canvas({
                 strokeWidth={isSelected ? 2 : style.border}
                 cornerRadius={preview ? Math.min(style.radius, 12) : style.radius}
                 draggable={!preview && tool === 'select'}
-                onClick={() => onSelect(b.id === selectedId ? null : b.id)}
-                onTap={() => onSelect(b.id === selectedId ? null : b.id)}
+                // При «Перемещении» жест двигает холст, а не выделяет
+                // блок: иначе после панорамирования выбор перескакивал бы
+                // на случайный блок под курсором.
+                onClick={() => {
+                  if (tool === 'hand') return;
+                  onSelect(b.id === selectedId ? null : b.id);
+                }}
+                onTap={() => {
+                  if (tool === 'hand') return;
+                  onSelect(b.id === selectedId ? null : b.id);
+                }}
                 onDragEnd={(e) => onMove(b.id, e.target.x(), e.target.y())}
               />
             );

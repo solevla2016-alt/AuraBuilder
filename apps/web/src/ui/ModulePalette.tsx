@@ -22,6 +22,12 @@ export interface ModulePaletteProps {
   onPick: (module: ModuleDef) => void;
   onOpenFullCatalog: () => void;
   loading: boolean;
+  /**
+   * Ограничение по префиксу id. Инструменты «Текст» и «Медиа» открывают
+   * эту же палитру, но показывают только свои модули: text.* или media.*.
+   * null — весь каталог (инструмент «Модули»).
+   */
+  idPrefix?: string | null;
 }
 
 export function ModulePalette({
@@ -32,19 +38,21 @@ export function ModulePalette({
   onPick,
   onOpenFullCatalog,
   loading,
+  idPrefix = null,
 }: ModulePaletteProps) {
   const [query, setQuery] = useState('');
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return modules.filter((m) => {
+      if (idPrefix && !m.id.startsWith(idPrefix)) return false;
       if (activeCategory && m.category !== activeCategory) return false;
       if (!needle) return true;
       // Ищем по названию и по id: пользователь может знать и то,
       // и другое («герой» или «section.hero»).
       return m.name.toLowerCase().includes(needle) || m.id.toLowerCase().includes(needle);
     });
-  }, [modules, activeCategory, query]);
+  }, [modules, activeCategory, query, idPrefix]);
 
   if (loading) {
     return (
