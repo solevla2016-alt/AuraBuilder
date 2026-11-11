@@ -174,7 +174,12 @@ class AutonomousTests(ExportTestCase):
         # Главное требование пакета: он должен открыться на чужом
         # хостинге без платформы и без интернета (п.16.4, п.15.3).
         files = self.build(self.snapshot())['files']
-        joined = '\n'.join(files.values())
+        # Картинки (OG-карточки) лежат байтами: склеивать их с текстом
+        # нельзя, а искать домен в пикселях нечего — проверяются только
+        # текстовые файлы.
+        joined = '\n'.join(
+            content for content in files.values() if isinstance(content, str)
+        )
         for host in (
             'fonts.googleapis.com',
             'fonts.gstatic.com',

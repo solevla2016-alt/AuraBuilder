@@ -42,6 +42,7 @@ from logic.compiler import compile_graph
 from logic import graph as logic_graph
 
 from .models import DocumentVersion, Project
+from .og import og_card, og_colour
 # Импорт под именем pwa_manifest: локальная переменная manifest в
 # build_package одноимённа с функцией манифеста приложения, и без
 # переименования она перекрывала бы её по всему телу функции.
@@ -97,7 +98,8 @@ def slugify_ascii(value: str) -> str:
 
 def _page_html(project_name: str, body: str, title: str, description: str,
                pwa: bool = False, prefix: str = '', nav: str = '',
-               signature: str = '') -> str:
+               signature: str = '', og_image: str = '',
+               og_url: str = '') -> str:
     """Страница пакета.
 
     lang="ru" и charset заданы сразу: без них русский текст в браузере
@@ -114,6 +116,20 @@ def _page_html(project_name: str, body: str, title: str, description: str,
     # любой другой текст страницы. Пустая подпись не оставляет пустого
     # блока: лишняя линия внизу выглядела бы недоделкой.
     footer = f'<footer class="site-signature">{esc(signature)}</footer>' if signature else ''
+    # Карточка обязательна: без og:image мессенджер показывает серый
+    # прямоугольник. Адрес карточки абсолютный, когда известен домен:
+    # относительный путь часть мессенджеров не разрешает.
+    og_meta = ''
+    if og_image:
+        og_meta = (
+            f'<meta property="og:image" content="{esc(og_image)}">\n'
+            '<meta property="og:image:type" content="image/png">\n'
+            f'<meta property="og:image:width" content="1200">\n'
+            f'<meta property="og:image:height" content="630">\n'
+            '<meta name="twitter:card" content="summary_large_image">\n'
+            f'<meta name="twitter:image" content="{esc(og_image)}">\n'
+        )
+    url_meta = f'<meta property="og:url" content="{esc(og_url)}">\n' if og_url else ''
 
     return f"""<!doctype html>
 <html lang="ru">
@@ -126,7 +142,7 @@ def _page_html(project_name: str, body: str, title: str, description: str,
 <meta property="og:description" content="{esc(description)}">
 <meta property="og:type" content="website">
 <meta name="generator" content="AuraBuilder">
-<link rel="stylesheet" href="{prefix}assets/css/site.css">
+{og_meta}{url_meta}<link rel="stylesheet" href="{prefix}assets/css/site.css">
 {manifest_link}
 </head>
 <body>
@@ -307,6 +323,8 @@ def _readme(project_name: str, manifest: dict) -> str:
 | `index.html` | Главная страница |
 | `<slug>/index.html` | Внутренние страницы (кроме главной) |
 | `assets/css/site.css` | Стили, собранные из палитры проекта |
+| `assets/og/index.png` | Карточка главной для мессенджеров и соцсетей |
+| `assets/og/pages/<slug>.png` | Карточки внутренних страниц |
 | `build-manifest.json` | Версия документа, состав сборки, контрольные суммы |
 | `robots.txt`, `sitemap.xml` | Файлы для поисковиков |
 
@@ -508,6 +526,9 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
         )
 
     html_files: dict[str, FileContent] = {}
+    og_files: dict[str, bytes] = {}
+    root = base_url.rstrip('/')
+    accent = og_colour(brand['accent'])
     all_rendered = []
     for spec in specs:
         body, rendered_blocks = render_tree(spec['tree'])
@@ -518,6 +539,17 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
         title = spec['seo_title'] or spec['title']
         description = spec['seo_description'] or (
             f'{spec["title"]} — сайт, собранный в AuraBuilder'
+        )
+        # Карточка лежит рядом со страницами сайта, а не в медиатеке:
+        # её нельзя заменить, иначе ссылка на уже опубликованный сайт
+        # начнёт показывать чужую картинку.
+        card_name = f'assets/og/pages/{slug}.png' if slug else 'assets/og/index.png'
+        # С относительным путём карточку видят не все мессенджеры, но
+        # он хотя бы работает при открытии архива с диска. С доменом
+        # адрес безусловный: карточку запрашивает чужой сервер.
+        card_url = f'{root}/{card_name}' if root else f'{prefix}{card_name}'
+        og_files[card_name] = og_card(
+            project.name, title, base_url, accent,
         )
         html_files[name] = _page_html(
             project.name,
@@ -531,6 +563,11 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
             prefix=prefix,
             nav=nav_for(prefix, slug),
             signature=typograph(brand['signature']),
+            og_image=card_url,
+            # og:url нужен, чтобы мессенджер склеивал варианты адреса
+            # одной страницы. Без домена адрес неизвестен: пустая
+            # строка лучше выдуманного.
+            og_url=(f'{root}/{slug}/' if slug else f'{root}/') if root else '',
         )
 
     sitemap_pages = [
@@ -646,6 +683,7 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
     # готовым страницам, иначе переписывать нечего. Раньше вызов шёл
     # раньше слияния, и ни одна картинка не переезжала в архив.
     files.update(html_files)
+    files.update(og_files)
     media = collect_assets(project, files)
     # Вложенные страницы лежат в <slug>/index.html, поэтому пути к
     # общим ресурсам из них ведут на уровень выше. Правка делается
