@@ -9,7 +9,7 @@
  * сейчас запросы идут без них, как и предполагает стенд.
  */
 
-import type { DocumentVersionRow, Project, ProjectPage } from './project';
+import type { DocumentVersionRow, Project, ProjectBrand, ProjectPage } from './project';
 import { BASE, request, setTokens, getRefreshToken, clearTokens } from './apiClient';
 
 // Общий слой запросов живёт в apiClient.ts: узлы данных ходят в API
@@ -84,6 +84,20 @@ export const api = {
         tree,
         ...(expectedVersion === undefined ? {} : { expectedVersion }),
       }),
+    }),
+
+  /**
+   * Сохранение брендбука.
+   *
+   * PATCH, а не PUT: ProjectSerializer на PUT требует name и tree, и
+   * правка одного фирменного цвета перезаписывала бы документ целиком.
+   * Частичное сохранение не создаёт версию: брендбук — оформление, а не
+   * содержимое, и история версий должна оставаться историей правок.
+   */
+  saveBrand: (id: string, brand: ProjectBrand) =>
+    request<Project>(`/projects/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify({ brand }),
     }),
 
   /**

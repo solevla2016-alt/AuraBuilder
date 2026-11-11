@@ -254,5 +254,5 @@ class DataFormTests(SimpleTestCase):
             [],
             CATALOG,
         ).html
-        self.assertIn('Позвоним в течение дня', html)
+        self.assertIn('Позвоним в течение дня', html.replace('\u00a0', ' '))
         self.assertNotIn('после подключения бэкенда', html)

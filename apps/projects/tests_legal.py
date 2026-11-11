@@ -147,7 +147,7 @@ class LogosTests(SimpleTestCase):
 
     def test_heading_is_rendered(self):
         html = html_of('trust.logos', {'heading': 'С нами работают', 'items': 'Альфа'})
-        self.assertIn('С нами работают', html)
+        self.assertIn('С нами работают', html.replace('\u00a0', ' '))
 
     def test_semicolon_default_is_split(self):
         """Значение по умолчанию из схемы записано через «;».
@@ -168,7 +168,9 @@ class ConsentTests(SimpleTestCase):
 
     def test_text_comes_from_props(self):
         html = html_of('legal.consent', {'text': 'Согласен на рассылку'})
-        self.assertIn('Согласен на рассылку', html)
+        # Типограф ставит неразрывные пробелы после предлогов; текст
+        # проверяется без них, чтобы правило переносов не ломало тест.
+        self.assertIn('Согласен на рассылку', html.replace('\u00a0', ' '))
 
 
 class MarksTests(SimpleTestCase):
@@ -198,7 +200,7 @@ class MarksTests(SimpleTestCase):
         })
         self.assertIn('Реклама', html)
         self.assertIn('/ad-info', html)
-        self.assertIn('Сведения о рекламе', html)
+        self.assertIn('Сведения о рекламе', html.replace('\u00a0', ' '))
 
     def test_ad_mark_without_link_still_marks(self):
         html = html_of('legal.ad-mark', {'text': 'Реклама'})

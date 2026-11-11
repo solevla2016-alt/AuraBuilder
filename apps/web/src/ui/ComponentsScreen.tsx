@@ -30,6 +30,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Icon } from './icons';
 import { ApiError } from './apiClient';
+import { api } from './api';
+import type { ProjectBrand } from './project';
 import {
   COLOR_LABELS,
   COLOR_TOKENS,
@@ -52,6 +54,34 @@ type Props = {
 };
 
 type Draft = ComponentTokens & { background: string; text: string };
+
+/** Пустой брендбук: поля заполнены, но ничего не меняют. */
+const EMPTY_BRAND: ProjectBrand = {
+  accent: '',
+  font: 'sans',
+  signature: '',
+  utmSource: '',
+  utmMedium: '',
+  utmCampaign: '',
+};
+
+const BRAND_FONTS: { id: ProjectBrand['font']; label: string }[] = [
+  { id: 'sans', label: 'Inter / системный' },
+  { id: 'system', label: 'Системный' },
+  { id: 'serif', label: 'С засечками' },
+  { id: 'mono', label: 'Моноширинный' },
+];
+
+/** Поля UTM: три метки, которые одинаковы для всех внешних ссылок. */
+const UTM_FIELDS: {
+  key: 'utmSource' | 'utmMedium' | 'utmCampaign';
+  label: string;
+  placeholder: string;
+}[] = [
+  { key: 'utmSource', label: 'Источник (utm_source)', placeholder: 'site' },
+  { key: 'utmMedium', label: 'Канал (utm_medium)', placeholder: 'social' },
+  { key: 'utmCampaign', label: 'Кампания (utm_campaign)', placeholder: 'autumn' },
+];
 
 /**
  * Перерисовка при смене темы.
@@ -191,6 +221,9 @@ export function ComponentsScreen({ projectId, onBack }: Props) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [brand, setBrand] = useState<ProjectBrand | null>(null);
+  const [brandBusy, setBrandBusy] = useState(false);
+  const [brandNotice, setBrandNotice] = useState<string | null>(null);
   const themeTick = useThemeTick();
 
   // Фирменный акцент живёт отдельно от черновика: клик по образцу не
@@ -220,6 +253,25 @@ export function ComponentsScreen({ projectId, onBack }: Props) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /**
+   * Брендбук читается из проекта отдельным запросом: библиотека
+   * компонентов отвечает за вид компонентов, а фирменный цвет, шрифт и
+   * подпись — принадлежность проекта. Сервер всегда отдаёт полный
+   * набор, поэтому пустой ответ заменяется значениями по умолчанию.
+   */
+  const loadBrand = useCallback(async () => {
+    try {
+      const project = await api.getProject(projectId);
+      setBrand(project.brand ?? EMPTY_BRAND);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Не удалось загрузить брендбук.');
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    void loadBrand();
+  }, [loadBrand]);
 
   const active = styles ? styles[activeKind] : null;
 
@@ -268,6 +320,27 @@ export function ComponentsScreen({ projectId, onBack }: Props) {
       setError(e instanceof ApiError ? e.message : 'Не удалось сбросить стиль.');
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** Точечная правка брендбука: остальные поля не трогаются. */
+  function updateBrand(patch: Partial<ProjectBrand>) {
+    setBrand((current) => (current ? { ...current, ...patch } : current));
+    setBrandNotice(null);
+  }
+
+  async function saveBrand() {
+    if (!brand || brandBusy) return;
+    setBrandBusy(true);
+    try {
+      const saved = await api.saveBrand(projectId, brand);
+      setBrand(saved.brand ?? brand);
+      setBrandNotice('Брендбук сохранён');
+      setError(null);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Не удалось сохранить брендбук.');
+    } finally {
+      setBrandBusy(false);
     }
   }
 
@@ -322,6 +395,130 @@ export function ComponentsScreen({ projectId, onBack }: Props) {
         <p className="data__error" role="alert">
           {error}
         </p>
+      ) : null}
+
+      {brand ? (
+        <section className="data__panel brand" aria-label="Брендбук проекта">
+          <h2 className="data__panel-title">Брендбук проекта</h2>
+          <p className="props__note">
+            Действует на всех страницах: цвет кнопок и ссылок, шрифт и подпись
+            внизу. Пустой акцент оставляет цвет палитры.
+          </p>
+
+          <div className="brand__grid">
+            <div className="prop">
+              <span className="prop__label">Фирменный цвет</span>
+              <div className="comps__color-row">
+                <input
+                  type="color"
+                  className="comps__color"
+                  aria-label="Фирменный цвет брендбука"
+                  value={isHexColor(brand.accent) ? brand.accent : '#D9A441'}
+                  onChange={(e) => updateBrand({ accent: e.target.value.toUpperCase() })}
+                />
+                <input
+                  type="text"
+                  className="prop__input comps__hex"
+                  value={brand.accent}
+                  placeholder="#RRGGBB"
+                  maxLength={7}
+                  spellCheck={false}
+                  aria-label="Фирменный цвет: значение #RRGGBB"
+                  onChange={(e) => updateBrand({ accent: e.target.value })}
+                />
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--tiny"
+                  onClick={() => updateBrand({ accent: '' })}
+                  title="Вернуть цвет палитры"
+                >
+                  Сбросить
+                </button>
+              </div>
+              <span className="prop__hint">
+                Цвет кнопок и акцентных плашек. Пустое значение — цвет палитры.
+              </span>
+            </div>
+
+            <label className="prop" htmlFor="brand-font">
+              <span className="prop__label">Шрифт</span>
+              <select
+                id="brand-font"
+                className="prop__input"
+                value={brand.font}
+                onChange={(e) =>
+                  updateBrand({ font: e.target.value as ProjectBrand['font'] })
+                }
+              >
+                {BRAND_FONTS.map((font) => (
+                  <option key={font.id} value={font.id}>
+                    {font.label}
+                  </option>
+                ))}
+              </select>
+              <span className="prop__hint">
+                Только системные семейства: пакет должен открываться без интернета.
+              </span>
+            </label>
+
+            <label className="prop brand__wide" htmlFor="brand-signature">
+              <span className="prop__label">Подпись внизу страницы</span>
+              <textarea
+                id="brand-signature"
+                className="props__textarea"
+                rows={2}
+                maxLength={300}
+                value={brand.signature}
+                placeholder="ООО «Ромашка», ИНН 7700000000"
+                onChange={(e) => updateBrand({ signature: e.target.value })}
+              />
+              <span className="prop__hint">
+                До 300 символов. Пустое поле не выводит подпись.
+              </span>
+            </label>
+
+            {UTM_FIELDS.map((field) => (
+              <label className="prop" key={field.key} htmlFor={`brand-${field.key}`}>
+                <span className="prop__label">{field.label}</span>
+                <input
+                  id={`brand-${field.key}`}
+                  type="text"
+                  className="prop__input"
+                  value={brand[field.key]}
+                  placeholder={field.placeholder}
+                  maxLength={80}
+                  spellCheck={false}
+                  onChange={(e) =>
+                    updateBrand({
+                      [field.key]: e.target.value,
+                    } as Partial<ProjectBrand>)
+                  }
+                />
+              </label>
+            ))}
+          </div>
+
+          <p className="props__note">
+            UTM-метки ставятся только на внешние абсолютные ссылки. Свой домен
+            и ссылки с уже готовыми метками не трогаются.
+          </p>
+
+          <div className="data__actions">
+            <button
+              type="button"
+              className="btn btn--primary"
+              disabled={brandBusy}
+              onClick={() => void saveBrand()}
+            >
+              Сохранить брендбук
+            </button>
+            {brandNotice ? (
+              <span className="prop__hint" role="status">
+                {brandNotice}
+              </span>
+            ) : null}
+          </div>
+        </section>
       ) : null}
 
       {styles === null ? (

@@ -20,6 +20,7 @@ import { Icon } from './icons';
 import { dataApi, type DataSource } from './data';
 import { assetsApi, humanSize, type Asset } from './assets';
 import type { Block } from './project';
+import { typograph } from './typographer';
 import { kindOf, schemaFor } from './moduleRegistry';
 import type { PropDef } from './moduleRegistry';
 
@@ -168,6 +169,14 @@ function SchemaField({
           onChange={(e) => onChange(e.target.value)}
           onBlur={(e) => onChange(e.target.value)}
         />
+        <button
+          type="button"
+          className="btn btn--ghost btn--tiny props__tool"
+          onClick={() => onChange(typograph(String(value ?? prop.default ?? '')))}
+          title="Заменить кавычки, дефисы и многоточия на типографские знаки"
+        >
+          Типограф
+        </button>
       </label>
     );
   }
@@ -486,16 +495,33 @@ export function PropertiesPanel({
       <section className="props__group">
         <h3>Содержимое</h3>
         {isText ? (
-          <textarea
-            className="props__textarea"
-            value={draftContent}
-            rows={3}
-            placeholder="Текст блока"
-            onChange={(e) => setDraftContent(e.target.value)}
-            onBlur={() => {
-              if (draftContent !== content) onPatch({ content: draftContent });
-            }}
-          />
+          <>
+            <textarea
+              className="props__textarea"
+              value={draftContent}
+              rows={3}
+              placeholder="Текст блока"
+              onChange={(e) => setDraftContent(e.target.value)}
+              onBlur={() => {
+                if (draftContent !== content) onPatch({ content: draftContent });
+              }}
+            />
+            {/* Кнопка правит черновик и сразу сохраняет его патчем:
+                иначе результат был бы виден только после ухода из
+                поля, и нажатие выглядело бы «ничего не произошло». */}
+            <button
+              type="button"
+              className="btn btn--ghost btn--tiny props__tool"
+              onClick={() => {
+                const fixed = typograph(draftContent);
+                setDraftContent(fixed);
+                if (fixed !== content) onPatch({ content: fixed });
+              }}
+              title="Заменить кавычки, дефисы и многоточия на типографские знаки"
+            >
+              Типограф
+            </button>
+          </>
         ) : (
           <p className="props__note">
             Этот модуль наполняется данными на этапе 3. Сейчас доступны

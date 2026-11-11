@@ -73,6 +73,14 @@
   background: var(--panelSunken);
 }
 
+/* Маленькая кнопка для действий внутри поля: «Типограф», «Сбросить
+   акцент». Полноразмерная кнопка отнимала бы высоту у самого поля. */
+.btn--tiny {
+  height: 26px;
+  padding: 0 var(--space-sm);
+  font-size: var(--text-xs);
+}
+
 .btn--primary {
   background: var(--accentSurface);
   color: var(--onAccentSurface);
@@ -656,6 +664,13 @@
 .props__textarea {
   resize: vertical;
   min-height: 72px;
+}
+
+/* Кнопка под текстовым полем не растягивается на всю колонку: она
+   относится к полю, а не к группе настроек. */
+.props__tool {
+  align-self: flex-start;
+  margin-top: 2px;
 }
 
 .prop__input:focus-visible,
@@ -2616,9 +2631,30 @@ select.prop__input option {
   border-color: transparent;
 }
 
+/* Брендбук живёт над библиотекой и не входит в её сетку: это настройки
+   проекта, а не вид компонента. Ширина ограничена, иначе подпись и UTM
+   растягивались бы на всю ширину экрана и читались как пустые поля. */
+.brand {
+  margin: var(--space-lg) var(--space-lg) 0;
+}
+
+.brand__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-md);
+}
+
+.brand__wide {
+  grid-column: 1 / -1;
+}
+
 @media (width <= 720px) {
   .comps__layout {
     grid-template-columns: 1fr;
+  }
+
+  .brand {
+    margin: var(--space-md) var(--space-md) 0;
   }
 }
 

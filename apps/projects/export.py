@@ -36,8 +36,10 @@ from datetime import UTC, datetime
 from io import BytesIO
 from typing import Any
 
+from .brand import font_stack, on_accent
 from .module_registry import MODULE_IDS, MODULES_BY_ID
 from .palette_tokens import THEMES
+from .typography import typograph_block
 
 #: Версия формата пакета. Меняется, когда меняется структура каталогов
 #: или манифеста: без неё нельзя отличить новый пакет от старого.
@@ -1871,6 +1873,11 @@ def render_block(
     module_id = block.get('module')
     if module_id not in MODULE_IDS:
         raise ExportError(f'Модуль «{module_id}» неизвестен реестру.')
+    # Типограф применяется здесь, а не в каждом рендерере: правил
+    # много, модулей 65, и забыть вызвать обработку в одном из них
+    # означало бы получить сайт с разными кавычками на одной странице.
+    # Технические поля (адреса, код) типограф пропускает.
+    block = typograph_block(block)
     renderer = RENDERERS.get(module_id)
     if renderer is None:
         raise ExportError(f'Модуль «{module_id}» пока не умеет экспортироваться.')
@@ -1892,13 +1899,14 @@ def render_block(
     return RenderedBlock(block_id=str(block.get('id', '')), module_id=module_id, html=body)
 
 
-def build_css(styles: dict[str, dict]) -> str:
-    """Стили пакета из палитры и библиотеки компонентов.
+def build_css(styles: dict[str, dict], brand: dict[str, str] | None = None) -> str:
+    """Стили пакета из палитры, брендбука и библиотеки компонентов.
 
     Файл один и без внешних ссылок: пакет должен открываться с любого
     хостинга и без интернета (п.16.4).
     """
 
+    brand = brand or {}
     light = THEMES['light']
     def value(token: str, fallback: str) -> str:
         if token in light:
@@ -1916,13 +1924,21 @@ def build_css(styles: dict[str, dict]) -> str:
             f'--padding-{kind}: {padding}px;'
         )
 
+    # Брендбук проекта перекрывает палитру: фирменный цвет и шрифт —
+    # решение пользователя, а не настройка платформы. Пустой акцент
+    # означает «как в палитре», и тогда остаются значения по умолчанию.
+    accent = brand.get('accent') or light.get('accentSurface', '#D9A441')
+    accent_text = on_accent(accent) if brand.get('accent') else light.get(
+        'onAccentSurface', '#1A1C1E'
+    )
+
     variables = [
-        f'--font: {light.get("textPrimary", "#1A1C1E") and "Inter, system-ui, sans-serif"}',
+        f'--font: {font_stack(brand)}',
         section_style('section', light.get('panel', '#FFFFFF')),
         section_style('text', light.get('canvas', '#F7F8F9')),
         section_style('media', light.get('canvas', '#F7F8F9')),
-        f'--accent: {light.get("accentSurface", "#D9A441")}',
-        f'--on-accent: {light.get("onAccentSurface", "#1A1C1E")}',
+        f'--accent: {accent}',
+        f'--on-accent: {accent_text}',
         f'--text: {light.get("textPrimary", "#1A1C1E")}',
         f'--text-muted: {light.get("textSecondary", "#5B6169")}',
         f'--border: {light.get("borderStrong", "#C9CDD3")}',
@@ -1973,6 +1989,22 @@ img, video {{ height: auto; }}
 
 .site-nav a[aria-current="page"] {{
   font-weight: 600;
+}}
+
+/* Подпись проекта — часть брендбука, а не блока: она одна на всех
+   страницах и стоит после основного содержимого. Отделена линией,
+   чтобы не слипалась с последней секцией, но не выглядит как ещё один
+   блок сайта. */
+.site-signature {{
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px clamp(16px, 3vw, 32px) 32px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 14px;
+  /* Переносы строк в подписи значимы: человек пишет реквизиты
+     несколькими строками, и схлопывать их в одну строку нельзя. */
+  white-space: pre-line;
 }}
 
 .section {{

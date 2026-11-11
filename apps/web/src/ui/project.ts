@@ -73,11 +73,34 @@ export interface ProjectPage extends PageSummary {
   projectVersion: number;
 }
 
+/** Шрифт брендбука. Пакет работает офлайн, поэтому только системные стеки. */
+export type BrandFont = 'sans' | 'system' | 'serif' | 'mono';
+
+/**
+ * Брендбук проекта.
+ *
+ * Хранится словарём в Project.brand (см. apps/projects/brand.py):
+ * набор настроек будет расти, и каждое новое поле не должно требовать
+ * миграции. Пустой accent и signature означают «как по умолчанию».
+ */
+export interface ProjectBrand {
+  /** Фирменный цвет #RRGGBB или пустая строка. */
+  accent: string;
+  font: BrandFont;
+  /** Подпись внизу страницы, до 300 символов. */
+  signature: string;
+  utmSource: string;
+  utmMedium: string;
+  utmCampaign: string;
+}
+
 export interface Project {
   id: string;
   name: string;
   /** Дерево главной страницы; обновляется при сохранении. */
   tree: PageTree;
+  /** Брендбук: акцент, шрифт, подпись и UTM-метки. */
+  brand?: ProjectBrand;
   /**
    * Дополнительные страницы. Главная в списке не значится: она живёт
    * в поле tree и занимает первое место в навигации.

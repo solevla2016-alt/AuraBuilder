@@ -25,6 +25,7 @@ from component_library.models import ComponentStyle
 
 from data_sources.models import DataSource
 
+from .brand import add_utm, normalize_brand
 from .export import (
     FORBIDDEN_HOSTS,
     FORMAT_VERSION,
@@ -47,6 +48,7 @@ from .models import DocumentVersion, Project
 from .pwa import icon_svg
 from .pwa import manifest as pwa_manifest
 from .pwa import maskable_icon, registration_script, service_worker
+from .typography import typograph
 
 #: Предел размера архива, МБ. Число взято из тарифных лимитов (п.17.1)
 #: для статики: сайт тяжелее этого почти наверняка содержит файлы,
@@ -94,7 +96,8 @@ def slugify_ascii(value: str) -> str:
 
 
 def _page_html(project_name: str, body: str, title: str, description: str,
-               pwa: bool = False, prefix: str = '', nav: str = '') -> str:
+               pwa: bool = False, prefix: str = '', nav: str = '',
+               signature: str = '') -> str:
     """Страница пакета.
 
     lang="ru" и charset заданы сразу: без них русский текст в браузере
@@ -107,6 +110,10 @@ def _page_html(project_name: str, body: str, title: str, description: str,
 
     manifest_link = '<link rel="manifest" href="manifest.json">' if pwa else ''
     scripts_extra = f'<script src="{prefix}assets/js/pwa.js" defer></script>' if pwa else ''
+    # Подпись — свободный текст пользователя, поэтому экранируется как
+    # любой другой текст страницы. Пустая подпись не оставляет пустого
+    # блока: лишняя линия внизу выглядела бы недоделкой.
+    footer = f'<footer class="site-signature">{esc(signature)}</footer>' if signature else ''
 
     return f"""<!doctype html>
 <html lang="ru">
@@ -127,6 +134,7 @@ def _page_html(project_name: str, body: str, title: str, description: str,
 <main class="page">
 {body}
 </main>
+{footer}
 <script src="{prefix}assets/js/runtime.js" defer></script>
 <script src="{prefix}assets/js/logic.js" defer></script>
 {scripts_extra}
@@ -435,6 +443,10 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
 
     sources = _collect_sources(project, version)
     styles = _component_styles(getattr(project, 'id', None))
+    # Брендбук нормализуется и при сборке: проект мог быть сохранён до
+    # появления поля, и в базе лежит пустой словарь. Без нормализации
+    # build_css получал бы неполный набор и подставлял значения сам.
+    brand = normalize_brand(getattr(project, 'brand', None))
 
     pages = version.pages if isinstance(version.pages, list) else []
     specs = [
@@ -518,6 +530,7 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
             pwa=pwa and not slug,
             prefix=prefix,
             nav=nav_for(prefix, slug),
+            signature=typograph(brand['signature']),
         )
 
     sitemap_pages = [
@@ -526,7 +539,7 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
     rendered = all_rendered
 
     files: dict[str, FileContent] = {
-        'assets/css/site.css': build_css(styles),
+        'assets/css/site.css': build_css(styles, brand),
         'robots.txt': _robots_txt(base_url),
         'sitemap.xml': _sitemap_xml(base_url, sitemap_pages),
         # Клиент и настройка кладутся всегда, а не только когда есть
@@ -644,6 +657,14 @@ def build_package(project: Project, version: DocumentVersion, base_url: str = ''
         files[name] = re.sub(
             r'((?:src|href|poster)=")assets/', r'\1../assets/', content,
         )
+
+    # UTM-метки ставятся в самом конце работы над HTML: до этого ссылки
+    # ещё переписывались на локальные, и метка могла попасть не туда.
+    # Свой домен исключается по base_url: переходы внутри сайта — не
+    # внешний трафик и в отчётах не нужны.
+    for name, content in list(files.items()):
+        if name.endswith('.html') and isinstance(content, str):
+            files[name] = add_utm(content, brand, own_prefix=base_url)
     manifest['assets'] = manifest_entry(media)
     # Ссылка на файл, которого в проекте уже нет, остаётся в HTML.
     # Это не ошибка сборки — сайт отдаётся, — но такая зависимость

@@ -11,6 +11,7 @@ from typing import Any
 
 from rest_framework import serializers
 
+from .brand import brand_error, normalize_brand
 from .models import Page, Project, default_tree
 from .module_registry import MODULE_IDS, schema_for
 
@@ -288,14 +289,33 @@ class ProjectSerializer(serializers.ModelSerializer):
     # Список страниц нужен редактору сразу: без него переключатель
     # страниц делал бы второй запрос на каждое открытие проекта.
     pages = serializers.SerializerMethodField()
+    brand = serializers.JSONField(required=False)
 
     class Meta:
         model = Project
         # version обязателен в ответе: клиент предъявляет его при
         # следующем сохранении, и без него проверка конфликта (ТЗ п.3.2)
         # не работает.
-        fields = ['id', 'name', 'tree', 'version', 'pages', 'createdAt', 'updatedAt']
+        fields = [
+            'id', 'name', 'tree', 'brand', 'version', 'pages',
+            'createdAt', 'updatedAt',
+        ]
         read_only_fields = ['id', 'version', 'created_at', 'updated_at']
+
+    def validate_brand(self, value: Any) -> Any:
+        error = brand_error(value)
+        if error:
+            raise serializers.ValidationError(error)
+        return normalize_brand(value)
+
+    def to_representation(self, instance: Project) -> dict[str, Any]:
+        data = super().to_representation(instance)
+        # В базе может лежать пустой словарь (проекты, созданные до
+        # появления брендбука). Клиенту всегда отдаётся полный набор:
+        # иначе панель брендбука показывала бы пустые поля, и
+        # сохранение затёрло бы значения по умолчанию пустотой.
+        data['brand'] = normalize_brand(instance.brand)
+        return data
 
     def get_pages(self, obj: Project) -> list[dict[str, Any]]:
         return PageSummarySerializer(

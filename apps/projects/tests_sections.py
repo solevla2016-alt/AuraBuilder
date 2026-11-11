@@ -63,7 +63,7 @@ class AccordionTests(SimpleTestCase):
             'items': 'Как вернуть: в течение 30 дней',
 })
         self.assertIn('<summary>Как вернуть</summary>', html)
-        self.assertIn('в течение 30 дней', html)
+        self.assertIn('в течение 30 дней', html.replace('\u00a0', ' '))
 
     def test_heading_falls_back_to_block_label(self):
         """Подпись блока используется как заголовок секции.
