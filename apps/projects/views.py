@@ -45,7 +45,7 @@ from .models import DocumentVersion, Page, Project
 from .module_registry import CATEGORIES, MODULES, modules_for_stage
 from .export import ExportError
 from .package import PackageTooLarge
-from .package import build_package, package_zip, slugify, slugify_ascii
+from .package import build_archive, slugify, slugify_ascii
 from .versions import restore as restore_version, snapshot
 from .serializers import (
     RESERVED_SLUGS,
@@ -314,7 +314,7 @@ def project_export(request, project_id: str):
             )
 
     try:
-        built = build_package(
+        built, blob = build_archive(
             project,
             version,
             base_url=request.query_params.get('baseUrl', ''),
@@ -339,7 +339,6 @@ def project_export(request, project_id: str):
         # задание неуспешно (п.16.2).
         return Response({'detail': str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
-    _, blob = package_zip(built['files'])
     audit(request, 'project.export', project, str(version.number))
     response = HttpResponse(blob, content_type='application/zip')
     # Имя файла транслитерируется, потому что заголовок HTTP

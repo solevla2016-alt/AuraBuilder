@@ -106,6 +106,7 @@ INSTALLED_APPS = [
     'telegram',
     'deploying',
     'publications',
+    'api_v1',
 ]
 
 MIDDLEWARE = [
@@ -174,6 +175,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': ['rest_framework.renderers.JSONRenderer'],
     'DEFAULT_PARSER_CLASSES': ['rest_framework.parsers.JSONParser'],
+    # Ошибки публичного API приводятся к общему конверту. Перехватчик
+    # сам пропускает остальные пути: внутренний API редактора уже
+    # отдаёт свою форму, и менять её нельзя без правки клиента.
+    'EXCEPTION_HANDLER': 'api_v1.errors.exception_handler',
     'UNAUTHENTICATED_USER': None,
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',

@@ -763,3 +763,17 @@ def package_zip(files: dict[str, FileContent]) -> tuple[str, bytes]:
             info.external_attr = 0o644 << 16
             archive.writestr(info, _as_bytes(files[name]))
     return '', buffer.getvalue()
+
+
+def build_archive(project: Project, version: DocumentVersion, base_url: str = '',
+                  pwa: bool = False) -> tuple[dict, bytes]:
+    """Пакет и готовый архив одним вызовом.
+
+    Выгрузка нужна и внутреннему API, и стабильному api/v1. Собирать
+    архив в каждом представлении по-своему значило бы однажды получить
+    в одном месте валидный пакет, а в другом — zip без проверок.
+    """
+
+    built = build_package(project, version, base_url=base_url, pwa=pwa)
+    _, blob = package_zip(built['files'])
+    return built, blob

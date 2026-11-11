@@ -29,6 +29,9 @@ urlpatterns = [
     # он общий для всех проектов и редактор спрашивает его при старте.
     path('api/modules/', module_catalog, name='module-catalog'),
     path('api/health/', health, name='health'),
+    # Публичный API v1: отдельное пространство имён, потому что его
+    # форма ответа не должна меняться вместе с внутренним API.
+    path('api/v1/', include('api_v1.urls')),
     # Аутентификация и профиль. Объявлены до проектов: путь
     # api/auth/login/ не должен попадать под <str:project_id>.
     path('api/auth/', include('accounts.urls')),
