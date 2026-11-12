@@ -20,7 +20,9 @@ import {
   type DeployResult,
   type BackupItem,
   type HostingProfile,
+  type ProjectEvent,
   type SiteStatus,
+  type TelegramBotInfo,
 } from './publishing';
 
 type Props = {
@@ -49,6 +51,8 @@ const EMPTY_FORM = {
   siteUrl: '',
 };
 
+const EMPTY_BOT = { name: '', botUsername: '', token: '' };
+
 export function PublishScreen({ projectId, projectName, onBack }: Props) {
   const [status, setStatus] = useState<SiteStatus | null>(null);
   const [profiles, setProfiles] = useState<HostingProfile[]>([]);
@@ -58,10 +62,14 @@ export function PublishScreen({ projectId, projectName, onBack }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [backups, setBackups] = useState<BackupItem[]>([]);
+  const [events, setEvents] = useState<ProjectEvent[]>([]);
+  const [bots, setBots] = useState<TelegramBotInfo[]>([]);
+  const [botForm, setBotForm] = useState(EMPTY_BOT);
+  const [showBotForm, setShowBotForm] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [site, hosting, copies] = await Promise.all([
+      const [site, hosting, copies, feed, telegram] = await Promise.all([
         publishingApi.status(projectId),
         // Профили могут быть недоступны на тарифе: отсутствие списка
         // не должно мешать публикации и выгрузке.
@@ -72,9 +80,21 @@ export function PublishScreen({ projectId, projectName, onBack }: Props) {
           .backups(projectId)
           .then((body) => (Array.isArray(body.backups) ? body.backups : []))
           .catch(() => [] as BackupItem[]),
+        // Лента событий и боты вспомогательные: их отсутствие не должно
+        // скрывать состояние публикации и кнопки действий.
+        publishingApi
+          .events(projectId)
+          .then((body) => (Array.isArray(body.events) ? body.events : []))
+          .catch(() => [] as ProjectEvent[]),
+        publishingApi
+          .telegramBots(projectId)
+          .then((body) => (Array.isArray(body.bots) ? body.bots : []))
+          .catch(() => [] as TelegramBotInfo[]),
       ]);
       setStatus(site);
       setBackups(copies);
+      setEvents(feed);
+      setBots(telegram);
       // Ответ — массив; проверка здесь, потому что один неверный
       // элемент иначе уронил бы весь экран целиком.
       setProfiles(Array.isArray(hosting) ? hosting : []);
@@ -187,6 +207,45 @@ export function PublishScreen({ projectId, projectName, onBack }: Props) {
       } as Notice;
     });
 
+  const connectBot = () =>
+    run('bot-create', async () => {
+      const bot = await publishingApi.createTelegramBot(projectId, botForm);
+      setBotForm(EMPTY_BOT);
+      setShowBotForm(false);
+      return {
+        kind: 'ok',
+        text:
+          `Бот @${bot.botUsername} подключён. Откройте его в Telegram, ` +
+          'отправьте /start и нажмите «Привязать чат».',
+      };
+    });
+
+  const bindChat = (bot: TelegramBotInfo) =>
+    run(`bind-${bot.id}`, async () => {
+      const result = await publishingApi.bindTelegramChat(projectId, bot.id);
+      return {
+        kind: 'ok',
+        text: result.notified === false
+          ? 'Чат привязан, но подтверждение не дошло: Telegram мог быть недоступен. Следующие события всё равно уйдут в этот чат.'
+          : `Уведомления включены: ${result.notifyChatTitle || result.notifyChatId}.`,
+      };
+    });
+
+  const unbindChat = (bot: TelegramBotInfo) =>
+    run(`unbind-${bot.id}`, async () => {
+      await publishingApi.unbindTelegramChat(projectId, bot.id);
+      return { kind: 'ok', text: 'Уведомления в этот чат отключены.' };
+    });
+
+  const configureMenu = (bot: TelegramBotInfo) =>
+    run(`menu-${bot.id}`, async () => {
+      await publishingApi.configureTelegramMenu(projectId, bot.id);
+      return { kind: 'ok', text: 'Кнопка меню настроена: бот открывает сайт проекта.' };
+    });
+
+  const eventMark = (event: ProjectEvent) =>
+    event.status === 'failed' ? '⚠️ ' : event.status === 'ok' ? '✓ ' : '· ';
+
   return (
     <main className="data vers">
       <header className="data__top">
@@ -205,6 +264,32 @@ export function PublishScreen({ projectId, projectName, onBack }: Props) {
           {notice.text}
         </p>
       ) : null}
+
+      <section className="data__panel" data-screen="publish-events">
+        <h2 className="data__panel-title">Последние события</h2>
+        <p className="props__note">
+          Что уже произошло с проектом. Лента остаётся после закрытия вкладки:
+          по ней видно, чем закончилась последняя сборка или публикация.
+        </p>
+        {events.length === 0 ? (
+          <p className="props__note">Пока ничего не происходило.</p>
+        ) : (
+          <ul className="vers__backup-list">
+            {events.map((event) => (
+              <li key={event.id} className="vers__backup">
+                <span className="vers__backup-text">
+                  {eventMark(event)}
+                  <strong>{event.kindLabel}</strong> ·{' '}
+                  {new Date(event.createdAt).toLocaleString('ru-RU')}
+                  <br />
+                  {event.message}
+                  {event.actor ? ` · ${event.actor}` : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section className="data__panel" data-screen="publish-site">
         <h2 className="data__panel-title">1. Публикация на платформе</h2>
@@ -457,6 +542,119 @@ export function PublishScreen({ projectId, projectName, onBack }: Props) {
             Скачать бэкап
           </a>
         </div>
+      </section>
+
+      <section className="data__panel" data-screen="publish-telegram">
+        <h2 className="data__panel-title">6. Уведомления в Telegram</h2>
+        <p className="props__note">
+          События проекта приходят в чат, который владелец привяжет к боту.
+          Откройте бота в Telegram, отправьте ему <code>/start</code> и нажмите
+          «Привязать чат»: вводить числовой идентификатор не нужно.
+        </p>
+        {bots.length === 0 ? (
+          <p className="props__note">
+            Бот ещё не подключён. Подключение требует тарифа Pro и токена от
+            @BotFather.
+          </p>
+        ) : (
+          bots.map((bot) => (
+            <div key={bot.id} className="vers__mark-row">
+              <span className="prop__label">
+                <strong>@{bot.botUsername}</strong> ·{' '}
+                {bot.notifyEnabled
+                  ? `чат: ${bot.notifyChatTitle || bot.notifyChatId}`
+                  : 'чат не привязан'}
+              </span>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => void bindChat(bot)}
+                disabled={busy !== null || !bot.hasToken}
+              >
+                {busy === `bind-${bot.id}` ? 'Привязываем…' : 'Привязать чат'}
+              </button>
+              {bot.notifyEnabled ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => void unbindChat(bot)}
+                  disabled={busy !== null}
+                >
+                  Отключить
+                </button>
+              ) : null}
+              {bot.hasToken && !bot.menuConfigured ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => void configureMenu(bot)}
+                  disabled={busy !== null}
+                >
+                  {busy === `menu-${bot.id}` ? 'Настраиваем…' : 'Настроить меню'}
+                </button>
+              ) : null}
+            </div>
+          ))
+        )}
+        {showBotForm ? (
+          <div className="form">
+            <label className="prop__label">
+              Название
+              <input
+                className="prop__input"
+                value={botForm.name}
+                onChange={(e) => setBotForm({ ...botForm, name: e.target.value })}
+              />
+            </label>
+            <label className="prop__label">
+              Логин бота
+              <input
+                className="prop__input"
+                value={botForm.botUsername}
+                placeholder="shop_bot"
+                onChange={(e) =>
+                  setBotForm({ ...botForm, botUsername: e.target.value })
+                }
+              />
+            </label>
+            <label className="prop__label">
+              Токен от @BotFather
+              <input
+                className="prop__input"
+                type="password"
+                value={botForm.token}
+                onChange={(e) => setBotForm({ ...botForm, token: e.target.value })}
+              />
+            </label>
+            <div className="vers__mark-row">
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => void connectBot()}
+                disabled={busy !== null}
+              >
+                {busy === 'bot-create' ? 'Проверяем…' : 'Подключить'}
+              </button>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => setShowBotForm(false)}
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="vers__mark-row">
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setShowBotForm(true)}
+            >
+              Подключить бота
+            </button>
+          </div>
+        )}
       </section>
     </main>
   );

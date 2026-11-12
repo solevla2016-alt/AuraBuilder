@@ -24,7 +24,14 @@ from projects.models import Project
 from secretstore.crypto import SecretsUnavailable
 
 from .auth import issue_edge_token
-from .bot_api import BotApiError, set_web_app_menu, verify_token
+from .bot_api import (
+    BotApiError,
+    get_updates,
+    latest_chat,
+    send_message,
+    set_web_app_menu,
+    verify_token,
+)
 from .initdata import InitDataInvalid, verify
 from .models import TelegramBot
 
@@ -187,6 +194,103 @@ def telegram_bot_menu(request, project_id: str, bot_id: str):
     return Response(bot.public_dict())
 
 
+@api_view(['POST', 'DELETE'])
+@permission_classes([ProjectAccess])
+def telegram_bot_chat(request, project_id: str, bot_id: str):
+    """Привязка чата для уведомлений о событиях проекта.
+
+    chat_id не угадывается и не вводится вручную: владелец пишет боту
+    /start, платформа читает getUpdates и запоминает, откуда пришло
+    сообщение. Так исключается опечатка в числе, из-за которой события
+    уходили бы постороннему человеку.
+    """
+
+    project = _project(project_id)
+    if project is None or not can(request.user, project, 'view'):
+        return Response({'detail': 'проект не найден'},
+                        status=status.HTTP_404_NOT_FOUND)
+    bot = _bot(project, bot_id)
+    if bot is None:
+        return Response({'detail': 'бот не найден'},
+                        status=status.HTTP_404_NOT_FOUND)
+    if request.user != project.owner:
+        return _forbidden('Привязывать чат может владелец проекта.')
+
+    if request.method == 'DELETE':
+        bot.notify_chat_id = None
+        bot.notify_chat_title = ''
+        bot.save(update_fields=[
+            'notify_chat_id', 'notify_chat_title', 'updated_at',
+        ])
+        audit(request, 'telegram.bot.chat.clear', project, bot.bot_username)
+        return Response(bot.public_dict())
+
+    if not bot.has_token:
+        return Response({'detail': 'Сначала укажите токен бота.'},
+                        status=status.HTTP_409_CONFLICT)
+    try:
+        token = bot.get_token()
+    except SecretsUnavailable as e:
+        return Response({'detail': str(e), 'reason': 'no_encryption_key'},
+                        status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    body = request.data or {}
+    raw_chat = body.get('chatId')
+    if raw_chat not in (None, ''):
+        # Явный chat_id оставлен для стенда и для случая, когда getUpdates
+        # уже прочитан другим процессом: это не основной путь, но он не
+        # должен требовать отдельной ручки.
+        try:
+            chat_id = int(raw_chat)
+        except (TypeError, ValueError):
+            return Response({'detail': 'chatId должен быть числом.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        title = str(body.get('title') or chat_id)[:200]
+    else:
+        try:
+            found = latest_chat(get_updates(token))
+        except BotApiError as e:
+            return Response(
+                {'detail': f'Telegram недоступен: {e}'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        if found is None:
+            return Response(
+                {
+                    'detail': (
+                        'Бот ещё не получал сообщений. Откройте бота в '
+                        'Telegram, отправьте /start и повторите привязку.'
+                    ),
+                    'reason': 'no_updates',
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        chat_id, title = found
+
+    bot.notify_chat_id = chat_id
+    bot.notify_chat_title = title
+    bot.save(update_fields=[
+        'notify_chat_id', 'notify_chat_title', 'updated_at',
+    ])
+    audit(request, 'telegram.bot.chat', project,
+          f'{bot.bot_username} {chat_id}')
+
+    # Подтверждение сразу показывает, что привязка рабочая. Если оно не
+    # ушло, привязку не отменяем: Telegram мог быть недоступен минуту.
+    notified = True
+    try:
+        send_message(
+            token, chat_id,
+            f'Уведомления AuraBuilder включены для проекта «{project.name}».',
+        )
+    except BotApiError:
+        notified = False
+
+    payload = bot.public_dict()
+    payload['notified'] = notified
+    return Response(payload)
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def telegram_auth(request):
@@ -237,6 +341,7 @@ def telegram_auth(request):
 
 __all__ = [
     'telegram_auth',
+    'telegram_bot_chat',
     'telegram_bot_detail',
     'telegram_bot_menu',
     'telegram_bots',

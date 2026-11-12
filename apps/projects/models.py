@@ -209,3 +209,89 @@ class DocumentVersion(models.Model):
 
     def __str__(self) -> str:
         return f'{self.project_id}: версия {self.number}'
+
+
+class ProjectEvent(models.Model):
+    """Событие проекта: сборка, публикация, деплой, копия.
+
+    Журнал живёт на сервере, а не в браузере: публикация и деплой идут
+    дольше одного экрана, а событие должно остаться, даже если вкладку
+    закрыли. По нему человек понимает, что уже произошло и чем это
+    закончилось, не открывая историю действий целиком.
+
+    Событие — не журнал аудита (accounts.AuditLog): аудит отвечает на
+    вопрос «кто что сделал», событие — «что сейчас с проектом». Поэтому
+    здесь есть результат (успех или отказ) и текст для человека, а не
+    только код действия и адрес.
+    """
+
+    KIND_BUILD = 'build'
+    KIND_PUBLISH = 'publish'
+    KIND_WITHDRAW = 'withdraw'
+    KIND_BACKUP = 'backup'
+    KIND_RESTORE = 'restore'
+    KIND_DEPLOY = 'deploy'
+    KIND_CHOICES = [
+        (KIND_BUILD, 'Сборка'),
+        (KIND_PUBLISH, 'Публикация'),
+        (KIND_WITHDRAW, 'Отзыв'),
+        (KIND_BACKUP, 'Резервная копия'),
+        (KIND_RESTORE, 'Восстановление'),
+        (KIND_DEPLOY, 'Деплой'),
+    ]
+
+    STATUS_OK = 'ok'
+    STATUS_FAILED = 'failed'
+    STATUS_INFO = 'info'
+    STATUS_CHOICES = [
+        (STATUS_OK, 'Успешно'),
+        (STATUS_FAILED, 'Ошибка'),
+        (STATUS_INFO, 'Сведения'),
+    ]
+
+    id = models.UUIDField(primary_key=True, editable=False, default=uuid4)
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='events',
+        verbose_name='Проект',
+    )
+    kind = models.CharField('Тип', max_length=16, choices=KIND_CHOICES)
+    status = models.CharField(
+        'Результат', max_length=8, choices=STATUS_CHOICES,
+        default=STATUS_INFO,
+    )
+    message = models.CharField('Сообщение', max_length=300)
+    # Автор может исчезнуть (учётную запись удалили), но событие
+    # остаётся: иначе история проекта теряла бы факт публикации.
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='project_events',
+        verbose_name='Автор',
+    )
+    created_at = models.DateTimeField('Создано', auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'событие проекта'
+        verbose_name_plural = 'события проекта'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['project', '-created_at'],
+                         name='project_event_recent'),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.project_id}: {self.get_kind_display()} — {self.message}'
+
+    def public_dict(self) -> dict:
+        return {
+            'id': str(self.id),
+            'kind': self.kind,
+            'kindLabel': self.get_kind_display(),
+            'status': self.status,
+            'message': self.message,
+            'actor': self.actor.username if self.actor else None,
+            'createdAt': self.created_at.isoformat(),
+        }

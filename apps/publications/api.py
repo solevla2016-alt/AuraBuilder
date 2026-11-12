@@ -16,7 +16,8 @@ from rest_framework.response import Response
 
 from accounts.permissions import PUBLISH, VIEW, ProjectAccess, can
 from accounts.serializers import audit
-from projects.models import DocumentVersion, Project
+from projects.events import record
+from projects.models import DocumentVersion, Project, ProjectEvent
 
 from .models import Backup, Site
 from .service import (
@@ -82,11 +83,21 @@ def project_site(request, project_id: str):
     try:
         result = publish(project, version, slug=body.get('slug'))
     except PublishError as exc:
+        record(
+            project, ProjectEvent.KIND_PUBLISH, str(exc),
+            status=ProjectEvent.STATUS_FAILED, actor=request.user,
+        )
         return Response({'detail': str(exc)},
                         status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
     audit(request, 'site.publish', project,
           f'{result.site.slug} v{result.version.number} {result.files} файлов')
+    record(
+        project, ProjectEvent.KIND_PUBLISH,
+        f'Сайт опубликован: версия {result.version.number}, '
+        f'{result.files} файлов. {result.url}',
+        status=ProjectEvent.STATUS_OK, actor=request.user,
+    )
     payload = status_payload(result.site)
     payload.update({
         'files': result.files,
@@ -118,6 +129,11 @@ def project_site_withdraw(request, project_id: str):
 
     withdraw(site, remove_files=bool((request.data or {}).get('removeFiles')))
     audit(request, 'site.withdraw', project, site.slug)
+    record(
+        project, ProjectEvent.KIND_WITHDRAW,
+        f'Публикация отозвана: {site.slug}.',
+        status=ProjectEvent.STATUS_INFO, actor=request.user,
+    )
     return Response(status_payload(site))
 
 
@@ -147,6 +163,11 @@ def project_site_backup(request, project_id: str):
                         status=status.HTTP_409_CONFLICT)
 
     audit(request, 'site.backup', project, f'v{backup.number}')
+    record(
+        project, ProjectEvent.KIND_BACKUP,
+        f'Резервная копия версии {backup.number} сделана.',
+        status=ProjectEvent.STATUS_OK, actor=request.user,
+    )
     return Response({'number': backup.number, 'size': backup.size,
                      'createdAt': backup.created_at.isoformat()})
 
@@ -206,8 +227,17 @@ def backup_restore(request, project_id: str, backup_id: str):
     try:
         version = restore_backup(site, backup)
     except PublishError as exc:
+        record(
+            project, ProjectEvent.KIND_RESTORE, str(exc),
+            status=ProjectEvent.STATUS_FAILED, actor=request.user,
+        )
         return Response({'detail': str(exc)},
                         status=status.HTTP_409_CONFLICT)
 
     audit(request, 'site.restore', project, f'v{version.number}')
+    record(
+        project, ProjectEvent.KIND_RESTORE,
+        f'Сайт возвращён к копии версии {version.number}.',
+        status=ProjectEvent.STATUS_OK, actor=request.user,
+    )
     return Response(status_payload(site))

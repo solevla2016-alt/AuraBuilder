@@ -69,6 +69,41 @@ export interface DeployResult {
   warnings: string[];
 }
 
+/**
+ * Событие проекта: что собрали, опубликовали или выложили.
+ *
+ * Хранится на сервере, поэтому остаётся после закрытия вкладки. Это не
+ * журнал аудита: здесь важен результат операции, а не только автор.
+ */
+export interface ProjectEvent {
+  id: string;
+  kind: 'build' | 'publish' | 'withdraw' | 'backup' | 'restore' | 'deploy';
+  kindLabel: string;
+  status: 'ok' | 'failed' | 'info';
+  message: string;
+  actor: string | null;
+  createdAt: string;
+}
+
+/** Подключённый бот и привязка чата для уведомлений. */
+export interface TelegramBotInfo {
+  id: string;
+  name: string;
+  botUsername: string;
+  botId: number | null;
+  projectId: string;
+  hasToken: boolean;
+  menuConfigured: boolean;
+  menuConfiguredAt: string | null;
+  notifyChatId: number | null;
+  notifyChatTitle: string;
+  notifyEnabled: boolean;
+  miniAppUrl: string;
+  startAppLink: string;
+  /** Только в ответе на привязку: ушло ли подтверждение. */
+  notified?: boolean;
+}
+
 export const publishingApi = {
   /** Текущее состояние публикации. */
   status: (projectId: string) =>
@@ -121,6 +156,53 @@ export const publishingApi = {
       method: 'POST',
       body: JSON.stringify({}),
     }),
+
+  /**
+   * Лента событий проекта.
+   *
+   * Отдельный запрос, а не поле в состоянии публикации: события
+   * появляются и от деплоя, у которого своего состояния нет.
+   */
+  events: (projectId: string) =>
+    request<{ events: ProjectEvent[] }>(`/projects/${projectId}/events/`),
+
+  /** Боты проекта: через них уходят уведомления и открывается Mini App. */
+  telegramBots: (projectId: string) =>
+    request<{ bots: TelegramBotInfo[] }>(`/projects/${projectId}/telegram-bot/`),
+
+  createTelegramBot: (
+    projectId: string,
+    bot: { name: string; botUsername: string; token: string },
+  ) =>
+    request<TelegramBotInfo>(`/projects/${projectId}/telegram-bot/`, {
+      method: 'POST',
+      body: JSON.stringify(bot),
+    }),
+
+  /** Настраивает кнопку меню: бот открывает Mini App проекта. */
+  configureTelegramMenu: (projectId: string, botId: string) =>
+    request<TelegramBotInfo>(
+      `/projects/${projectId}/telegram-bot/${botId}/menu/`,
+      { method: 'POST', body: JSON.stringify({}) },
+    ),
+
+  /**
+   * Привязка чата для уведомлений.
+   *
+   * chat_id не передаётся: сервер читает, откуда бот получил последнее
+   * сообщение. Поэтому перед привязкой владелец пишет боту /start.
+   */
+  bindTelegramChat: (projectId: string, botId: string) =>
+    request<TelegramBotInfo>(
+      `/projects/${projectId}/telegram-bot/${botId}/chat/`,
+      { method: 'POST', body: JSON.stringify({}) },
+    ),
+
+  unbindTelegramChat: (projectId: string, botId: string) =>
+    request<TelegramBotInfo>(
+      `/projects/${projectId}/telegram-bot/${botId}/chat/`,
+      { method: 'DELETE' },
+    ),
 
   /**
  * Профили доступа к серверам заказчика.

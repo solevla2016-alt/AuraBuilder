@@ -67,6 +67,16 @@ class TelegramBot(SecretMixin, models.Model):
     menu_configured_at = models.DateTimeField(
         'Кнопка меню настроена', null=True, blank=True,
     )
+    # Чат, куда уходят события проекта. Хранится отдельно от токена и
+    # появляется только после того, как владелец написал боту: угадать
+    # chat_id нельзя, а без него sendMessage отправлять некуда.
+    notify_chat_id = models.BigIntegerField(
+        'Чат для уведомлений', null=True, blank=True,
+        help_text='Заполняется, когда владелец пишет боту /start',
+    )
+    notify_chat_title = models.CharField(
+        'Название чата', max_length=200, blank=True, default='',
+    )
     created_at = models.DateTimeField('Создан', auto_now_add=True)
     updated_at = models.DateTimeField('Обновлён', auto_now=True)
 
@@ -108,6 +118,9 @@ class TelegramBot(SecretMixin, models.Model):
                 self.menu_configured_at.isoformat()
                 if self.menu_configured_at else None
             ),
+            'notifyChatId': self.notify_chat_id,
+            'notifyChatTitle': self.notify_chat_title,
+            'notifyEnabled': self.notify_chat_id is not None,
             'miniAppUrl': self.mini_app_url,
             'startAppLink': self.start_app_link,
         }

@@ -17,7 +17,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import Membership
 from accounts.permissions import Role
-from projects.models import Project
+from projects.models import Project, ProjectEvent
 from projects.versions import snapshot
 
 from publications.models import Site
@@ -371,6 +371,16 @@ class PublishTests(TestCase):
         self.assertEqual(response.status_code, 201, response.data)
         self.assertTrue(response.data['active'])
         self.assertIn('/sites/', response.data['url'])
+
+    def test_api_publish_records_event(self):
+        client = self.client_for()
+        response = client.post(f'/api/projects/{self.project.id}/site/', {}, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        event = ProjectEvent.objects.get(project=self.project)
+        self.assertEqual(event.kind, ProjectEvent.KIND_PUBLISH)
+        self.assertEqual(event.status, ProjectEvent.STATUS_OK)
+        self.assertEqual(event.actor, self.user)
+        self.assertIn(f'версия {self.version.number}', event.message)
 
     def test_api_reports_unpublished(self):
         client = self.client_for()

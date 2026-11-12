@@ -23,7 +23,8 @@ from accounts.permissions import PUBLISH, VIEW, ProjectAccess, can
 from accounts.serializers import audit
 from billing.service import check_scenario
 from secretstore.crypto import SecretsUnavailable
-from projects.models import DocumentVersion, Project
+from projects.events import record
+from projects.models import DocumentVersion, Project, ProjectEvent
 
 from deploying.models import HostingProfile
 from deploying.service import DeployError, deploy
@@ -211,11 +212,25 @@ def project_deploy(request, project_id: str):
             rotate_key=bool(body.get('rotateKey')),
         )
     except DeployError as exc:
+        record(
+            project, ProjectEvent.KIND_DEPLOY, str(exc),
+            status=ProjectEvent.STATUS_FAILED, actor=request.user,
+        )
         return Response({'detail': str(exc)},
                         status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
     audit(request, 'project.deploy', project,
           f'{profile.id} v{version.number} {result.files_uploaded} файлов')
+    record(
+        project, ProjectEvent.KIND_DEPLOY,
+        f'Выложено на «{profile.name}»: {result.files_uploaded} файлов.'
+        + ('' if result.ok else ' Проверка сайта не прошла.'),
+        status=(
+            ProjectEvent.STATUS_OK if result.ok
+            else ProjectEvent.STATUS_FAILED
+        ),
+        actor=request.user,
+    )
 
     payload = result.as_dict()
     payload['durationSeconds'] = round(

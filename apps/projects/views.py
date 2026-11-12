@@ -41,7 +41,8 @@ from accounts.serializers import (
 )
 from billing.service import check_page_slot, check_project_slot, check_scenario
 
-from .models import DocumentVersion, Page, Project
+from .models import DocumentVersion, Page, Project, ProjectEvent
+from .events import record as record_event, recent as recent_events
 from .module_registry import CATEGORIES, MODULES, modules_for_stage
 from .export import ExportError
 from .package import PackageTooLarge
@@ -327,6 +328,11 @@ def project_export(request, project_id: str):
         # Превышение технического лимита — не поломка пакета, а слишком
         # большой проект. Ответ 413 с указанием источника и границы
         # позволяет показать это в интерфейсе, а не молча урезать данные.
+        record_event(
+            project, ProjectEvent.KIND_BUILD,
+            f'Архив не собран: превышен технический лимит ({e}).',
+            status=ProjectEvent.STATUS_FAILED, actor=request.user,
+        )
         return Response(
             {
                 'detail': f'Проект не выгружается: превышен технический лимит ({e}).',
@@ -337,9 +343,19 @@ def project_export(request, project_id: str):
     except ExportError as e:
         # Пакет с дырой хуже отказа: собранное валидно целиком или
         # задание неуспешно (п.16.2).
+        record_event(
+            project, ProjectEvent.KIND_BUILD, str(e),
+            status=ProjectEvent.STATUS_FAILED, actor=request.user,
+        )
         return Response({'detail': str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
     audit(request, 'project.export', project, str(version.number))
+    record_event(
+        project, ProjectEvent.KIND_BUILD,
+        f'Архив собран: версия {version.number}, '
+        f'{len(built["files"])} файлов.',
+        status=ProjectEvent.STATUS_OK, actor=request.user,
+    )
     response = HttpResponse(blob, content_type='application/zip')
     # Имя файла транслитерируется, потому что заголовок HTTP
     # ограничен ASCII: кириллица в Content-Disposition кодируется
@@ -720,3 +736,29 @@ def audit_log(request, project_id: str):
             for e in entries
         ]
     )
+
+
+@api_view(['GET'])
+@permission_classes([])
+def project_events(request, project_id: str):
+    """Лента событий проекта: что собрали, опубликовали, выложили.
+
+    Читают все, у кого есть доступ: это состояние самого проекта, а не
+    служебный журнал платформы. Список ограничен последними событиями —
+    по нему видно, чем закончилась последняя операция, а не вся история.
+    """
+
+    try:
+        project = Project.objects.filter(pk=uuid.UUID(project_id)).first()
+    except (ValueError, AttributeError, TypeError):
+        return Response({'detail': 'некорректный UUID'},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    if project is None or not can(request.user, project, VIEW):
+        # 404, а не 403: иначе по коду ответа можно перебирать проекты.
+        return Response({'detail': 'проект не найден'},
+                        status=status.HTTP_404_NOT_FOUND)
+
+    return Response({
+        'events': [event.public_dict() for event in recent_events(project)],
+    })

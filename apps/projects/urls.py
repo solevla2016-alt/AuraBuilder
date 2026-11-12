@@ -26,6 +26,7 @@ urlpatterns = [
     ),
     path('<str:project_id>/members/', views.project_members, name='project-members'),
     path('<str:project_id>/audit/', views.audit_log, name='project-audit'),
+    path('<str:project_id>/events/', views.project_events, name='project-events'),
     # Версии объявлены раньше деталей проекта: иначе строка «versions»
     # разбиралась бы как project_id.
     path('<str:project_id>/versions/', views.version_list, name='project-versions'),

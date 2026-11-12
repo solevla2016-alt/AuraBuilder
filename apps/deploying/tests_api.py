@@ -16,7 +16,7 @@ from django.core.cache import cache
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
-from projects.models import Project
+from projects.models import Project, ProjectEvent
 from projects.versions import snapshot
 from billing.models import Subscription
 from secretstore.crypto import generate_key
@@ -185,6 +185,10 @@ class DeployApiTests(ApiTestCase):
         self.assertTrue(response.data['ok'])
         self.assertGreater(response.data['filesUploaded'], 0)
         self.assertTrue((self.root / 'index.html').exists())
+        event = ProjectEvent.objects.get(project=self.project)
+        self.assertEqual(event.kind, ProjectEvent.KIND_DEPLOY)
+        self.assertEqual(event.status, ProjectEvent.STATUS_OK)
+        self.assertIn('файлов', event.message)
 
     def test_unknown_profile_is_404(self):
         client = self.client_for(self.owner, 'pass-owner')

@@ -28,6 +28,8 @@ from accounts.permissions import (
 from accounts.serializers import audit
 from billing.service import check_scenario
 from projects.export import ExportError
+from projects.events import record
+from projects.models import ProjectEvent
 from projects.package import PackageTooLarge, build_archive, slugify_ascii
 
 from .errors import api_error, api_response
@@ -250,15 +252,30 @@ def project_export(request, project_id: str):
             pwa=wants_pwa,
         )
     except PackageTooLarge as e:
+        record(
+            project, ProjectEvent.KIND_BUILD,
+            f'Архив не собран: превышен технический лимит ({e}).',
+            status=ProjectEvent.STATUS_FAILED, actor=request.user,
+        )
         return api_error(
             'payload_too_large',
             f'Проект не выгружается: превышен технический лимит ({e}).',
             413,
         )
     except ExportError as e:
+        record(
+            project, ProjectEvent.KIND_BUILD, str(e),
+            status=ProjectEvent.STATUS_FAILED, actor=request.user,
+        )
         return api_error('unprocessable', str(e), 422)
 
     audit(request, 'project.export', project, str(version.number))
+    record(
+        project, ProjectEvent.KIND_BUILD,
+        f'Архив собран через API: версия {version.number}, '
+        f'{len(built["files"])} файлов.',
+        status=ProjectEvent.STATUS_OK, actor=request.user,
+    )
     response = HttpResponse(blob, content_type='application/zip')
     response['Content-Disposition'] = content_disposition_header(
         as_attachment=True,

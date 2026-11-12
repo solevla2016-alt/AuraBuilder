@@ -6,6 +6,7 @@ from django.urls import path
 
 from .api import (
     telegram_auth,
+    telegram_bot_chat,
     telegram_bot_detail,
     telegram_bot_menu,
     telegram_bots,
@@ -19,6 +20,8 @@ urlpatterns = [
          telegram_bot_detail, name='telegram-bot'),
     path('api/projects/<str:project_id>/telegram-bot/<str:bot_id>/menu/',
          telegram_bot_menu, name='telegram-bot-menu'),
+    path('api/projects/<str:project_id>/telegram-bot/<str:bot_id>/chat/',
+         telegram_bot_chat, name='telegram-bot-chat'),
     path('api/telegram/auth/', telegram_auth, name='telegram-auth'),
     # Публичная Mini App. Объявлена под своим префиксом, чтобы адрес
     # бота не путался с адресами платформы.
