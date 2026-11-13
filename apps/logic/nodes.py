@@ -220,7 +220,7 @@ _add(NodeType(
     props=(
         NodeProp('blockId', 'text', True, description='Форма'),
         NodeProp('endpoint', 'text', False, '',
-                 description='Путь на рантайме; пусто — /api/forms'),
+                 description='Путь на рантайме; пусто — /api/forms/'),
     ),
 ))
 

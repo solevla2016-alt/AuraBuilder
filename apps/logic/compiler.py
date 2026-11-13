@@ -128,7 +128,7 @@ def action_expression(node: Node) -> str:
                 f'{_js_string(payload)}) : {_js_string(payload)})')
     if kind == 'action.submit':
         return (f'__submit({_js_string(props.get("blockId"))}, '
-                f'{_js_string(props.get("endpoint") or "/api/forms")})')
+                f'{_js_string(props.get("endpoint") or "/api/forms/")})')
     if kind == 'action.webhook':
         return (f'__bridge({_js_string(props.get("channel"))}, '
                 f'{_js_string(props.get("bridge"))})')
@@ -177,13 +177,22 @@ function __submit(blockId, endpoint) {
   var form = holder ? (holder.querySelector('form') || holder) : null;
   if (!form || !form.tagName) return;
   if (window.__auraSubmit) { window.__auraSubmit(form, endpoint); return; }
-  var action = endpoint || form.getAttribute('action') || '/api/forms';
+  var action = endpoint || form.getAttribute('action') || '/api/forms/';
   var data = {};
   new FormData(form).forEach(function (value, key) { data[key] = value; });
+  // Ошибку показываем, а не выдаём успех за любую попытку. Раньше
+  // «Заявка отправлена» появлялось даже при 404: человек уходил с
+  // сайта, будучи уверенным, что его контакт сохранён.
   fetch(action, { method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify(data) })
-    .then(function () { __message('Заявка отправлена', 'success'); });
+    .then(function (response) {
+      if (!response.ok) throw new Error(String(response.status));
+      __message('Заявка отправлена', 'success');
+    })
+    .catch(function () {
+      __message('Не удалось отправить заявку. Попробуйте ещё раз.', 'error');
+    });
 }
 function __bridge(channel, target) {
   if (window.__auraBridge) window.__auraBridge(channel, target);

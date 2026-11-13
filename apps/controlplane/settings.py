@@ -106,6 +106,7 @@ INSTALLED_APPS = [
     'telegram',
     'deploying',
     'publications',
+    'analytics',
     'api_v1',
 ]
 
@@ -196,6 +197,10 @@ REST_FRAMEWORK = {
         # как поломка платформы, а не как ограничение частоты.
         'anon': os.environ.get('THROTTLE_ANON_RATE', '100/hour'),
         'user': os.environ.get('THROTTLE_USER_RATE', '1000/hour'),
+        # Заявки с опубликованного сайта: 30 в минуту с одного адреса.
+        # Форма — не API редактора, и лимит у неё свой (см.
+        # analytics.throttling).
+        'forms': os.environ.get('FORM_THROTTLE_RATE', '30/min'),
     },
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.AnonRateThrottle',

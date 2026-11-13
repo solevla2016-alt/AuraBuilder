@@ -14,6 +14,8 @@ from django.http import HttpResponse
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
+from analytics.tracking import note_view
+
 from .models import Site
 from .service import SiteNotFound, note_request, resolve
 
@@ -51,6 +53,10 @@ def serve_site(request, slug: str, path: str = '') -> HttpResponse:
     site = Site.objects.filter(slug=slug).first()
     if site is not None:
         note_request(site)
+        # Просмотры считаются только для HTML и только на раздаче
+        # платформы: статическая копия на чужом хостинге о платформе
+        # ничего не знает (ТЗ п.16.4).
+        note_view(site, site_version, request, target)
 
     # Файл читается целиком, а не отдаётся потоком: открытый поток
     # держит файл занятым, и переключить версию или убрать папку после

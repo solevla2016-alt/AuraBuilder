@@ -44,6 +44,8 @@ export type IconName =
   | 'alignLeft'
   | 'alignCenter'
   | 'alignRight'
+  /** Аналитика опубликованного сайта: столбцы статистики. */
+  | 'chart'
   /** Возврат к списку проектов. */
   | 'back'
   /** Переход к опубликованной версии. */
@@ -91,6 +93,7 @@ const PATHS: Record<IconName, string> = {
   alignLeft: 'M4 6h16M4 12h9M4 18h13',
   alignCenter: 'M4 6h16M7 12h10M6 18h12',
   alignRight: 'M4 6h16M11 12h9M7 18h13',
+  chart: 'M4 20h16M6 20V11m5 9V5m5 15V8',
 };
 
 export interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'name'> {

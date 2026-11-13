@@ -208,6 +208,17 @@ class CompilerTests(SimpleTestCase):
             self.assertNotIn(forbidden, script)
         self.assertIn('document.addEventListener', script)
 
+    def test_failed_submission_is_not_reported_as_success(self):
+        # Форма показывает успех только на 2xx. Иначе 404 от приёма
+        # заявок выглядел бы как отправленная заявка, и человек ушёл
+        # бы с сайта, не оставив контакта.
+        script = compile_graph(CLICK_GRAPH)['script']
+        self.assertIn('response.ok', script)
+        self.assertIn('Не удалось отправить заявку', script)
+        # Адрес приёма заявок по умолчанию — маршрут платформы. Без
+        # косой черты APPEND_SLASH превратил бы POST в GET.
+        self.assertIn('/api/forms/', script)
+
     def test_declaration_describes_graph(self):
         declaration = compile_graph(CLICK_GRAPH)['declaration']
         self.assertEqual(declaration['format'], LOGIC_FORMAT)

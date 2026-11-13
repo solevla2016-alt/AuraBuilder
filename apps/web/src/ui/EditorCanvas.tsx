@@ -168,6 +168,7 @@ export function EditorCanvas({
   onOpenVersions,
   onOpenPublish,
   onOpenLogic,
+  onOpenAnalytics,
   onSignOut,
 }: {
   /** Проект открыт из списка: идентификатор и название известны заранее. */
@@ -180,6 +181,8 @@ export function EditorCanvas({
   onOpenPublish: () => void;
   /** Граф логики: отдельный полноэкранный режим (ТЗ п.4.2). */
   onOpenLogic: () => void;
+  /** Аналитика опубликованного сайта: просмотры, источники, заявки. */
+  onOpenAnalytics: () => void;
   onSignOut: () => void;
 }) {
   const [tool, setTool] = useState('select');
@@ -961,6 +964,19 @@ export function EditorCanvas({
           >
             <Icon name="rocket" />
             <span>Опубликовать</span>
+          </button>
+          {/* Аналитика рядом с публикацией: это ответ на вопрос «что
+              происходит с сайтом после того, как его открыли». Раньше
+              его не было видно вовсе — статистика жила только в API. */}
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={onOpenAnalytics}
+            title="Аналитика сайта"
+            aria-label="Аналитика сайта"
+          >
+            <Icon name="chart" />
+            <span>Аналитика</span>
           </button>
           {/* Кнопка возврата в список проектов: без неё из редактора
               не выйти, кроме выхода из аккаунта, а это разные вещи. */}
