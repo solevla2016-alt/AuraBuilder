@@ -14,6 +14,12 @@ urlpatterns = [
          api.project_site, name='project-site'),
     path('api/projects/<str:project_id>/site/withdraw/',
          api.project_site_withdraw, name='project-site-withdraw'),
+    # Отложенная публикация: задание живёт рядом с сайтом, а не как
+    # отдельная сущность проекта — публикуется всегда сайт.
+    path('api/projects/<str:project_id>/site/schedule/',
+         api.site_schedule, name='site-schedule'),
+    path('api/projects/<str:project_id>/site/schedule/<str:schedule_id>/',
+         api.site_schedule_cancel, name='site-schedule-cancel'),
     path('api/projects/<str:project_id>/site/backup/',
          api.project_site_backup, name='project-site-backup'),
     path('api/projects/<str:project_id>/site/backups/',

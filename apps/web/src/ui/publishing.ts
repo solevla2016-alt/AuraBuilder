@@ -28,6 +28,20 @@ export interface SiteStatus {
   requests: number;
   lastRequestAt: string | null;
   backups: number;
+  /** Ожидающие включения версии. Выполненные видны в ленте событий. */
+  scheduled: ScheduledPublication[];
+}
+
+/** Отложенная публикация: собранная версия и время включения. */
+export interface ScheduledPublication {
+  id: string;
+  version: number;
+  /** ISO 8601 с часовым поясом: сервер считает время по своим настройкам. */
+  at: string;
+  state: 'pending' | 'done' | 'cancelled' | 'failed';
+  error: string | null;
+  createdAt: string;
+  finishedAt: string | null;
 }
 
 /** Резервная копия публикации: одна строка в списке отката. */
@@ -77,7 +91,7 @@ export interface DeployResult {
  */
 export interface ProjectEvent {
   id: string;
-  kind: 'build' | 'publish' | 'withdraw' | 'backup' | 'restore' | 'deploy';
+  kind: 'build' | 'publish' | 'withdraw' | 'backup' | 'restore' | 'deploy' | 'schedule';
   kindLabel: string;
   status: 'ok' | 'failed' | 'info';
   message: string;
@@ -126,6 +140,26 @@ export const publishingApi = {
       method: 'POST',
       body: JSON.stringify({}),
     }),
+
+  /**
+   * Отложенная публикация: версия собирается сразу, включается в `at`.
+   *
+   * Время передаётся ISO-строкой, а не локальной датой без зоны:
+   * сервер и браузер могут быть в разных часовых поясах.
+   */
+  schedule: (projectId: string, at: string, version?: number) =>
+    request<SiteStatus>(`/projects/${projectId}/site/schedule/`, {
+      method: 'POST',
+      body: JSON.stringify(
+        version === undefined ? { at } : { at, version },
+      ),
+    }),
+
+  cancelSchedule: (projectId: string, scheduleId: string) =>
+    request<SiteStatus>(
+      `/projects/${projectId}/site/schedule/${scheduleId}/`,
+      { method: 'DELETE' },
+    ),
 
   /** Резервная копия опубликованной версии. */
   backup: (projectId: string) =>

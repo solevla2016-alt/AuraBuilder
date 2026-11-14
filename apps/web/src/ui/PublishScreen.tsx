@@ -21,6 +21,7 @@ import {
   type BackupItem,
   type HostingProfile,
   type ProjectEvent,
+  type ScheduledPublication,
   type SiteStatus,
   type TelegramBotInfo,
 } from './publishing';
@@ -53,6 +54,16 @@ const EMPTY_FORM = {
 
 const EMPTY_BOT = { name: '', botUsername: '', token: '' };
 
+/** Значение для `datetime-local`: через час, в местном времени. */
+function nextHour(): string {
+  const date = new Date(Date.now() + 60 * 60 * 1000);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}`
+  );
+}
+
 export function PublishScreen({ projectId, projectName, onBack }: Props) {
   const [status, setStatus] = useState<SiteStatus | null>(null);
   const [profiles, setProfiles] = useState<HostingProfile[]>([]);
@@ -66,6 +77,7 @@ export function PublishScreen({ projectId, projectName, onBack }: Props) {
   const [bots, setBots] = useState<TelegramBotInfo[]>([]);
   const [botForm, setBotForm] = useState(EMPTY_BOT);
   const [showBotForm, setShowBotForm] = useState(false);
+  const [scheduleAt, setScheduleAt] = useState(nextHour);
 
   const load = useCallback(async () => {
     try {
@@ -147,6 +159,39 @@ export function PublishScreen({ projectId, projectName, onBack }: Props) {
       return {
         kind: 'ok',
         text: `Копия №${result.number} сделана (${Math.max(1, Math.round(result.size / 1024))} КБ).`,
+      };
+    });
+
+  /**
+   * Отложенная публикация.
+   *
+   * Браузер присылает местное время без зоны, сервер — ISO с зоной.
+   * Проверка «в будущем» есть и здесь, и на сервере: первая нужна,
+   * чтобы человек сразу увидел опечатку, вторая — потому что клиенту
+   * доверять нельзя.
+   */
+  const schedule = () =>
+    run('schedule', async () => {
+      const when = new Date(scheduleAt);
+      if (!scheduleAt || Number.isNaN(when.getTime())) {
+        return { kind: 'bad', text: 'Укажите дату и время публикации.' };
+      }
+      if (when.getTime() <= Date.now()) {
+        return { kind: 'bad', text: 'Время публикации должно быть в будущем.' };
+      }
+      await publishingApi.schedule(projectId, when.toISOString());
+      return {
+        kind: 'ok',
+        text: `Версия собрана и выйдет ${when.toLocaleString('ru-RU')}.`,
+      };
+    });
+
+  const cancelSchedule = (item: ScheduledPublication) =>
+    run(`schedule-${item.id}`, async () => {
+      await publishingApi.cancelSchedule(projectId, item.id);
+      return {
+        kind: 'ok',
+        text: `Публикация версии ${item.version} отменена.`,
       };
     });
 
@@ -370,6 +415,55 @@ export function PublishScreen({ projectId, projectName, onBack }: Props) {
             </ul>
           </div>
         ) : null}
+
+        <div className="vers__backups" data-screen="publish-schedule">
+          <h3 className="vers__backups-title">Отложенная публикация</h3>
+          <p className="props__note">
+            Версия собирается сейчас, а сайт переключается на неё в указанное
+            время. До этого посетители видят то, что опубликовано сейчас.
+            Отзыв публикации отменяет запланированное.
+          </p>
+          <div className="vers__mark-row">
+            <input
+              type="datetime-local"
+              className="prop__input"
+              value={scheduleAt}
+              onChange={(e) => setScheduleAt(e.target.value)}
+              aria-label="Дата и время публикации"
+              disabled={busy !== null}
+            />
+            <button
+              type="button"
+              className="btn"
+              onClick={() => void schedule()}
+              disabled={busy !== null}
+            >
+              {busy === 'schedule' ? 'Планируем…' : 'Запланировать'}
+            </button>
+          </div>
+          {(status?.scheduled ?? []).length > 0 ? (
+            <ul className="vers__backup-list">
+              {(status?.scheduled ?? []).map((item) => (
+                <li key={item.id} className="vers__backup">
+                  <span className="vers__backup-text">
+                    Версия {item.version} ·{' '}
+                    {new Date(item.at).toLocaleString('ru-RU')}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    onClick={() => void cancelSchedule(item)}
+                    disabled={busy !== null}
+                  >
+                    {busy === `schedule-${item.id}` ? 'Отменяем…' : 'Отменить'}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="props__note">Запланированных публикаций нет.</p>
+          )}
+        </div>
       </section>
 
       <section className="data__panel" data-screen="publish-export">

@@ -166,6 +166,30 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  # Включение отложенных публикаций. Отдельный сервис, а не таймер
+  # внутри api: api можно масштабировать репликами, и тогда каждая
+  # проверяла бы очередь одновременно. Задание защищено блокировкой
+  # строки, поэтому дублей не будет, но лишние процессы бессмысленны.
+  #
+  # Тома те же: задание переключает уже собранную версию, и файлы
+  # должны быть видны так же, как их видит api.
+  scheduler:
+    image: aurabuilder-api:local
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    command: ["python", "manage.py", "publish_scheduled", "--loop", "60"]
+    environment: *django_env
+    volumes:
+      - publish-data:/srv/published
+      - asset-data:/srv/assets
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   web:
     image: aurabuilder-web:local
     build:

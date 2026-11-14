@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import uuid
 from pathlib import Path
 
 from django.conf import settings
@@ -161,6 +162,81 @@ class SiteVersion(models.Model):
         }
 
 
+SCHEDULE_PENDING = 'pending'
+SCHEDULE_DONE = 'done'
+SCHEDULE_CANCELLED = 'cancelled'
+SCHEDULE_FAILED = 'failed'
+
+SCHEDULE_STATE_CHOICES = (
+    (SCHEDULE_PENDING, 'Ждёт своего времени'),
+    (SCHEDULE_DONE, 'Выполнена'),
+    (SCHEDULE_CANCELLED, 'Отменена'),
+    (SCHEDULE_FAILED, 'Ошибка'),
+)
+
+
+class ScheduledPublication(models.Model):
+    """Публикация, которую собрали сейчас, а включают позже.
+
+    Версия собирается в момент планирования и лежит готовой на диске:
+    «собрать сейчас, выложить в нужное время» — именно это, а не
+    отложенный запуск сборки. Если проект изменят после планирования,
+    опубликуется та версия, которую человек выбрал, а не последняя.
+
+    Номер версии хранится числом, а не ссылкой на SiteVersion: строка
+    версии может исчезнуть при чистке старых публикаций, а отложенное
+    задание должно остаться видимым и честно сообщить об ошибке, вместо
+    того чтобы тихо пропасть вместе с каскадом.
+    """
+
+    id = models.UUIDField(primary_key=True, editable=False, default=uuid.uuid4)
+    site = models.ForeignKey(
+        'publications.Site', on_delete=models.CASCADE,
+        related_name='scheduled', verbose_name='Сайт',
+    )
+    version_number = models.PositiveIntegerField('Версия документа')
+    scheduled_at = models.DateTimeField('Время публикации', db_index=True)
+    state = models.CharField(
+        'Состояние', max_length=10, choices=SCHEDULE_STATE_CHOICES,
+        default=SCHEDULE_PENDING,
+    )
+    error = models.CharField('Ошибка', max_length=300, blank=True, default='')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='scheduled_publications',
+        verbose_name='Запланировал',
+    )
+    created_at = models.DateTimeField('Создана', auto_now_add=True)
+    finished_at = models.DateTimeField('Завершена', null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Отложенная публикация'
+        verbose_name_plural = 'Отложенные публикации'
+        ordering = ['scheduled_at']
+        indexes = [
+            models.Index(
+                fields=['state', 'scheduled_at'],
+                name='scheduled_due',
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.site.slug}: v{self.version_number} на {self.scheduled_at:%d.%m.%Y %H:%M}'
+
+    def public_dict(self) -> dict:
+        return {
+            'id': str(self.id),
+            'version': self.version_number,
+            'at': self.scheduled_at.isoformat(),
+            'state': self.state,
+            'error': self.error or None,
+            'createdAt': self.created_at.isoformat(),
+            'finishedAt': (
+                self.finished_at.isoformat() if self.finished_at else None
+            ),
+        }
+
+
 class Backup(models.Model):
     """Резервная копия публикации.
 
@@ -192,4 +268,5 @@ class Backup(models.Model):
         return publish_root() / self.path
 
 
-__all__ = ['Backup', 'Site', 'SiteVersion', 'slugify_site_name']
+__all__ = ['Backup', 'ScheduledPublication', 'Site', 'SiteVersion',
+           'slugify_site_name']

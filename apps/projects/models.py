@@ -231,6 +231,7 @@ class ProjectEvent(models.Model):
     KIND_BACKUP = 'backup'
     KIND_RESTORE = 'restore'
     KIND_DEPLOY = 'deploy'
+    KIND_SCHEDULE = 'schedule'
     KIND_CHOICES = [
         (KIND_BUILD, 'Сборка'),
         (KIND_PUBLISH, 'Публикация'),
@@ -238,6 +239,7 @@ class ProjectEvent(models.Model):
         (KIND_BACKUP, 'Резервная копия'),
         (KIND_RESTORE, 'Восстановление'),
         (KIND_DEPLOY, 'Деплой'),
+        (KIND_SCHEDULE, 'Отложенная публикация'),
     ]
 
     STATUS_OK = 'ok'

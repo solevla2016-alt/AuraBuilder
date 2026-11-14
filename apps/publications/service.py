@@ -14,25 +14,36 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import shutil
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from django.db import transaction
+from django.utils import timezone
 
+from projects.events import record
+from projects.models import ProjectEvent
 from projects.package import PackageTooLarge, build_package
 from projects.package import FileContent, _as_bytes
 
 from .models import (
+    SCHEDULE_CANCELLED,
+    SCHEDULE_DONE,
+    SCHEDULE_FAILED,
+    SCHEDULE_PENDING,
     STATE_ACTIVE,
     STATE_WITHDRAWN,
     Backup,
+    ScheduledPublication,
     Site,
     SiteVersion,
     publish_root,
     slugify_site_name,
 )
+
+logger = logging.getLogger(__name__)
 
 #: Сколько последних версий хранится на диске. Хранение всех версий
 #: съедало бы место, которого у файловой публикации нет.
@@ -91,6 +102,67 @@ def _write_tree(files: dict[str, FileContent], directory: Path) -> tuple[int, in
     return count, total
 
 
+def _ensure_site(project, slug: str | None = None) -> Site:
+    """Сайт проекта; создаётся при первой публикации или планировании."""
+    base = slugify_site_name(slug or project.name)
+    site = Site.objects.filter(project=project).first()
+    if site is None:
+        return Site.objects.create(
+            project=project, slug=_free_slug(base), state=STATE_ACTIVE
+        )
+    if slug and slugify_site_name(slug) != site.slug:
+        raise PublishError(
+            f'Адрес сайта уже задан: {site.slug}. Смена адреса — отдельная '
+            'операция, чтобы старые ссылки не перестали работать молча.'
+        )
+    return site
+
+
+def build_site_version(site: Site, project, version) -> tuple[SiteVersion, list[str]]:
+    """Собирает пакет версии, но не делает её текущей.
+
+    Общая часть обычной и отложенной публикации. Файлы пишутся в
+    отдельную папку, поэтому посетитель никогда не видит половину
+    сборки. Уже собранная версия переиспользуется: повторное
+    планирование не должно тратить время на те же файлы.
+    """
+    existing = site.versions.filter(number=version.number).first()
+    if existing is not None and (existing.directory / 'index.html').is_file():
+        return existing, ['Версия уже собрана: файлы не пересобирались.']
+
+    try:
+        built = build_package(project, version, base_url=site.url())
+    except PackageTooLarge as exc:
+        raise PublishError(f'Проект не публикуется: превышен лимит ({exc}).') from exc
+
+    relative = f'sites/{site.slug}/versions/v{version.number}-{version.number:04d}'
+    target = publish_root() / relative
+    files, size = _write_tree(built['files'], target)
+
+    if existing is not None:
+        # Строка осталась, а папки нет: путь тот же, поэтому обновляем
+        # размеры вместо второй записи с тем же номером версии.
+        existing.size = size
+        existing.files = files
+        existing.save(update_fields=['size', 'files'])
+        published = existing
+    else:
+        published = site.versions.create(
+            number=version.number, path=relative, size=size, files=files
+        )
+    return published, list(built['report'].warnings)
+
+
+def _activate(site: Site, published: SiteVersion, when=None) -> None:
+    """Делает собранную версию текущей. Общая часть публикаций."""
+    site.current_version = published
+    site.state = STATE_ACTIVE
+    site.withdrawn_at = None
+    site.published_at = when or timezone_now()
+    site.save(update_fields=['current_version', 'state', 'withdrawn_at',
+                             'published_at'])
+
+
 @transaction.atomic
 def publish(project, version, slug: str | None = None) -> PublishResult:
     """Публикует версию проекта и делает её текущей."""
@@ -98,17 +170,7 @@ def publish(project, version, slug: str | None = None) -> PublishResult:
     if version is None:
         raise PublishError('Сначала сохраните проект: нечего публиковать.')
 
-    base = slugify_site_name(slug or project.name)
-    site = Site.objects.filter(project=project).first()
-    if site is None:
-        site = Site.objects.create(
-            project=project, slug=_free_slug(base), state=STATE_ACTIVE
-        )
-    elif slug and slugify_site_name(slug) != site.slug:
-        raise PublishError(
-            f'Адрес сайта уже задан: {site.slug}. Смена адреса — отдельная '
-            'операция, чтобы старые ссылки не перестали работать молча.'
-        )
+    site = _ensure_site(project, slug)
 
     # Повторная публикация той же версии: файлы не пересобираются.
     existing = site.versions.filter(number=version.number).first()
@@ -126,39 +188,169 @@ def publish(project, version, slug: str | None = None) -> PublishResult:
             warnings=['Эта версия уже опубликована: файлы не пересобирались.'],
         )
 
-    try:
-        built = build_package(project, version, base_url=site.url())
-    except PackageTooLarge as exc:
-        raise PublishError(f'Проект не публикуется: превышен лимит ({exc}).') from exc
-
-    relative = f'sites/{site.slug}/versions/v{version.number}-{version.number:04d}'
-    target = publish_root() / relative
-    files, size = _write_tree(built['files'], target)
-
-    published = site.versions.create(
-        number=version.number, path=relative, size=size, files=files
-    )
-    site.current_version = published
-    site.state = STATE_ACTIVE
-    site.withdrawn_at = None
-    site.published_at = timezone_now()
-    site.save(update_fields=['current_version', 'state', 'withdrawn_at',
-                             'published_at'])
-
+    published, warnings = build_site_version(site, project, version)
+    _activate(site, published)
     _prune_versions(site)
     return PublishResult(
         site=site,
         version=published,
-        files=files,
-        size=size,
+        files=published.files,
+        size=published.size,
         url=site.url(),
-        warnings=list(built['report'].warnings),
+        warnings=warnings,
     )
 
 
-def timezone_now():
-    from django.utils import timezone
+@transaction.atomic
+def schedule_publication(project, version, when: datetime, user=None,
+                         slug: str | None = None
+                         ) -> tuple[ScheduledPublication, list[str]]:
+    """Собирает версию сейчас и ставит её включение на указанное время.
 
+    Сборка намеренно не откладывается: если файлы проекта пропадут или
+    сборка перестанет укладываться в лимит, человек узнает об этом
+    сразу, а не в момент, когда сайт должен был обновиться.
+    """
+    if version is None:
+        raise PublishError('Сначала сохраните проект: нечего публиковать.')
+
+    site = _ensure_site(project, slug)
+    published, warnings = build_site_version(site, project, version)
+    schedule = ScheduledPublication.objects.create(
+        site=site,
+        version_number=published.number,
+        scheduled_at=when,
+        created_by=(
+            user if user is not None and user.is_authenticated else None
+        ),
+    )
+    return schedule, warnings
+
+
+def due_schedules(now: datetime | None = None):
+    """Очередь отложенных публикаций, время которых наступило."""
+    return (
+        ScheduledPublication.objects
+        .filter(
+            state=SCHEDULE_PENDING,
+            scheduled_at__lte=now or timezone_now(),
+        )
+        .select_related('site__project')
+        .order_by('scheduled_at')
+    )
+
+
+@transaction.atomic
+def cancel_schedule(schedule: ScheduledPublication) -> bool:
+    """Отменяет ещё не выполненную публикацию. False — уже не ждёт."""
+    finished = timezone_now()
+    updated = ScheduledPublication.objects.filter(
+        pk=schedule.pk, state=SCHEDULE_PENDING,
+    ).update(state=SCHEDULE_CANCELLED, finished_at=finished)
+    if updated:
+        schedule.state = SCHEDULE_CANCELLED
+        schedule.finished_at = finished
+    return bool(updated)
+
+
+def _finish_schedule(schedule: ScheduledPublication, state: str,
+                     error: str, moment: datetime) -> None:
+    schedule.state = state
+    schedule.error = (error or '')[:300]
+    schedule.finished_at = moment
+    schedule.save(update_fields=['state', 'error', 'finished_at'])
+
+
+def apply_due(now: datetime | None = None) -> list[ScheduledPublication]:
+    """Включает все публикации, время которых наступило.
+
+    Каждая публикация обрабатывается отдельно: сбой одной не должен
+    задерживать остальные. Ошибка сохраняется в записи и попадает в
+    журнал проекта — иначе неудачная отложенная публикация выглядела бы
+    как «ничего не произошло».
+    """
+    moment = now or timezone_now()
+    ids = list(due_schedules(moment).values_list('id', flat=True))
+    applied: list[ScheduledPublication] = []
+
+    for schedule_id in ids:
+        try:
+            with transaction.atomic():
+                schedule = (
+                    ScheduledPublication.objects
+                    .select_for_update()
+                    .select_related('site__project')
+                    .filter(pk=schedule_id)
+                    .first()
+                )
+                if schedule is None or schedule.state != SCHEDULE_PENDING:
+                    continue
+
+                site = Site.objects.select_for_update().get(
+                    pk=schedule.site_id
+                )
+                version = site.versions.filter(
+                    number=schedule.version_number
+                ).first()
+                if version is None or not (
+                    version.directory / 'index.html'
+                ).is_file():
+                    _finish_schedule(
+                        schedule, SCHEDULE_FAILED,
+                        'Собранная версия удалена с диска: публиковать нечего.',
+                        moment,
+                    )
+                    record(
+                        schedule.site.project, ProjectEvent.KIND_SCHEDULE,
+                        f'Отложенная публикация версии '
+                        f'{schedule.version_number} не выполнена: '
+                        'файлы версии удалены.',
+                        status=ProjectEvent.STATUS_FAILED,
+                    )
+                    applied.append(schedule)
+                    continue
+
+                # Время публикации — запланированное, а не момент, когда
+                # планировщик проснулся: при задержке таймера на минуту
+                # отчёт не должен врать о дате выхода версии.
+                _activate(site, version, when=schedule.scheduled_at)
+                _finish_schedule(schedule, SCHEDULE_DONE, '', moment)
+                _prune_versions(site)
+                record(
+                    schedule.site.project, ProjectEvent.KIND_SCHEDULE,
+                    f'Отложенная публикация выполнена: версия '
+                    f'{schedule.version_number}, {site.slug}.',
+                    status=ProjectEvent.STATUS_OK, actor=schedule.created_by,
+                )
+                applied.append(schedule)
+        except Exception as exc:  # noqa: BLE001 — одна публикация не роняет очередь
+            logger.exception('отложенная публикация %s не выполнена',
+                             schedule_id)
+            ScheduledPublication.objects.filter(
+                pk=schedule_id, state=SCHEDULE_PENDING,
+            ).update(state=SCHEDULE_FAILED, error=str(exc)[:300],
+                     finished_at=moment)
+            failed = (
+                ScheduledPublication.objects
+                .select_related('site__project')
+                .filter(pk=schedule_id)
+                .first()
+            )
+            if failed is not None:
+                record(
+                    failed.site.project, ProjectEvent.KIND_SCHEDULE,
+                    f'Отложенная публикация версии '
+                    f'{failed.version_number} не выполнена: {exc}',
+                    status=ProjectEvent.STATUS_FAILED,
+                )
+                applied.append(failed)
+
+    return applied
+
+
+def timezone_now():
+    """Текущее время: одно место, чтобы отложенная публикация и отзыв
+    считали время одинаково."""
     return timezone.now()
 
 
@@ -178,6 +370,13 @@ def withdraw(site: Site, remove_files: bool = False) -> None:
     site.state = STATE_WITHDRAWN
     site.withdrawn_at = timezone_now()
     site.save(update_fields=['state', 'withdrawn_at'])
+
+    # Отзыв отменяет и будущее включение. Иначе сайт, который владелец
+    # убрал, вернулся бы сам в запланированное время, и человек узнал бы
+    # об этом от посетителей.
+    ScheduledPublication.objects.filter(
+        site=site, state=SCHEDULE_PENDING,
+    ).update(state=SCHEDULE_CANCELLED, finished_at=timezone_now())
 
     if remove_files:
         directory = site.directory()
@@ -200,6 +399,19 @@ def _prune_versions(site: Site) -> None:
     оставил бы сайт без файлов.
     """
     keep = {site.current_version_id}
+    # Версии, на которые ссылаются отложенные публикации, тоже нельзя
+    # удалять: к моменту срабатывания файлов уже не будет, и задание
+    # провалится, хотя человек всё сделал правильно.
+    scheduled_numbers = list(
+        site.scheduled
+        .filter(state=SCHEDULE_PENDING)
+        .values_list('version_number', flat=True)
+    )
+    keep.update(
+        site.versions
+        .filter(number__in=scheduled_numbers)
+        .values_list('id', flat=True)
+    )
     for version in site.versions.order_by('-number')[:KEEP_VERSIONS]:
         keep.add(version.id)
     for version in site.versions.exclude(id__in=keep):
@@ -389,6 +601,10 @@ def status_payload(site: Site) -> dict:
             site.last_request_at.isoformat() if site.last_request_at else None
         ),
         'backups': site.backups.count(),
+        'scheduled': [
+            item.public_dict()
+            for item in site.scheduled.filter(state=SCHEDULE_PENDING)[:20]
+        ],
     }
 
 
@@ -396,11 +612,16 @@ __all__ = [
     'PublishError',
     'PublishResult',
     'SiteNotFound',
+    'apply_due',
     'backup_site',
+    'build_site_version',
+    'cancel_schedule',
     'checksum',
+    'due_schedules',
     'note_request',
     'publish',
     'resolve',
+    'schedule_publication',
     'status_payload',
     'withdraw',
 ]

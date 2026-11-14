@@ -9,7 +9,10 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -19,12 +22,14 @@ from accounts.serializers import audit
 from projects.events import record
 from projects.models import DocumentVersion, Project, ProjectEvent
 
-from .models import Backup, Site
+from .models import SCHEDULE_PENDING, Backup, ScheduledPublication, Site
 from .service import (
     PublishError,
     backup_site,
+    cancel_schedule,
     publish,
     restore_backup,
+    schedule_publication,
     status_payload,
     withdraw,
 )
@@ -105,6 +110,157 @@ def project_site(request, project_id: str):
         'warnings': result.warnings,
     })
     return Response(payload, status=status.HTTP_201_CREATED)
+
+
+def _parse_when(value) -> datetime | None:
+    """Разбирает время публикации из ISO-строки.
+
+    Наивное время считается местным: интерфейс присылает UTC, но
+    ручной запрос через curl может прийти без зоны, и отказывать ему
+    только из-за этого незачем.
+    """
+    if not isinstance(value, str) or not value.strip():
+        return None
+    parsed = parse_datetime(value.strip())
+    if parsed is None:
+        return None
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed)
+    return parsed
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([ProjectAccess])
+def site_schedule(request, project_id: str):
+    """Отложенная публикация: список и постановка задания.
+
+    Версия собирается в момент постановки. Поэтому ошибка сборки видна
+    сразу и не превращается в «сайт не обновился в нужный момент».
+    """
+
+    project = _project(project_id)
+    if project is None or not can(request.user, project, VIEW):
+        return Response({'detail': 'проект не найден'},
+                        status=status.HTTP_404_NOT_FOUND)
+
+    site = Site.objects.filter(project=project).first()
+
+    if request.method == 'GET':
+        if site is None:
+            return Response({'scheduled': []})
+        return Response({'scheduled': [
+            item.public_dict()
+            for item in site.scheduled.filter(state=SCHEDULE_PENDING)
+        ]})
+
+    if not can(request.user, project, PUBLISH):
+        return Response(
+            {'detail': 'Планировать публикацию может тот, кто публикует.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    body = request.data or {}
+    when = _parse_when(body.get('at'))
+    if when is None:
+        return Response(
+            {'detail': 'Укажите дату и время публикации в формате ISO 8601.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if when <= timezone.now():
+        return Response(
+            {'detail': 'Время публикации должно быть в будущем.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    number = body.get('version')
+    versions = DocumentVersion.objects.filter(project=project)
+    if number is not None:
+        version = versions.filter(number=number).first()
+        if version is None:
+            return Response({'detail': 'версия не найдена'},
+                            status=status.HTTP_404_NOT_FOUND)
+    else:
+        version = versions.order_by('-number').first()
+        if version is None:
+            return Response(
+                {'detail': 'Сначала сохраните проект: нечего публиковать.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+    try:
+        schedule, warnings = schedule_publication(
+            project, version, when,
+            user=request.user, slug=body.get('slug'),
+        )
+    except PublishError as exc:
+        record(
+            project, ProjectEvent.KIND_SCHEDULE, str(exc),
+            status=ProjectEvent.STATUS_FAILED, actor=request.user,
+        )
+        return Response({'detail': str(exc)},
+                        status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+    moment = timezone.localtime(schedule.scheduled_at)
+    audit(
+        request, 'site.schedule', project,
+        f'v{schedule.version_number} на {moment:%d.%m.%Y %H:%M}',
+    )
+    record(
+        project, ProjectEvent.KIND_SCHEDULE,
+        f'Публикация версии {schedule.version_number} запланирована на '
+        f'{moment:%d.%m.%Y %H:%M}.',
+        status=ProjectEvent.STATUS_INFO, actor=request.user,
+    )
+    payload = status_payload(schedule.site)
+    payload.update({
+        'schedule': schedule.public_dict(),
+        'warnings': warnings,
+    })
+    return Response(payload, status=status.HTTP_201_CREATED)
+
+
+@api_view(['DELETE'])
+@permission_classes([ProjectAccess])
+def site_schedule_cancel(request, project_id: str, schedule_id: str):
+    """Отменяет ожидающую публикацию. Выполненную отменить нельзя."""
+    project = _project(project_id)
+    if project is None or not can(request.user, project, VIEW):
+        return Response({'detail': 'проект не найден'},
+                        status=status.HTTP_404_NOT_FOUND)
+    if not can(request.user, project, PUBLISH):
+        return Response(
+            {'detail': 'Отменять публикацию может тот, кто публикует.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    try:
+        schedule_uuid = uuid.UUID(schedule_id)
+    except (ValueError, AttributeError, TypeError):
+        return Response({'detail': 'задание не найдено'},
+                        status=status.HTTP_404_NOT_FOUND)
+
+    schedule = (
+        ScheduledPublication.objects
+        .filter(
+            pk=schedule_uuid, site__project=project,
+            state=SCHEDULE_PENDING,
+        )
+        .select_related('site')
+        .first()
+    )
+    if schedule is None:
+        return Response({'detail': 'задание не найдено или уже выполнено'},
+                        status=status.HTTP_404_NOT_FOUND)
+
+    cancel_schedule(schedule)
+    audit(request, 'site.schedule.cancel', project,
+          f'v{schedule.version_number}')
+    record(
+        project, ProjectEvent.KIND_SCHEDULE,
+        f'Отложенная публикация версии {schedule.version_number} отменена.',
+        status=ProjectEvent.STATUS_INFO, actor=request.user,
+    )
+    return Response(status_payload(schedule.site))
 
 
 @api_view(['POST'])
