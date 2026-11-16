@@ -15,7 +15,7 @@
  * записью в истории.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Icon } from './icons';
 import { dataApi, type DataSource } from './data';
 import { assetsApi, humanSize, type Asset } from './assets';
@@ -51,6 +51,11 @@ export interface PropertiesPanelProps {
   /** Есть ли блок, у которого можно взять настройки. */
   canPasteStyle: boolean;
   onPasteStyle: () => void;
+  /**
+   * Сохранить блок как шаблон. Необязателен: панель используется и
+   * там, где шаблоны недоступны, — без обработчика секция не рисуется.
+   */
+  onSaveAsTemplate?: (name: string) => Promise<void>;
 }
 
 const ALIGNS: { id: Align; icon: 'alignLeft' | 'alignCenter' | 'alignRight'; label: string }[] = [
@@ -445,8 +450,13 @@ export function PropertiesPanel({
   onCopyStyle,
   canPasteStyle,
   onPasteStyle,
+  onSaveAsTemplate,
 }: PropertiesPanelProps) {
   const [draftContent, setDraftContent] = useState(content);
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+  const [templateBusy, setTemplateBusy] = useState(false);
+  const [templateError, setTemplateError] = useState<string | null>(null);
 
   // Список источников нужен полю source у модулей данных, но грузится
   // он всегда: хук должен вызываться при каждом рендере, иначе
@@ -465,6 +475,14 @@ export function PropertiesPanel({
     setDraftContent(content);
   }, [content, block?.id]);
 
+  // Форма шаблона закрывается при смене блока: имя, набранное для
+  // одного блока, не должно сохранить другой под чужим названием.
+  useEffect(() => {
+    setTemplateOpen(false);
+    setTemplateName('');
+    setTemplateError(null);
+  }, [block?.id]);
+
   if (!block) {
     return (
       <div className="props props--empty" role="status">
@@ -482,6 +500,25 @@ export function PropertiesPanel({
   // Пока схема описана для четырнадцати модулей MVP, у остальных её
   // нет и показывается общий набор полей.
   const schema = schemaFor(block.module);
+
+  const saveAsTemplate = async (event: FormEvent) => {
+    event.preventDefault();
+    const clean = templateName.trim();
+    if (!clean || !onSaveAsTemplate || templateBusy) return;
+    setTemplateBusy(true);
+    setTemplateError(null);
+    try {
+      await onSaveAsTemplate(clean);
+      setTemplateOpen(false);
+      setTemplateName('');
+    } catch (e) {
+      setTemplateError(
+        e instanceof Error ? e.message : 'Не удалось сохранить шаблон',
+      );
+    } finally {
+      setTemplateBusy(false);
+    }
+  };
 
   return (
     <div className="props">
@@ -633,6 +670,61 @@ export function PropertiesPanel({
           ))}
         </div>
       </section>
+
+      {onSaveAsTemplate ? (
+        <section className="props__group">
+          <h3>Шаблон</h3>
+          {templateOpen ? (
+            <form className="props__tpl" onSubmit={(e) => void saveAsTemplate(e)}>
+              <input
+                className="prop__input"
+                aria-label="Название шаблона"
+                placeholder="Например, Заголовок услуги"
+                value={templateName}
+                maxLength={120}
+                autoFocus
+                disabled={templateBusy}
+                onChange={(e) => setTemplateName(e.target.value)}
+              />
+              <div className="props__tpl-actions">
+                <button
+                  type="submit"
+                  className="btn btn--primary btn--tiny"
+                  disabled={templateBusy || !templateName.trim()}
+                >
+                  {templateBusy ? 'Сохраняем…' : 'Сохранить'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--tiny"
+                  onClick={() => {
+                    setTemplateOpen(false);
+                    setTemplateName('');
+                    setTemplateError(null);
+                  }}
+                  disabled={templateBusy}
+                >
+                  Отмена
+                </button>
+              </div>
+              {templateError ? (
+                <p className="props__note" role="alert">
+                  {templateError}
+                </p>
+              ) : null}
+            </form>
+          ) : (
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setTemplateOpen(true)}
+            >
+              <Icon name="plus" size={16} />
+              Сохранить как шаблон
+            </button>
+          )}
+        </section>
+      ) : null}
 
       <section className="props__group props__actions">
         <button type="button" className="btn btn--ghost" onClick={onCopyStyle}>

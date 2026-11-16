@@ -12,6 +12,7 @@ from django.urls import path
 
 from . import views
 from .config_views import project_config_export, project_config_import
+from .template_views import template_detail, template_list
 
 urlpatterns = [
     path('', views.project_list, name='project-list'),
@@ -23,6 +24,14 @@ urlpatterns = [
         '<str:project_id>/pages/<str:page_id>/',
         views.page_detail,
         name='project-page-detail',
+    ),
+    # Шаблоны страниц и блоков: снимки удачных решений внутри проекта.
+    # Лежат рядом со страницами, потому что их источник — страница.
+    path('<str:project_id>/templates/', template_list, name='project-templates'),
+    path(
+        '<str:project_id>/templates/<str:template_id>/',
+        template_detail,
+        name='project-template-detail',
     ),
     path('<str:project_id>/members/', views.project_members, name='project-members'),
     path('<str:project_id>/audit/', views.audit_log, name='project-audit'),

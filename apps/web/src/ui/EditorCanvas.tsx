@@ -41,6 +41,7 @@ import { ModulePalette } from './ModulePalette';
 import { PropertiesPanel, type Align, type BlockPatch } from './PropertiesPanel';
 import { dataApi, type DataRecord } from './data';
 import { componentsApi, type ComponentStyle } from './components';
+import { templatesApi, type TemplateSummary } from './templates';
 import { useHistory } from './useHistory';
 import { useAutosave } from './useAutosave';
 import './editor.css';
@@ -169,6 +170,7 @@ export function EditorCanvas({
   onOpenPublish,
   onOpenLogic,
   onOpenAnalytics,
+  onOpenTemplates,
   onSignOut,
 }: {
   /** Проект открыт из списка: идентификатор и название известны заранее. */
@@ -183,6 +185,8 @@ export function EditorCanvas({
   onOpenLogic: () => void;
   /** Аналитика опубликованного сайта: просмотры, источники, заявки. */
   onOpenAnalytics: () => void;
+  /** Шаблоны страниц и блоков: снимки удачных решений проекта. */
+  onOpenTemplates: () => void;
   onSignOut: () => void;
 }) {
   const [tool, setTool] = useState('select');
@@ -206,6 +210,17 @@ export function EditorCanvas({
   const [addingPage, setAddingPage] = useState(false);
   const [pageTitle, setPageTitle] = useState('');
   const [confirmingPageDelete, setConfirmingPageDelete] = useState(false);
+
+  /*
+   * Шаблоны блоков для палитры. Список живёт здесь, а не в палитре:
+   * после сохранения нового шаблона его нужно обновить, и панель не
+   * должна ходить в API сама — иначе два места знали бы о шаблонах.
+   */
+  const [blockTemplates, setBlockTemplates] = useState<TemplateSummary[]>([]);
+  const [templateForm, setTemplateForm] = useState<'page' | null>(null);
+  const [templateName, setTemplateName] = useState('');
+  const [templateBusy, setTemplateBusy] = useState(false);
+  const [templateNotice, setTemplateNotice] = useState<string | null>(null);
 
   /*
    * Библиотека компонентов (ТЗ п.3.1).
@@ -244,6 +259,24 @@ export function EditorCanvas({
   useEffect(() => {
     void loadStyles();
   }, [loadStyles]);
+
+  /*
+   * Список шаблонов блоков нужен палитре при открытии «Модулей».
+   * Недоступный список не должен ломать палитру: каталог модулей
+   * остаётся рабочим и без шаблонов.
+   */
+  const loadTemplates = useCallback(async () => {
+    try {
+      const body = await templatesApi.list(project.id);
+      setBlockTemplates(body.templates.filter((t) => t.kind === 'block'));
+    } catch {
+      setBlockTemplates([]);
+    }
+  }, [project.id]);
+
+  useEffect(() => {
+    void loadTemplates();
+  }, [loadTemplates]);
 
   // Дерево живёт в истории: каждое действие — одна запись, Ctrl+Z
   // откатывает действие целиком, а не доли пикселя.
@@ -596,6 +629,84 @@ export function EditorCanvas({
     },
     [history, tree],
   );
+
+  /**
+   * Вставка блока из шаблона.
+   *
+   * Блок копируется как есть, но с новым id: шаблон хранит id того
+   * блока, с которого снят. Повторная вставка без замены дала бы два
+   * блока с одинаковым идентификатором, и выбор с удалением перестали
+   * бы их различать.
+   */
+  const insertTemplate = useCallback(
+    async (template: TemplateSummary) => {
+      if (projectId === null || template.kind !== 'block') return;
+      setSaveError(null);
+      try {
+        const detail = await templatesApi.get(projectId, template.id);
+        const source = detail.tree as Block;
+        const y =
+          tree.blocks.reduce((max, b) => Math.max(max, b.y + b.height), 0) + 24;
+        const block: Block = { ...source, id: newBlockId(), x: 40, y };
+        history.commit({ ...tree, blocks: [...tree.blocks, block] });
+        setSelectedId(block.id);
+      } catch (e) {
+        setSaveError(
+          e instanceof Error ? e.message : 'Не удалось вставить шаблон',
+        );
+      }
+    },
+    [projectId, tree, history],
+  );
+
+  async function savePageTemplate(event: FormEvent) {
+    event.preventDefault();
+    const clean = templateName.trim();
+    if (!clean || templateBusy || projectId === null) return;
+    setTemplateBusy(true);
+    setTemplateNotice(null);
+    setSaveError(null);
+    try {
+      // Снимок снимается с сохранённой страницы: иначе в шаблон попало
+      // бы состояние до последних правок, которых пользователь ещё не
+      // сохранил и которых нет на сервере.
+      if (history.dirty) await handleSave();
+      await templatesApi.create(projectId, {
+        name: clean,
+        kind: 'page',
+        ...(activePageId ? { page: activePageId } : {}),
+      });
+      setTemplateForm(null);
+      setTemplateName('');
+      setTemplateNotice(`Шаблон «${clean}» сохранён.`);
+    } catch (e) {
+      setSaveError(
+        e instanceof Error ? e.message : 'Не удалось сохранить шаблон',
+      );
+    } finally {
+      setTemplateBusy(false);
+    }
+  }
+
+  /**
+   * Сохранение выбранного блока как шаблона. Ошибка пробрасывается:
+   * форма в панели показывает её рядом с полем, а не в общем баннере
+   * редактора — там она потерялась бы за списком блоков.
+   */
+  async function saveBlockTemplate(name: string) {
+    if (projectId === null || selectedId === null) {
+      throw new Error('Сначала выберите блок');
+    }
+    if (history.dirty) await handleSave();
+    await templatesApi.create(projectId, {
+      name,
+      kind: 'block',
+      ...(activePageId ? { page: activePageId } : {}),
+      block: selectedId,
+    });
+    await loadTemplates();
+    setTemplateNotice(`Шаблон «${name}» сохранён.`);
+  }
 
   async function handleSave() {
     // Клиентская проверка дублирует серверную, но даёт мгновенный ответ:
@@ -978,6 +1089,19 @@ export function EditorCanvas({
             <Icon name="chart" />
             <span>Аналитика</span>
           </button>
+          {/* Шаблоны страниц и блоков: снимки удачных решений. Отдельный
+              экран, потому что там же из шаблона создаётся страница и
+              удаляются ненужные записи. */}
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={onOpenTemplates}
+            title="Шаблоны страниц и блоков"
+            aria-label="Шаблоны страниц и блоков"
+          >
+            <Icon name="grid" />
+            <span>Шаблоны</span>
+          </button>
           {/* Кнопка возврата в список проектов: без неё из редактора
               не выйти, кроме выхода из аккаунта, а это разные вещи. */}
           <button
@@ -1088,66 +1212,138 @@ export function EditorCanvas({
             ))}
           </select>
 
-          {addingPage ? (
-            <form className="editor__pages-add" onSubmit={(e) => void createPage(e)}>
+          {templateForm === 'page' ? (
+            <form
+              className="editor__pages-add"
+              onSubmit={(e) => void savePageTemplate(e)}
+            >
               <input
                 className="editor__pages-input"
-                aria-label="Название новой страницы"
-                placeholder="Например, О нас"
-                value={pageTitle}
-                maxLength={200}
+                aria-label="Название шаблона страницы"
+                placeholder="Название шаблона"
+                value={templateName}
+                maxLength={120}
                 autoFocus
-                disabled={pageBusy}
-                onChange={(e) => setPageTitle(e.target.value)}
+                disabled={templateBusy}
+                onChange={(e) => setTemplateName(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') {
-                    setAddingPage(false);
-                    setPageTitle('');
+                    setTemplateForm(null);
+                    setTemplateName('');
                   }
                 }}
               />
               <button
                 type="submit"
                 className="btn btn--primary"
-                disabled={pageBusy || !pageTitle.trim()}
+                disabled={templateBusy || !templateName.trim()}
               >
-                Создать
+                {templateBusy ? 'Сохраняем…' : 'Сохранить'}
               </button>
               <button
                 type="button"
                 className="btn btn--ghost"
                 onClick={() => {
-                  setAddingPage(false);
-                  setPageTitle('');
+                  setTemplateForm(null);
+                  setTemplateName('');
                 }}
+                disabled={templateBusy}
               >
                 Отмена
               </button>
             </form>
           ) : (
-            <button
-              type="button"
-              className="btn btn--ghost"
-              onClick={() => setAddingPage(true)}
-              disabled={pageBusy}
-              title="Добавить страницу"
-            >
-              <Icon name="plus" size={14} />
-              <span>Страница</span>
-            </button>
+            <>
+              {addingPage ? (
+                <form className="editor__pages-add" onSubmit={(e) => void createPage(e)}>
+                  <input
+                    className="editor__pages-input"
+                    aria-label="Название новой страницы"
+                    placeholder="Например, О нас"
+                    value={pageTitle}
+                    maxLength={200}
+                    autoFocus
+                    disabled={pageBusy}
+                    onChange={(e) => setPageTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') {
+                        setAddingPage(false);
+                        setPageTitle('');
+                      }
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    className="btn btn--primary"
+                    disabled={pageBusy || !pageTitle.trim()}
+                  >
+                    Создать
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    onClick={() => {
+                      setAddingPage(false);
+                      setPageTitle('');
+                    }}
+                  >
+                    Отмена
+                  </button>
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => setAddingPage(true)}
+                  disabled={pageBusy}
+                  title="Добавить страницу"
+                >
+                  <Icon name="plus" size={14} />
+                  <span>Страница</span>
+                </button>
+              )}
+
+              {activePageId ? (
+                <button
+                  type="button"
+                  className={confirmingPageDelete ? 'btn btn--danger' : 'btn btn--ghost'}
+                  onClick={() => void removeCurrentPage()}
+                  disabled={pageBusy}
+                  title="Удалить текущую страницу"
+                >
+                  <Icon name="close" size={14} />
+                  <span>{confirmingPageDelete ? 'Точно удалить?' : 'Удалить'}</span>
+                </button>
+              ) : null}
+
+              {/* Снимок страницы делается здесь, а не только на экране
+                  шаблонов: пользователь видит удачную страницу и хочет
+                  сохранить её сразу, не уходя с холста. */}
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => {
+                  setTemplateName('');
+                  setTemplateNotice(null);
+                  setTemplateForm('page');
+                }}
+                disabled={pageBusy || loading}
+                title={
+                  activePageId
+                    ? 'Сохранить текущую страницу как шаблон'
+                    : 'Сохранить главную страницу как шаблон'
+                }
+              >
+                <Icon name="grid" size={14} />
+                <span>В шаблон</span>
+              </button>
+            </>
           )}
 
-          {activePageId ? (
-            <button
-              type="button"
-              className={confirmingPageDelete ? 'btn btn--danger' : 'btn btn--ghost'}
-              onClick={() => void removeCurrentPage()}
-              disabled={pageBusy}
-              title="Удалить текущую страницу"
-            >
-              <Icon name="close" size={14} />
-              <span>{confirmingPageDelete ? 'Точно удалить?' : 'Удалить'}</span>
-            </button>
+          {templateNotice ? (
+            <span className="editor__pages-note" role="status">
+              {templateNotice}
+            </span>
           ) : null}
 
           <span className="editor__pages-sep" aria-hidden="true" />
@@ -1221,6 +1417,7 @@ export function EditorCanvas({
             onCopyStyle={copyStyle}
             canPasteStyle={copiedStyle !== null}
             onPasteStyle={pasteStyle}
+            onSaveAsTemplate={saveBlockTemplate}
           />
         </aside>
 
@@ -1256,6 +1453,8 @@ export function EditorCanvas({
               idPrefix={
                 tool === 'text' ? 'text.' : tool === 'image' ? 'media.' : null
               }
+              templates={blockTemplates}
+              onPickTemplate={insertTemplate}
             />
           )}
         </aside>

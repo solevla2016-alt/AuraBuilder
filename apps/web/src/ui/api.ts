@@ -106,10 +106,16 @@ export const api = {
    * Главная сюда не входит: её дерево приходит в getProject. Так
    * старые проекты и клиенты продолжают работать без миграции данных.
    */
-  createPage: (projectId: string, title: string, slug?: string) =>
+  createPage: (projectId: string, title: string, slug?: string, tree?: unknown) =>
     request<ProjectPage>(`/projects/${projectId}/pages/`, {
       method: 'POST',
-      body: JSON.stringify({ title, ...(slug ? { slug } : {}) }),
+      body: JSON.stringify({
+        title,
+        ...(slug ? { slug } : {}),
+        // Дерево передаётся при создании из шаблона: сервер проверяет
+        // его теми же правилами, что и обычное сохранение.
+        ...(tree === undefined ? {} : { tree }),
+      }),
     }),
 
   getPage: (projectId: string, pageId: string) =>

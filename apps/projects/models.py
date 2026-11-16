@@ -159,6 +159,85 @@ class Page(models.Model):
         return f'{self.project_id}: /{self.slug}/'
 
 
+TEMPLATE_PAGE = 'page'
+TEMPLATE_BLOCK = 'block'
+TEMPLATE_KIND_CHOICES = (
+    (TEMPLATE_PAGE, 'Страница'),
+    (TEMPLATE_BLOCK, 'Блок'),
+)
+
+#: Сколько шаблонов хранится в проекте. Без предела «удачные решения»
+#: через год превратились бы в свалку, по которой нельзя найти нужное.
+MAX_TEMPLATES = 50
+
+
+class Template(models.Model):
+    """Шаблон страницы или блока (ТЗ, этап 2).
+
+    Шаблон принадлежит проекту, а не пользователю. Причина не в правах,
+    а в содержимом: блоки могут ссылаться на источники данных и файлы
+    медиатеки этого проекта. Шаблон, перенесённый в другой проект, вёл
+    бы себя как рабочий, но показывал пустоту или чужие адреса. Обмен
+    между проектами потребует переписывать ссылки — это отдельная
+    задача, а не побочный эффект «сохранить как шаблон».
+
+    Хранится снимок: правка страницы после сохранения шаблона его не
+    меняет. Иначе «удачным решением» оказалось бы текущее состояние,
+    а не то, которое человек выбрал.
+    """
+
+    id = models.UUIDField(primary_key=True, editable=False, default=uuid4)
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='templates',
+    )
+    kind = models.CharField(
+        'вид', max_length=8, choices=TEMPLATE_KIND_CHOICES,
+        default=TEMPLATE_PAGE,
+    )
+    name = models.CharField('название', max_length=120)
+    #: Для страницы — всё дерево, для блока — один блок верхнего уровня.
+    #: Дерево плоское (модули не вкладываются), поэтому отдельная
+    #: структура для блока не нужна.
+    tree = models.JSONField('содержимое')
+    #: Подпись источника: заголовок страницы, SEO-поля или модуль блока.
+    #: Отдельным словарём, потому что набор полей у видов разный.
+    meta = models.JSONField('подпись', default=dict, blank=True)
+    created_by = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_templates',
+    )
+    created_at = models.DateTimeField('создан', auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'шаблон'
+        verbose_name_plural = 'шаблоны'
+        ordering = ['-created_at']
+
+    def __str__(self) -> str:
+        return f'{self.kind}: {self.name}'
+
+    def public_dict(self, detail: bool = False) -> dict:
+        blocks = self.tree.get('blocks', []) if isinstance(self.tree, dict) else []
+        payload = {
+            'id': str(self.id),
+            'kind': self.kind,
+            'name': self.name,
+            'title': self.meta.get('title', ''),
+            'module': self.meta.get('module', ''),
+            'blocks': 1 if self.kind == TEMPLATE_BLOCK else len(blocks),
+            'createdAt': self.created_at.isoformat(),
+        }
+        if detail:
+            payload['tree'] = self.tree
+            payload['meta'] = self.meta
+        return payload
+
+
 class DocumentVersion(models.Model):
     """Снимок дерева проекта (ТЗ п.3.2).
 

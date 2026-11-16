@@ -13,6 +13,7 @@ import { useMemo, useState } from 'react';
 import { Icon } from './icons';
 import { kindOf } from './moduleRegistry';
 import type { ModuleDef } from './moduleRegistry';
+import type { TemplateSummary } from './templates';
 
 export interface ModulePaletteProps {
   modules: ModuleDef[];
@@ -28,6 +29,13 @@ export interface ModulePaletteProps {
    * null — весь каталог (инструмент «Модули»).
    */
   idPrefix?: string | null;
+  /**
+   * Шаблоны блоков проекта. Секция показывается только в полном
+   * каталоге: инструмент «Текст» обещает текстовые модули, и шаблон
+   * секции в этом списке был бы нарушением обещания.
+   */
+  templates?: TemplateSummary[];
+  onPickTemplate?: (template: TemplateSummary) => void;
 }
 
 export function ModulePalette({
@@ -39,6 +47,8 @@ export function ModulePalette({
   onOpenFullCatalog,
   loading,
   idPrefix = null,
+  templates,
+  onPickTemplate,
 }: ModulePaletteProps) {
   const [query, setQuery] = useState('');
 
@@ -53,6 +63,16 @@ export function ModulePalette({
       return m.name.toLowerCase().includes(needle) || m.id.toLowerCase().includes(needle);
     });
   }, [modules, activeCategory, query, idPrefix]);
+
+  // Шаблоны фильтруются тем же запросом: иначе поиск «прайс» оставлял
+  // бы на виду шаблоны, к которым он отношения не имеет.
+  const visibleTemplates = useMemo(() => {
+    if (idPrefix !== null) return [];
+    const needle = query.trim().toLowerCase();
+    return (templates ?? []).filter(
+      (t) => !needle || t.name.toLowerCase().includes(needle),
+    );
+  }, [templates, query, idPrefix]);
 
   if (loading) {
     return (
@@ -74,6 +94,34 @@ export function ModulePalette({
           aria-label="Поиск модуля"
         />
       </div>
+
+      {visibleTemplates.length > 0 && onPickTemplate ? (
+        <section className="modules__templates" aria-label="Шаблоны блоков">
+          <h3 className="modules__templates-title">Шаблоны блоков</h3>
+          <ul className="modules__list">
+            {visibleTemplates.map((template) => (
+              <li key={template.id}>
+                <button
+                  type="button"
+                  className="modules__item"
+                  onClick={() => onPickTemplate(template)}
+                  title={`${template.name} · ${template.module}`}
+                >
+                  <span
+                    className="modules__kind modules__kind--template"
+                    aria-hidden="true"
+                  />
+                  <span className="modules__text">
+                    <b>{template.name}</b>
+                    <code>{template.module}</code>
+                  </span>
+                  <Icon name="plus" size={16} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <div className="modules__cats" role="group" aria-label="Категории модулей">
         <button

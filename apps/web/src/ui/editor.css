@@ -170,6 +170,15 @@
   width: 180px;
 }
 
+/* Подтверждение сохранения шаблона: короткая подпись в той же строке,
+   чтобы не занимать холст отдельным баннером. */
+.editor__pages-note {
+  font-size: var(--text-xs);
+  color: var(--textSecondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .editor__pages-sep {
   width: 1px;
   height: 24px;
@@ -666,6 +675,19 @@
   min-height: 72px;
 }
 
+/* Форма «Сохранить как шаблон»: поле и две кнопки в колонку — панель
+   свойств узкая, и кнопки в строку с полем не помещаются. */
+.props__tpl {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.props__tpl-actions {
+  display: flex;
+  gap: var(--space-xs);
+}
+
 /* Кнопка под текстовым полем не растягивается на всю колонку: она
    относится к полю, а не к группе настроек. */
 .props__tool {
@@ -918,6 +940,29 @@ select.prop__input option {
 
 .modules__kind--media {
   background: var(--panelSunken);
+}
+
+/* Шаблон — не модуль каталога, а сохранённое решение проекта, поэтому
+   метка пунктирная: её видно, но она не притворяется видом блока. */
+.modules__kind--template {
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--accentSurface);
+}
+
+.modules__templates {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--border);
+}
+
+.modules__templates-title {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--textSecondary);
 }
 
 .modules__text {
@@ -2919,5 +2964,71 @@ select.prop__input option {
 @media (width <= 720px) {
   .stat-chart {
     height: 90px;
+  }
+}
+
+/* --- шаблоны страниц и блоков ------------------------------------- */
+
+/* Поля создания — сетка, а не колонка: их четыре, и вертикальная
+   колонка выталкивала бы кнопку за пределы первого экрана. */
+.tpl__form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-md);
+  align-items: end;
+}
+
+.tpl__submit {
+  grid-column: 1 / -1;
+  justify-content: space-between;
+}
+
+.tpl__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-sm);
+}
+
+/* Строка списка повторяет вид резервных копий: имя слева, действия
+   справа. Так два списка с одинаковым сценарием («выбрать и сделать»)
+   не выглядят как разные элементы. */
+.tpl__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.tpl__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tpl__meta {
+  font-size: var(--text-xs);
+  color: var(--textSecondary);
+}
+
+.tpl__actions {
+  display: flex;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+@media (width <= 720px) {
+  .tpl__row {
+    flex-direction: column;
+  }
+
+  .tpl__actions {
+    justify-content: flex-start;
   }
 }
