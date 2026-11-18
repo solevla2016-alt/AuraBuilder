@@ -12,6 +12,11 @@ from django.urls import path
 
 from . import views
 from .config_views import project_config_export, project_config_import
+from .review_views import (
+    project_comment_detail,
+    project_comments,
+    project_review,
+)
 from .template_views import template_detail, template_list
 
 urlpatterns = [
@@ -32,6 +37,18 @@ urlpatterns = [
         '<str:project_id>/templates/<str:template_id>/',
         template_detail,
         name='project-template-detail',
+    ),
+    # Ревью-режим: статус согласования и замечания к страницам и блокам.
+    path('<str:project_id>/review/', project_review, name='project-review'),
+    path(
+        '<str:project_id>/comments/',
+        project_comments,
+        name='project-comments',
+    ),
+    path(
+        '<str:project_id>/comments/<str:comment_id>/',
+        project_comment_detail,
+        name='project-comment-detail',
     ),
     path('<str:project_id>/members/', views.project_members, name='project-members'),
     path('<str:project_id>/audit/', views.audit_log, name='project-audit'),

@@ -10,6 +10,7 @@ import { PublishScreen } from './ui/PublishScreen';
 import { LogicScreen } from './ui/LogicScreen';
 import { AnalyticsScreen } from './ui/AnalyticsScreen';
 import { TemplatesScreen } from './ui/TemplatesScreen';
+import { ReviewScreen } from './ui/ReviewScreen';
 import { Icon } from './ui/icons';
 import { api, clearTokens, onSessionExpired, type UserProfile } from './ui/api';
 import type { Project } from './ui/project';
@@ -32,7 +33,8 @@ type Screen =
   | { name: 'publish'; project: Project }
   | { name: 'logic'; project: Project }
   | { name: 'analytics'; project: Project }
-  | { name: 'templates'; project: Project };
+  | { name: 'templates'; project: Project }
+  | { name: 'review'; project: Project };
 
 export function App() {
   const { theme, toggle } = useTheme();
@@ -130,6 +132,12 @@ export function App() {
           projectName={screen.project.name}
           onBack={() => setScreen({ name: 'editor', project: screen.project })}
         />
+      ) : screen.name === 'review' ? (
+        <ReviewScreen
+          projectId={screen.project.id}
+          projectName={screen.project.name}
+          onBack={() => setScreen({ name: 'editor', project: screen.project })}
+        />
       ) : screen.name === 'components' ? (
         <ComponentsScreen
           projectId={screen.project.id}
@@ -146,6 +154,7 @@ export function App() {
           onOpenLogic={() => setScreen({ name: 'logic', project: screen.project })}
           onOpenAnalytics={() => setScreen({ name: 'analytics', project: screen.project })}
           onOpenTemplates={() => setScreen({ name: 'templates', project: screen.project })}
+          onOpenReview={() => setScreen({ name: 'review', project: screen.project })}
           onSignOut={signOut}
         />
       )}

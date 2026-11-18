@@ -52,6 +52,22 @@ def default_tree() -> dict:
     }
 
 
+REVIEW_DRAFT = 'draft'
+REVIEW_PENDING = 'pending'
+REVIEW_CHANGES = 'changes'
+REVIEW_APPROVED = 'approved'
+REVIEW_STATUS_CHOICES = (
+    (REVIEW_DRAFT, 'Черновик'),
+    (REVIEW_PENDING, 'На согласовании'),
+    (REVIEW_CHANGES, 'Нужны правки'),
+    (REVIEW_APPROVED, 'Согласовано'),
+)
+#: Статусы, при которых опубликовать сайт нельзя без явного подтверждения.
+#: «Черновик» здесь нет: ревью может и не требоваться, и запрет публикации
+#: превратил бы обычную работу в обязательную процедуру.
+REVIEW_BLOCKING = frozenset({REVIEW_PENDING, REVIEW_CHANGES})
+
+
 class Project(models.Model):
     """Проект пользователя.
 
@@ -69,6 +85,21 @@ class Project(models.Model):
     # всех страницах. Словарь, а не столбцы: набор настроек будет расти,
     # и каждая новая не должна требовать миграции.
     brand = models.JSONField('брендбук', default=dict, blank=True)
+    # Статус согласования. Отдельным полем, а не вычисляемым из
+    # комментариев: комментарии закрывают по одному, а согласование —
+    # решение целиком, и оно должно переживать закрытие замечаний.
+    review_status = models.CharField(
+        'статус ревью', max_length=8,
+        choices=REVIEW_STATUS_CHOICES, default=REVIEW_DRAFT,
+    )
+    review_approved_by = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='approved_projects',
+    )
+    review_approved_at = models.DateTimeField('согласовано', null=True, blank=True)
     # Владелец — часть проекта, а не только запись в таблице участников:
     # если её хранить только там, проект останется без того, кто может его
     # удалить. null=True оставлен ради уже существующих записей, они
@@ -107,6 +138,30 @@ class Project(models.Model):
                 'tree': LIMIT_ERROR.format(what='модулей', count=modules, limit=limit),
             })
 
+    def review_blocker(self) -> dict | None:
+        """Что мешает публикации: проект или первая страница со статусом.
+
+        Проверка нужна публикации и планированию в одном виде: если бы
+        каждое место считало статусы само, правило разошлось бы, и сайт
+        можно было бы опубликовать в обход ревью.
+        """
+
+        if self.review_status in REVIEW_BLOCKING:
+            return {
+                'scope': 'project',
+                'title': self.name,
+                'status': self.review_status,
+            }
+        for page in self.pages.all():
+            if page.review_status in REVIEW_BLOCKING:
+                return {
+                    'scope': 'page',
+                    'id': str(page.id),
+                    'title': page.title,
+                    'status': page.review_status,
+                }
+        return None
+
     def __str__(self) -> str:
         return self.name
 
@@ -132,6 +187,18 @@ class Page(models.Model):
     seo_description = models.CharField('SEO-описание', max_length=300, blank=True)
     order = models.PositiveIntegerField('порядок', default=0)
     version = models.PositiveIntegerField('версия', default=1)
+    review_status = models.CharField(
+        'статус ревью', max_length=8,
+        choices=REVIEW_STATUS_CHOICES, default=REVIEW_DRAFT,
+    )
+    review_approved_by = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='approved_pages',
+    )
+    review_approved_at = models.DateTimeField('согласовано', null=True, blank=True)
     created_at = models.DateTimeField('создана', auto_now_add=True)
     updated_at = models.DateTimeField('изменена', auto_now=True)
 
@@ -238,6 +305,86 @@ class Template(models.Model):
         return payload
 
 
+class Comment(models.Model):
+    """Замечание ревью к странице или отдельному блоку.
+
+    Хранится на платформе и никогда не попадает в собранный пакет:
+    комментарий — часть рабочего процесса, а не содержимое сайта. Попади
+    он в экспорт, сайт перестал бы быть самодостаточным (ТЗ п.16.4).
+
+    page=None означает главную страницу: её дерево лежит в Project.tree,
+    а не в Page. block_id пустой — замечание ко всей странице; иначе это
+    снимок идентификатора блока на момент замечания. Блок могли потом
+    удалить, а замечание всё равно должно остаться читаемым.
+    """
+
+    id = models.UUIDField(primary_key=True, editable=False, default=uuid4)
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='comments',
+    )
+    page = models.ForeignKey(
+        Page,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='comments',
+    )
+    block_id = models.CharField('блок', max_length=64, blank=True)
+    author = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='review_comments',
+    )
+    text = models.TextField('текст', max_length=4000)
+    # Ответ на замечание. SET_NULL, а не CASCADE: удаление корневого
+    # замечания не должно молча уносить ответы других участников.
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='replies',
+    )
+    resolved = models.BooleanField('закрыто', default=False)
+    resolved_by = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='resolved_comments',
+    )
+    resolved_at = models.DateTimeField('закрыто', null=True, blank=True)
+    created_at = models.DateTimeField('создано', auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'замечание'
+        verbose_name_plural = 'замечания'
+        ordering = ['created_at']
+
+    def __str__(self) -> str:
+        return f'{self.project_id}: {self.text[:40]}'
+
+    def public_dict(self) -> dict:
+        return {
+            'id': str(self.id),
+            'page': str(self.page_id) if self.page_id else None,
+            'blockId': self.block_id,
+            'text': self.text,
+            'author': self.author.get_username() if self.author else '',
+            'parent': str(self.parent_id) if self.parent_id else None,
+            'resolved': self.resolved,
+            'resolvedBy': (
+                self.resolved_by.get_username() if self.resolved_by else ''
+            ),
+            'createdAt': self.created_at.isoformat(),
+            'resolvedAt': self.resolved_at.isoformat() if self.resolved_at else None,
+        }
+
+
 class DocumentVersion(models.Model):
     """Снимок дерева проекта (ТЗ п.3.2).
 
@@ -311,6 +458,7 @@ class ProjectEvent(models.Model):
     KIND_RESTORE = 'restore'
     KIND_DEPLOY = 'deploy'
     KIND_SCHEDULE = 'schedule'
+    KIND_REVIEW = 'review'
     KIND_CHOICES = [
         (KIND_BUILD, 'Сборка'),
         (KIND_PUBLISH, 'Публикация'),
@@ -319,6 +467,7 @@ class ProjectEvent(models.Model):
         (KIND_RESTORE, 'Восстановление'),
         (KIND_DEPLOY, 'Деплой'),
         (KIND_SCHEDULE, 'Отложенная публикация'),
+        (KIND_REVIEW, 'Согласование'),
     ]
 
     STATUS_OK = 'ok'

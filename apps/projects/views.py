@@ -41,7 +41,14 @@ from accounts.serializers import (
 )
 from billing.service import check_page_slot, check_project_slot, check_scenario
 
-from .models import DocumentVersion, Page, Project, ProjectEvent
+from .models import (
+    REVIEW_APPROVED,
+    REVIEW_DRAFT,
+    DocumentVersion,
+    Page,
+    Project,
+    ProjectEvent,
+)
 from .events import record as record_event, recent as recent_events
 from .module_registry import CATEGORIES, MODULES, modules_for_stage
 from .export import ExportError
@@ -245,6 +252,7 @@ def project_detail(request, project_id: str):
         )
         project.version = created.number
         project.save(update_fields=['version', 'updated_at'])
+        _reset_review(project)
 
     audit(request, 'project.update', project)
     return Response(ProjectSerializer(project).data)
@@ -377,6 +385,26 @@ def _project_by_id(project_id: str):
         return None
 
 
+def _reset_review(entity) -> None:
+    """Снимает согласование после правки дерева.
+
+    Иначе «согласовано» относилось бы к прежнему содержимому: ревьюер
+    утвердил одну страницу, а публикация отправила бы другую. Если статус
+    и так «черновик» или «на согласовании», ничего не меняем — там
+    снимать нечего, а лишняя запись в базу на каждое сохранение не нужна.
+    """
+
+    if entity.review_status != REVIEW_APPROVED:
+        return
+    entity.review_status = REVIEW_DRAFT
+    entity.review_approved_by = None
+    entity.review_approved_at = None
+    entity.save(update_fields=[
+        'review_status', 'review_approved_by', 'review_approved_at',
+        'updated_at',
+    ])
+
+
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticatedUser])
 def version_list(request, project_id: str):
@@ -451,6 +479,9 @@ def version_restore(request, project_id: str, number: int):
     if version is None:
         return Response({'detail': 'версия не найдена'}, status=status.HTTP_404_NOT_FOUND)
     created = restore_version(request, project, version)
+    # Восстановление меняет содержимое проекта целиком, поэтому прежнее
+    # согласование к нему уже не относится.
+    _reset_review(project)
     return Response(_version_payload(created))
 
 
@@ -592,6 +623,7 @@ def page_detail(request, project_id: str, page_id: str):
                 status=status.HTTP_409_CONFLICT,
             )
 
+    before_tree = page.tree
     serializer = PageSerializer(
         page,
         data=request.data,
@@ -600,6 +632,8 @@ def page_detail(request, project_id: str, page_id: str):
     )
     serializer.is_valid(raise_exception=True)
     page = serializer.save()
+    if page.tree != before_tree:
+        _reset_review(page)
     page.version += 1
     page.save(update_fields=['version', 'updated_at'])
 

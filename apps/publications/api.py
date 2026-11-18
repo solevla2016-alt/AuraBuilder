@@ -42,6 +42,46 @@ def _project(project_id: str) -> Project | None:
         return None
 
 
+def _review_denial(request, project: Project, body: dict) -> Response | None:
+    """Запрет публикации без согласования.
+
+    Блокируют только «на согласовании» и «нужны правки»: черновик и
+    согласованный проект публикуются как раньше, иначе ревью стало бы
+    обязательным для любой правки. forceReview — осознанный обход для
+    того, кто публикует; отказ от проверки попадает в журнал, потому что
+    «опубликовали в обход» — это то, что нужно найти потом.
+    """
+
+    blocker = project.review_blocker()
+    if blocker is None:
+        return None
+    if body.get('forceReview'):
+        record(
+            project, ProjectEvent.KIND_REVIEW,
+            f'Публикация в обход согласования: {blocker["title"]}.',
+            status=ProjectEvent.STATUS_INFO, actor=request.user,
+        )
+        return None
+
+    if blocker['scope'] == 'page':
+        detail = (
+            f'Публикация заблокирована: страница «{blocker["title"]}» '
+            'на согласовании или ждёт правок.'
+        )
+    else:
+        detail = (
+            f'Публикация заблокирована: проект «{blocker["title"]}» '
+            'на согласовании или ждёт правок.'
+        )
+    return Response(
+        {
+            'detail': detail,
+            'review': blocker,
+        },
+        status=status.HTTP_409_CONFLICT,
+    )
+
+
 @api_view(['GET', 'POST'])
 @permission_classes([ProjectAccess])
 def project_site(request, project_id: str):
@@ -68,6 +108,9 @@ def project_site(request, project_id: str):
         )
 
     body = request.data or {}
+    denial = _review_denial(request, project, body)
+    if denial is not None:
+        return denial
     number = body.get('version')
     versions = DocumentVersion.objects.filter(project=project)
     if number is not None:
@@ -160,6 +203,9 @@ def site_schedule(request, project_id: str):
         )
 
     body = request.data or {}
+    denial = _review_denial(request, project, body)
+    if denial is not None:
+        return denial
     when = _parse_when(body.get('at'))
     if when is None:
         return Response(

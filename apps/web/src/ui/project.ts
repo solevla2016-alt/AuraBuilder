@@ -54,6 +54,9 @@ export interface PageTree {
   logic?: { nodes: unknown[]; edges: unknown[] };
 }
 
+/** Статус согласования проекта и страницы (см. apps/projects/models.py). */
+export type ReviewStatus = 'draft' | 'pending' | 'changes' | 'approved';
+
 /** Строка списка страниц: дерево приходит отдельным запросом. */
 export interface PageSummary {
   id: string;
@@ -61,6 +64,8 @@ export interface PageSummary {
   slug: string;
   order: number;
   version: number;
+  /** Статус ревью: черновик, на согласовании, нужны правки, согласовано. */
+  reviewStatus: ReviewStatus;
   updatedAt: string;
 }
 
@@ -113,6 +118,10 @@ export interface Project {
    */
   version: number;
   updatedAt: string;
+  /** Статус согласования проекта (главная страница — отдельно в pages). */
+  reviewStatus?: ReviewStatus;
+  reviewApprovedBy?: string;
+  reviewApprovedAt?: string | null;
 }
 
 /** Строка истории версий. Дерево запрашивается отдельно. */

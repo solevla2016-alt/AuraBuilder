@@ -220,12 +220,16 @@ class PageSerializer(serializers.ModelSerializer):
     )
     updatedAt = serializers.DateTimeField(source='updated_at', read_only=True)
     createdAt = serializers.DateTimeField(source='created_at', read_only=True)
+    # Статус согласования меняется только через /review/: иначе обычное
+    # сохранение страницы могло бы «подписать» её, обойдя проверку прав
+    # и запись в журнал.
+    reviewStatus = serializers.CharField(source='review_status', read_only=True)
 
     class Meta:
         model = Page
         fields = [
             'id', 'title', 'slug', 'tree', 'seoTitle', 'seoDescription',
-            'order', 'version', 'createdAt', 'updatedAt',
+            'order', 'version', 'reviewStatus', 'createdAt', 'updatedAt',
         ]
         read_only_fields = ['id', 'version', 'createdAt', 'updatedAt']
         extra_kwargs = {
@@ -270,10 +274,13 @@ class PageSummarySerializer(serializers.ModelSerializer):
     """Строка списка страниц: без дерева, оно тяжёлое."""
 
     updatedAt = serializers.DateTimeField(source='updated_at', read_only=True)
+    reviewStatus = serializers.CharField(source='review_status', read_only=True)
 
     class Meta:
         model = Page
-        fields = ['id', 'title', 'slug', 'order', 'version', 'updatedAt']
+        fields = [
+            'id', 'title', 'slug', 'order', 'version', 'reviewStatus', 'updatedAt',
+        ]
 
 
 class ProjectSerializer(serializers.ModelSerializer):
@@ -286,6 +293,11 @@ class ProjectSerializer(serializers.ModelSerializer):
 
     createdAt = serializers.DateTimeField(source='created_at', read_only=True)
     updatedAt = serializers.DateTimeField(source='updated_at', read_only=True)
+    reviewStatus = serializers.CharField(source='review_status', read_only=True)
+    reviewApprovedBy = serializers.SerializerMethodField()
+    reviewApprovedAt = serializers.DateTimeField(
+        source='review_approved_at', read_only=True,
+    )
     # Список страниц нужен редактору сразу: без него переключатель
     # страниц делал бы второй запрос на каждое открытие проекта.
     pages = serializers.SerializerMethodField()
@@ -298,6 +310,7 @@ class ProjectSerializer(serializers.ModelSerializer):
         # не работает.
         fields = [
             'id', 'name', 'tree', 'brand', 'version', 'pages',
+            'reviewStatus', 'reviewApprovedBy', 'reviewApprovedAt',
             'createdAt', 'updatedAt',
         ]
         read_only_fields = ['id', 'version', 'created_at', 'updated_at']
@@ -321,6 +334,9 @@ class ProjectSerializer(serializers.ModelSerializer):
         return PageSummarySerializer(
             obj.pages.all(), many=True,
         ).data
+
+    def get_reviewApprovedBy(self, obj: Project) -> str:
+        return obj.review_approved_by.get_username() if obj.review_approved_by else ''
 
     def validate_name(self, value: str) -> str:
         value = value.strip()

@@ -171,6 +171,7 @@ export function EditorCanvas({
   onOpenLogic,
   onOpenAnalytics,
   onOpenTemplates,
+  onOpenReview,
   onSignOut,
 }: {
   /** Проект открыт из списка: идентификатор и название известны заранее. */
@@ -187,6 +188,8 @@ export function EditorCanvas({
   onOpenAnalytics: () => void;
   /** Шаблоны страниц и блоков: снимки удачных решений проекта. */
   onOpenTemplates: () => void;
+  /** Ревью: замечания к блокам и согласование до публикации. */
+  onOpenReview: () => void;
   onSignOut: () => void;
 }) {
   const [tool, setTool] = useState('select');
@@ -917,6 +920,7 @@ export function EditorCanvas({
         slug: created.slug,
         order: created.order,
         version: created.version,
+        reviewStatus: created.reviewStatus,
         updatedAt: created.updatedAt,
       }]);
       setActivePageId(created.id);
@@ -1101,6 +1105,18 @@ export function EditorCanvas({
           >
             <Icon name="grid" />
             <span>Шаблоны</span>
+          </button>
+          {/* Ревью: замечания и согласование. Рядом с публикацией, потому
+              что именно публикация ждёт решения ревьюера. */}
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={onOpenReview}
+            title="Ревью и согласование"
+            aria-label="Ревью и согласование"
+          >
+            <Icon name="check" />
+            <span>Ревью</span>
           </button>
           {/* Кнопка возврата в список проектов: без неё из редактора
               не выйти, кроме выхода из аккаунта, а это разные вещи. */}
