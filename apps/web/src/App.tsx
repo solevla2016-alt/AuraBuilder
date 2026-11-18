@@ -11,6 +11,7 @@ import { LogicScreen } from './ui/LogicScreen';
 import { AnalyticsScreen } from './ui/AnalyticsScreen';
 import { TemplatesScreen } from './ui/TemplatesScreen';
 import { ReviewScreen } from './ui/ReviewScreen';
+import { AcademyScreen } from './ui/AcademyScreen';
 import { Icon } from './ui/icons';
 import { api, clearTokens, onSessionExpired, type UserProfile } from './ui/api';
 import type { Project } from './ui/project';
@@ -34,7 +35,8 @@ type Screen =
   | { name: 'logic'; project: Project }
   | { name: 'analytics'; project: Project }
   | { name: 'templates'; project: Project }
-  | { name: 'review'; project: Project };
+  | { name: 'review'; project: Project }
+  | { name: 'academy' };
 
 export function App() {
   const { theme, toggle } = useTheme();
@@ -96,8 +98,11 @@ export function App() {
         <ProjectListScreen
           user={user}
           onOpen={(project) => setScreen({ name: 'editor', project })}
+          onOpenAcademy={() => setScreen({ name: 'academy' })}
           onSignOut={signOut}
         />
+      ) : screen.name === 'academy' ? (
+        <AcademyScreen onBack={() => setScreen({ name: 'dashboard' })} />
       ) : screen.name === 'data' ? (
         <DataScreen
           projectId={screen.project.id}

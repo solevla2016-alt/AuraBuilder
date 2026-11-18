@@ -108,6 +108,7 @@ INSTALLED_APPS = [
     'publications',
     'analytics',
     'api_v1',
+    'academy',
 ]
 
 MIDDLEWARE = [

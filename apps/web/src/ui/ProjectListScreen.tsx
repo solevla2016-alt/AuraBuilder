@@ -37,10 +37,13 @@ const ROLE_LABELS: Record<string, string> = {
 export function ProjectListScreen({
   user,
   onOpen,
+  onOpenAcademy,
   onSignOut,
 }: {
   user: UserProfile;
   onOpen: (project: Project) => void;
+  /** Академия общая для всех проектов, поэтому открывается из кабинета. */
+  onOpenAcademy: () => void;
   onSignOut: () => void;
 }) {
   const [projects, setProjects] = useState<Project[] | null>(null);
@@ -170,6 +173,9 @@ export function ProjectListScreen({
           <a className="btn btn--ghost" href="#projects">
             Мои проекты
           </a>
+          <button type="button" className="btn btn--ghost" onClick={onOpenAcademy}>
+            Академия
+          </button>
           <button type="button" className="btn btn--ghost" onClick={onSignOut}>
             Выйти
           </button>

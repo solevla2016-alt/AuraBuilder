@@ -40,6 +40,9 @@ urlpatterns = [
     # Аутентификация и профиль. Объявлены до проектов: путь
     # api/auth/login/ не должен попадать под <str:project_id>.
     path('api/auth/', include('accounts.urls')),
+    # Академия: уроки и прогресс пользователя. До проектов, потому что
+    # /api/academy/ не должен попасть под <str:project_id>.
+    path('api/', include('academy.urls')),
     path('api/projects/', include('projects.urls')),
     # Деплой на хостинг заказчика (ТЗ п.16.5): профили доступа и
     # сама выкладка. Объявлено после проектов, потому что все пути
