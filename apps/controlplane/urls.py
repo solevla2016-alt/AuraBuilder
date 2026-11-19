@@ -43,6 +43,9 @@ urlpatterns = [
     # Академия: уроки и прогресс пользователя. До проектов, потому что
     # /api/academy/ не должен попасть под <str:project_id>.
     path('api/', include('academy.urls')),
+    # Вебхуки проекта. Объявлены до api/projects/, чтобы адрес
+    # projects/<id>/webhooks/ не разбирался как подресурс проекта.
+    path('api/', include('webhooks.urls')),
     path('api/projects/', include('projects.urls')),
     # Деплой на хостинг заказчика (ТЗ п.16.5): профили доступа и
     # сама выкладка. Объявлено после проектов, потому что все пути

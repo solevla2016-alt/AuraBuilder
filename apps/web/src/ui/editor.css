@@ -3223,3 +3223,83 @@ select.prop__input option {
   display: grid;
   gap: var(--space-xs);
 }
+
+/* --- вебхуки ------------------------------------------------------- */
+
+.btn--small {
+  padding: 2px var(--space-sm);
+  font-size: var(--text-xs);
+}
+
+.wh__row {
+  align-items: flex-start;
+}
+
+.wh__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.wh__url {
+  overflow-wrap: anywhere;
+}
+
+.wh__events {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.wh__check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--text-sm);
+}
+
+.wh__secret-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.wh__secret {
+  padding: 2px var(--space-sm);
+  border-radius: 6px;
+  background: var(--panelSunken);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.wh__history summary {
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--accentText);
+}
+
+.wh__deliveries {
+  margin: var(--space-sm) 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.wh__delivery {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.wh__delivery-text {
+  font-size: var(--text-xs);
+  color: var(--textSecondary);
+  overflow-wrap: anywhere;
+}

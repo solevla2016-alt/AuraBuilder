@@ -69,6 +69,15 @@ def _notify(event: ProjectEvent) -> None:
     except Exception:  # noqa: BLE001 — доставка не входит в операцию
         logger.exception('событие %s не доставлено в Telegram', event.pk)
 
+    # Вебхуки — тоже доставка, а не часть операции: недоступный приёмник
+    # оставляет запись в журнале доставок, но не отменяет публикацию.
+    try:
+        from webhooks.service import dispatch
+
+        dispatch(event)
+    except Exception:  # noqa: BLE001
+        logger.exception('событие %s не разослано по вебхукам', event.pk)
+
 
 def recent(project, limit: int = 20):
     return ProjectEvent.objects.filter(project=project).select_related(

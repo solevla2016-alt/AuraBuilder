@@ -172,6 +172,7 @@ export function EditorCanvas({
   onOpenAnalytics,
   onOpenTemplates,
   onOpenReview,
+  onOpenWebhooks,
   onSignOut,
 }: {
   /** Проект открыт из списка: идентификатор и название известны заранее. */
@@ -190,6 +191,8 @@ export function EditorCanvas({
   onOpenTemplates: () => void;
   /** Ревью: замечания к блокам и согласование до публикации. */
   onOpenReview: () => void;
+  /** Вебхуки: подписки проекта на события публикации и деплоя. */
+  onOpenWebhooks: () => void;
   onSignOut: () => void;
 }) {
   const [tool, setTool] = useState('select');
@@ -1117,6 +1120,18 @@ export function EditorCanvas({
           >
             <Icon name="check" />
             <span>Ревью</span>
+          </button>
+          {/* Вебхуки: подписки на события публикации и деплоя. Рядом с
+              публикацией, потому что событие возникает именно там. */}
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={onOpenWebhooks}
+            title="Вебхуки проекта"
+            aria-label="Вебхуки проекта"
+          >
+            <Icon name="external" />
+            <span>Вебхуки</span>
           </button>
           {/* Кнопка возврата в список проектов: без неё из редактора
               не выйти, кроме выхода из аккаунта, а это разные вещи. */}

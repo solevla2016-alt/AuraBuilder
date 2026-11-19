@@ -11,6 +11,7 @@ import { LogicScreen } from './ui/LogicScreen';
 import { AnalyticsScreen } from './ui/AnalyticsScreen';
 import { TemplatesScreen } from './ui/TemplatesScreen';
 import { ReviewScreen } from './ui/ReviewScreen';
+import { WebhooksScreen } from './ui/WebhooksScreen';
 import { AcademyScreen } from './ui/AcademyScreen';
 import { Icon } from './ui/icons';
 import { api, clearTokens, onSessionExpired, type UserProfile } from './ui/api';
@@ -36,6 +37,7 @@ type Screen =
   | { name: 'analytics'; project: Project }
   | { name: 'templates'; project: Project }
   | { name: 'review'; project: Project }
+  | { name: 'webhooks'; project: Project }
   | { name: 'academy' };
 
 export function App() {
@@ -143,6 +145,12 @@ export function App() {
           projectName={screen.project.name}
           onBack={() => setScreen({ name: 'editor', project: screen.project })}
         />
+      ) : screen.name === 'webhooks' ? (
+        <WebhooksScreen
+          projectId={screen.project.id}
+          projectName={screen.project.name}
+          onBack={() => setScreen({ name: 'editor', project: screen.project })}
+        />
       ) : screen.name === 'components' ? (
         <ComponentsScreen
           projectId={screen.project.id}
@@ -160,6 +168,7 @@ export function App() {
           onOpenAnalytics={() => setScreen({ name: 'analytics', project: screen.project })}
           onOpenTemplates={() => setScreen({ name: 'templates', project: screen.project })}
           onOpenReview={() => setScreen({ name: 'review', project: screen.project })}
+          onOpenWebhooks={() => setScreen({ name: 'webhooks', project: screen.project })}
           onSignOut={signOut}
         />
       )}

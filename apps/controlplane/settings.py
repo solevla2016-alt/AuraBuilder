@@ -109,6 +109,7 @@ INSTALLED_APPS = [
     'analytics',
     'api_v1',
     'academy',
+    'webhooks',
 ]
 
 MIDDLEWARE = [
