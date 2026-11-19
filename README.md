@@ -541,6 +541,61 @@ cd apps && ..\.venv\Scripts\python manage.py retry_webhooks
 ограничения не имеет, потому что человек видит ошибку и сам решает, что
 приёмник починили.
 
+### SDK
+
+Пакет `packages/sdk` (`@aurabuilder/sdk`) — клиент публичного API v1 и
+проверка подписи вебхуков. Зависимостей нет: `fetch` и WebCrypto есть в
+браузере и в Node 20+, поэтому пакет работает без платформы и без
+npm-реестра (ТЗ п.16.4). Повторный экспорт той же версии даёт тот же
+результат — SDK только читает API и не хранит состояния между вызовами
+(ТЗ п.16.2).
+
+```bash
+npm run sdk:build    # tsc → packages/sdk/dist с .d.ts
+npm run sdk:test     # node:test: клиент и подпись, без Django
+```
+
+```ts
+import { writeFile } from 'node:fs/promises';
+import { AuraClient } from '@aurabuilder/sdk';
+
+const client = new AuraClient({ baseUrl: 'https://aura.example' });
+await client.login('owner', 'пароль');
+// токены хранятся в клиенте; при 401 он один раз обновит access
+const { data } = await client.projects({ limit: 20 });
+const archive = await client.exportArchive(data[0].id, { version: 7 });
+await writeFile(archive.filename, archive.bytes);
+```
+
+`exportArchive` возвращает байты, а не Blob: в Node нет «файла», и
+вызывающий сам решает, писать архив на диск или отдавать дальше.
+Ошибки — `AuraApiError` с `status`, `code` (`not_found`, `forbidden`,
+`network_error`) и `details` из конверта API.
+
+Приёмник вебхука проверяет подпись по точным байтам тела — до
+`JSON.parse`:
+
+```ts
+import { verifyWebhook } from '@aurabuilder/sdk';
+
+app.post('/hooks/aura', async (req, res) => {
+  const payload = await verifyWebhook({
+    secret: process.env.AURA_WEBHOOK_SECRET!,
+    body: req.rawBody,               // точные байты, не JSON.parse
+    signature: String(req.headers['x-aura-signature'] ?? ''),
+  });
+  if (deliveries.has(payload.delivery)) return res.sendStatus(204);
+  deliveries.add(payload.delivery);
+  // payload.event.kind, payload.project.name, payload.event.message…
+});
+```
+
+`verifyWebhook` сначала проверяет HMAC, потом разбирает JSON: данные,
+которым ещё не доверяем, не должны попадать в разбор. `parseWebhook`
+можно вызвать отдельно, если подпись проверяется в другом месте,
+например на шлюзе. `WEBHOOK_EVENT_KINDS` и `WEBHOOK_EVENT_LABELS`
+повторяют каталог платформы, чтобы приёмник не заводил свои строки.
+
 ### Библиотека компонентов
 
 Изюминка N1 по ТЗ п.3.1: стиль задаётся один раз и применяется ко всем
@@ -860,6 +915,7 @@ npm run tokens:contrast      # контраст палитры
 npm run licenses             # лицензии npm
 .venv\Scripts\python tools\license_gate_py.py
 npm run typecheck && npm run build
+npm run sdk:test                    # SDK: клиент и проверка подписи
 cd apps && ..\.venv\Scripts\python manage.py test projects
 node tools/screenshot-editor.mjs   # редактор в браузере
 node tools/measure-lcp.mjs          # LCP против бюджета

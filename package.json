@@ -16,6 +16,8 @@
     "build": "npm run build --workspace @aurabuilder/web",
     "preview": "npm run preview --workspace @aurabuilder/web --",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "sdk:build": "npm run build --workspace @aurabuilder/sdk",
+    "sdk:test": "npm run test --workspace @aurabuilder/sdk",
     "tokens:build": "node packages/tokens/build.mjs",
     "tokens:check": "node packages/tokens/build.mjs --check",
     "tokens:contrast": "node docs/check-contrast.mjs",
