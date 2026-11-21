@@ -35,9 +35,52 @@ def env_bool(key: str, default: bool = False) -> bool:
     return os.environ.get(key, str(default)).lower() in {'1', 'true', 'yes', 'on'}
 
 
+def env_flag(key: str, default: bool) -> bool:
+    """Флаг с честным «не задано».
+
+    В docker-compose переменную нужно перечислить, даже когда значение
+    приходит по умолчанию из режима. Пустая строка там означает «не
+    задавали», а не «выключено»: иначе `${ALLOW_REGISTRATION:-}` в
+    облачном compose закрывал бы регистрацию.
+    """
+    raw = os.environ.get(key)
+    if raw is None or not raw.strip():
+        return default
+    return raw.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
 def env_list(key: str, default: str = '') -> list[str]:
     return [item.strip() for item in os.environ.get(key, default).split(',') if item.strip()]
 
+
+# --- Режим развёртывания (ТЗ п.16.4) ------------------------------------
+# Cloud и self-hosted — это один код в двух режимах, а не два продукта.
+# Ветвиться по режиму в приложениях пришлось бы в десятке мест, и любая
+# новая проверка тарифа забыла бы про self-hosted. Поэтому режим
+# превращается здесь в два понятных флага, а приложения спрашивают их.
+#
+# Опечатка в DEPLOYMENT_MODE опаснее, чем падение при старте: сервер с
+# «selfhosted» вместо «self-hosted» молча открыл бы регистрацию и
+# включил тарифные ограничения, то есть повёл бы себя как чужой режим.
+DEPLOYMENT_MODE = os.environ.get('DEPLOYMENT_MODE', 'cloud').strip().lower()
+if DEPLOYMENT_MODE not in {'cloud', 'self-hosted'}:
+    raise RuntimeError(
+        'DEPLOYMENT_MODE принимает только cloud или self-hosted, '
+        f'получено: {DEPLOYMENT_MODE!r}',
+    )
+
+SELF_HOSTED = DEPLOYMENT_MODE == 'self-hosted'
+
+#: Публичная регистрация. В self-hosted аккаунты создаёт администратор:
+#: установка принадлежит одной организации, и посторонний не должен
+#: получить в ней проект. Значение можно вернуть через окружение, но по
+#: умолчанию режим закрыт.
+REGISTRATION_OPEN = env_flag('ALLOW_REGISTRATION', not SELF_HOSTED)
+
+#: Тарифные проверки. В self-hosted тарифов нет: заказчик уже заплатил
+#: за установку. Технические лимиты (LIMITS ниже) при этом остаются —
+#: они защищают платформу, а не продают место.
+BILLING_ENABLED = env_flag('BILLING_ENABLED', not SELF_HOSTED)
 
 # --- Безопасность -------------------------------------------------------
 
@@ -50,6 +93,16 @@ ALLOWED_HOSTS = env_list('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1')
 if not DEBUG and SECRET_KEY == 'dev-only-insecure-key-change-me':
     raise RuntimeError(
         'DJANGO_SECRET_KEY должен быть задан в продакшене: '
+        'значение по умолчанию небезопасно'
+    )
+
+if SELF_HOSTED and SECRET_KEY == 'dev-only-insecure-key-change-me':
+    # Self-hosted ставится на сервер заказчика и сразу доступен сети.
+    # В отличие от облака, здесь нет внешнего контура, который заметит
+    # dev-ключ, поэтому установка с ключом по умолчанию не должна
+    # подняться даже с DJANGO_DEBUG=1.
+    raise RuntimeError(
+        'в self-hosted задайте DJANGO_SECRET_KEY: '
         'значение по умолчанию небезопасно'
     )
 
@@ -110,6 +163,10 @@ INSTALLED_APPS = [
     'api_v1',
     'academy',
     'webhooks',
+    # Резервное копирование платформы: команды backup_platform и
+    # restore_platform. Приложение без моделей — в REST_FRAMEWORK и
+    # миграциях ему делать нечего.
+    'maintenance',
 ]
 
 MIDDLEWARE = [

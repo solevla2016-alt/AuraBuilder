@@ -15,6 +15,10 @@
  * 3. Ошибка входа показывается текстом, а не кодом. Пять неудач под
  *   ряд — это нормальная забывчивость пароля, и показ «429» там, где
  *    человек ошибся в раскладке, выглядит как поломка.
+ *
+ * 4. В self-hosted вкладка регистрации не показывается, а не просто
+ *    отвечает ошибкой: закрытая форма, которую всё равно нельзя
+ *    отправить, — это тупик, а не ограничение.
  */
 
 import { useState } from 'react';
@@ -25,6 +29,7 @@ type Mode = 'login' | 'register';
 
 export function AuthScreen({
   onSignedIn,
+  registrationOpen = true,
 }: {
   /**
    * Передаётся профиль, а не пустой сигнал: иначе приложению пришлось
@@ -32,6 +37,12 @@ export function AuthScreen({
    * запрос отдавал бы возможность выиграть гонку с отзывом токена.
    */
   onSignedIn: (user: UserProfile) => void;
+  /**
+   * Показывать ли регистрацию. По умолчанию открыта: если /api/config/
+   * не ответил, лучше показать форму, которую сервер отклонит, чем
+   * спрятать единственный способ завести аккаунт в облаке.
+   */
+  registrationOpen?: boolean;
 }) {
   const [mode, setMode] = useState<Mode>('login');
   const [login, setLogin] = useState('');
@@ -41,6 +52,10 @@ export function AuthScreen({
   const [consent, setConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Конфигурация приходит после первого рендера. Если в этот момент
+  // открыта вкладка регистрации, она должна исчезнуть вместе с формой,
+  // а не остаться на экране с уже скрытой кнопкой.
+  const effectiveMode: Mode = registrationOpen ? mode : 'login';
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -48,7 +63,7 @@ export function AuthScreen({
     setError(null);
     setBusy(true);
     try {
-      if (mode === 'login') {
+      if (effectiveMode === 'login') {
         const result: LoginResult = await api.login(login.trim(), password);
         onSignedIn(result.user);
       } else {
@@ -82,8 +97,8 @@ export function AuthScreen({
           <button
             type="button"
             role="tab"
-            aria-selected={mode === 'login'}
-            className={mode === 'login' ? 'auth__tab is-active' : 'auth__tab'}
+            aria-selected={effectiveMode === 'login'}
+            className={effectiveMode === 'login' ? 'auth__tab is-active' : 'auth__tab'}
             onClick={() => {
               setMode('login');
               setError(null);
@@ -91,21 +106,23 @@ export function AuthScreen({
           >
             Вход
           </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'register'}
-            className={mode === 'register' ? 'auth__tab is-active' : 'auth__tab'}
-            onClick={() => {
-              setMode('register');
-              setError(null);
-            }}
-          >
-            Регистрация
-          </button>
+          {registrationOpen ? (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={effectiveMode === 'register'}
+              className={effectiveMode === 'register' ? 'auth__tab is-active' : 'auth__tab'}
+              onClick={() => {
+                setMode('register');
+                setError(null);
+              }}
+            >
+              Регистрация
+            </button>
+          ) : null}
         </div>
 
-        {mode === 'login' ? (
+        {effectiveMode === 'login' ? (
           <label className="auth__field">
             <span className="auth__label">Логин или email</span>
             <input
@@ -151,18 +168,18 @@ export function AuthScreen({
             className="auth__input"
             name="password"
             type="password"
-            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-            minLength={mode === 'register' ? 12 : undefined}
+            autoComplete={effectiveMode === 'login' ? 'current-password' : 'new-password'}
+            minLength={effectiveMode === 'register' ? 12 : undefined}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
           />
-          {mode === 'register' ? (
+          {effectiveMode === 'register' ? (
             <span className="auth__hint">Не менее 12 символов</span>
           ) : null}
         </label>
 
-        {mode === 'register' ? (
+        {effectiveMode === 'register' ? (
           <label className="auth__consent">
             <input
               type="checkbox"
@@ -183,7 +200,7 @@ export function AuthScreen({
         ) : null}
 
         <button className="auth__submit" type="submit" disabled={busy}>
-          {busy ? 'Подождите…' : mode === 'login' ? 'Войти' : 'Создать аккаунт'}
+          {busy ? 'Подождите…' : effectiveMode === 'login' ? 'Войти' : 'Создать аккаунт'}
         </button>
       </form>
     </main>

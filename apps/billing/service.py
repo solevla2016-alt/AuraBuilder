@@ -5,11 +5,18 @@
 Представление, ограничивающее себя, заканчивается тем, что половина
 приложения обходит проверку, а пользователь видит разные правила в
 разных сценариях.
+
+В self-hosted тарифов нет (BILLING_ENABLED=False): установка уже
+принадлежит заказчику, и продавать ему место внутри его же сервера
+незачем. Проверки в этом режиме разрешают всё, но технические лимиты
+из settings.LIMITS остаются — они защищают платформу, а не тариф.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+from django.conf import settings
 
 from projects.models import Project
 
@@ -44,7 +51,14 @@ class Denial:
 
 
 def plan_for(user) -> Plan:
-    """Тариф пользователя; без подписки — Free."""
+    """Тариф пользователя; без подписки — Free.
+
+    В self-hosted возвращается Business: это не «щедрость», а
+    отсутствие шкалы. Иначе владелец установки увидел бы в интерфейсе
+    Free и упёрся в лимит одного проекта на собственном сервере.
+    """
+    if not settings.BILLING_ENABLED:
+        return get_plan('business')
     subscription = getattr(user, 'subscription', None)
     if subscription is None or not subscription.active:
         return get_plan('free')
@@ -53,6 +67,8 @@ def plan_for(user) -> Plan:
 
 def check_scenario(user, scenario: int) -> Denial | None:
     """Разрешён ли сценарий тарифом. None — разрешён."""
+    if not settings.BILLING_ENABLED:
+        return None
     plan = plan_for(user)
     if plan.allows(scenario):
         return None
@@ -70,6 +86,8 @@ def check_scenario(user, scenario: int) -> Denial | None:
 
 def check_project_slot(user) -> Denial | None:
     """Можно ли создать ещё один проект."""
+    if not settings.BILLING_ENABLED:
+        return None
     plan = plan_for(user)
     if plan.max_projects is None:
         return None
@@ -94,6 +112,8 @@ def check_page_slot(user, pages: int) -> Denial | None:
     редактирования, страница — единица публикации, и лимит в ТЗ
     задан в страницах.
     """
+    if not settings.BILLING_ENABLED:
+        return None
     plan = plan_for(user)
     if plan.max_pages is None:
         return None
@@ -110,6 +130,8 @@ def check_page_slot(user, pages: int) -> Denial | None:
 
 def check_record_count(user, records: int) -> Denial | None:
     """Можно ли разместить столько записей (строк в источниках данных)."""
+    if not settings.BILLING_ENABLED:
+        return None
     plan = plan_for(user)
     if plan.max_records is None:
         return None

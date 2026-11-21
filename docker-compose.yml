@@ -90,6 +90,14 @@ services:
       DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
       DJANGO_TIME_ZONE: ${DJANGO_TIME_ZONE:-Europe/Moscow}
       DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-INFO}
+      # Режим развёртывания (ТЗ п.16.4). Один и тот же образ работает
+      # и в облаке, и на сервере заказчика. Пустые ALLOW_REGISTRATION и
+      # BILLING_ENABLED означают «взять из режима»: в cloud это
+      # открытая регистрация и тарифы, в self-hosted — закрытая
+      # регистрация и полный доступ без тарифов.
+      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-cloud}
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-}
+      BILLING_ENABLED: ${BILLING_ENABLED:-}
       WHITENOISE_ENABLED: "1"
       # TLS на локальном стенде нет: редирект на https без него просто
       # ломает доступ. В продакшене значение 1, а сертификат терминирует
@@ -145,6 +153,10 @@ services:
       # поэтому каталог должен быть доступен именно ему.
       - publish-data:/srv/published
       - asset-data:/srv/assets
+      # Архивы резервных копий. Без тома файл, записанный внутри
+      # `docker compose exec api`, исчез бы вместе с контейнером —
+      # ровно тогда, когда копия и нужна.
+      - backup-data:/backup
     depends_on:
       db:
         condition: service_healthy
@@ -217,3 +229,6 @@ volumes:
   # штатная потеря всех сайтов платформы.
   publish-data:
   asset-data:
+  # Архивы backup_platform. Отдельный том, чтобы копию можно было
+  # забрать с сервера, не заходя внутрь контейнера.
+  backup-data:

@@ -32,6 +32,7 @@
 | `docs/TZ-GAPS.md` | Пробелы ТЗ, принятые решения, открытые вопросы |
 | `docs/RUNTIME.md` | Протокол рантайма: корзина, оформление, поиск |
 | `docs/DEPLOY.md` | One-Click Deploy: профили хостинга, границы выкладки |
+| `docs/SELF-HOSTED.md` | Установка у заказчика, обновление, backup и restore |
 | `docs/MODULE-CATALOG.md` | Каталог модулей редактора: 65 модулей в 5 категориях |
 | `CONTRIBUTING.md` | Как вносить изменения и что проверять |
 | `tools/` | Скрипты проверок и работы с ТЗ |
@@ -870,7 +871,31 @@ docker compose down -v        # -v удаляет и базу
   взяли бы каталог во временной папке контейнера, и всё написанное
   пропадало бы при первой пересборке образа. Владелец каталогов задан
   в `docker/Dockerfile.api`: том наследует его от образа, а процесс
-  работает не от root.
+  работает не от root. Резервные копии пишутся в `backup-data`
+  (`/backup`) — тоже том, иначе архив исчез бы вместе с контейнером.
+
+### Режим self-hosted
+
+Тот же образ работает на сервере заказчика: `DEPLOYMENT_MODE=self-hosted`
+закрывает регистрацию и отключает тарифные проверки, технические лимиты
+остаются. Первого пользователя создаёт `create_owner`, а не форма
+регистрации. Полная инструкция — `docs/SELF-HOSTED.md`.
+
+```bash
+# копия платформы: база, опубликованные сайты, медиатека
+docker compose exec api python manage.py backup_platform \
+  --output /backup/aurabuilder.tar.gz
+
+# восстановление на остановленных api и scheduler
+docker compose stop api scheduler web
+docker compose run --rm --no-deps api \
+  python manage.py restore_platform /backup/aurabuilder.tar.gz
+docker compose up -d
+```
+
+Архив содержит `manifest.json` с контрольными суммами; испорченная
+копия отвергается до записи. Ключи шифрования секретов добавляются
+только флагом `--include-secret-keys` и остаются секретом.
 
 ### Посмотреть собранный сайт глазами
 

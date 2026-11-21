@@ -10,6 +10,7 @@ Admin намеренно не подключён: он нужен для экс�
 разграничением доступа к нему самому (ТЗ п.7.7.3, п.11.1).
 """
 
+from django.conf import settings
 from django.urls import include, path
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -23,8 +24,30 @@ def root(request):
     return Response({'service': 'aurabuilder-controlplane', 'status': 'ok'})
 
 
+@api_view(['GET'])
+@permission_classes([])
+def config(request):
+    """Публичная конфигурация режима для интерфейса.
+
+    Экран входа должен знать, показывать ли вкладку регистрации, до
+    того как у пользователя появится токен. Спрашивать это у /auth/me/
+    нельзя — он закрыт. Секретов здесь нет: только то, что и так видно
+    по поведению сервера.
+    """
+    return Response(
+        {
+            'mode': settings.DEPLOYMENT_MODE,
+            'registrationOpen': settings.REGISTRATION_OPEN,
+            'billingEnabled': settings.BILLING_ENABLED,
+        },
+    )
+
+
 urlpatterns = [
     path('', root, name='root'),
+    # Режим развёртывания для экрана входа. Объявлено до include'ов,
+    # чтобы config не разбирался как <str:project_id>.
+    path('api/config/', config, name='config'),
     # Каталог модулей лежит на верхнем уровне API, а не внутри проектов:
     # он общий для всех проектов и редактор спрашивает его при старте.
     path('api/modules/', module_catalog, name='module-catalog'),

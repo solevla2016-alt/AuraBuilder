@@ -14,7 +14,7 @@ import { ReviewScreen } from './ui/ReviewScreen';
 import { WebhooksScreen } from './ui/WebhooksScreen';
 import { AcademyScreen } from './ui/AcademyScreen';
 import { Icon } from './ui/icons';
-import { api, clearTokens, onSessionExpired, type UserProfile } from './ui/api';
+import { api, clearTokens, onSessionExpired, type PlatformConfig, type UserProfile } from './ui/api';
 import type { Project } from './ui/project';
 
 /**
@@ -45,6 +45,14 @@ export function App() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [screen, setScreen] = useState<Screen>({ name: 'dashboard' });
   const [booting, setBooting] = useState(true);
+  const [config, setConfig] = useState<PlatformConfig | null>(null);
+
+  // Режим сервера нужен экрану входа до появления токена. Ошибка не
+  // блокирует вход: если /api/config/ недоступен, показываем облачный
+  // вариант — форма, которую сервер отклонит, лучше скрытой формы.
+  useEffect(() => {
+    api.config().then(setConfig).catch(() => setConfig(null));
+  }, []);
 
   // Профиль запрашивается один раз при старте: без него неизвестно,
   // показывать экран входа или список проектов.
@@ -95,7 +103,10 @@ export function App() {
       </button>
 
       {booting ? null : user === null ? (
-        <AuthScreen onSignedIn={(profile) => setUser(profile)} />
+        <AuthScreen
+          onSignedIn={(profile) => setUser(profile)}
+          registrationOpen={config?.registrationOpen ?? true}
+        />
       ) : screen.name === 'dashboard' ? (
         <ProjectListScreen
           user={user}

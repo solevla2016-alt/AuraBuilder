@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework import status
@@ -44,12 +45,29 @@ class RegisterView(APIView):
     входом. Подтверждение закроет этап 8 вместе с Яндекс 360; до него
     новый пользователь может войти сразу, а доступ к чужим проектам
     у него всё равно невозможен — проектов нет.
+
+    В self-hosted регистрация закрыта (REGISTRATION_OPEN=False):
+    установка принадлежит одной организации, и первый аккаунт создаёт
+    администратор командой createsuperuser. Проверка стоит здесь, а не
+    в сериализаторе: это правило режима сервера, и оно должно отвечать
+    до валидации полей — иначе человек с хорошим паролем всё равно
+    получил бы «регистрация закрыта» после заполнения формы.
     """
 
     permission_classes = [AllowAny]
     throttle_scope = 'login'
 
     def post(self, request):
+        if not settings.REGISTRATION_OPEN:
+            return Response(
+                {
+                    'detail': (
+                        'Регистрация на этом сервере закрыта. '
+                        'Аккаунт создаёт администратор.'
+                    ),
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()

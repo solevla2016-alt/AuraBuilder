@@ -235,6 +235,21 @@ jobs:
         working-directory: apps
         run: python manage.py migrate --noinput
 
+      # pg_dump старше сервера отказывается снимать копию, а в ubuntu
+      # 24.04 лежит клиент 16 при сервере 18. Ставим клиент той же
+      # версии, что и в docker/Dockerfile.api: иначе тесты резервного
+      # копирования проверяли бы не ту конфигурацию, что поедет в стенд.
+      - name: Клиент PostgreSQL для резервных копий
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+          https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo $VERSION_CODENAME)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-18
+
       # Модель без миграции — типичная поломка: в dev работает на
       # существующей базе, а на стенде таблицы не хватает. Проверка
       # делается до тестов, чтобы упасть на понятном сообщении.
@@ -251,7 +266,7 @@ jobs:
         run: >-
           python manage.py test projects accounts data_sources
           component_library deploying publications billing secretstore
-          telegram logic --verbosity 2
+          telegram logic maintenance --verbosity 2
 
   # --- Рантайм ---------------------------------------------------------------
   # Рантайм поставляется заказчику отдельно и не делит код с платформой

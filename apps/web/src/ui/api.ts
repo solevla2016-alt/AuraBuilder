@@ -54,6 +54,16 @@ export interface RegisterPayload {
 }
 
 /**
+ * Режим сервера. Нужен экрану входа: в self-hosted регистрация закрыта,
+ * и вкладка «Регистрация» вела бы в 403 после заполнения формы.
+ */
+export interface PlatformConfig {
+  mode: 'cloud' | 'self-hosted';
+  registrationOpen: boolean;
+  billingEnabled: boolean;
+}
+
+/**
  * Проекты пользователя.
  *
  * Раньше идентификатор был зашит в редактор, и он открывал первый
@@ -235,6 +245,9 @@ export const api = {
    */
   getModules: (stage?: number) =>
     request<ModuleCatalog>(`/modules/${stage === undefined ? '' : `?stage=${stage}`}`),
+
+  /** Режим сервера. Публичный: экран входа ещё не имеет токена. */
+  config: () => request<PlatformConfig>('/config/'),
 
   health: () => request<{ status: string }>('/health/'),
 };

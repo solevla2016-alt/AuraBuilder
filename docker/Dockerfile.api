@@ -13,10 +13,25 @@ FROM python:3.13-slim
 
 # psycopg-binary тянет libpq; curl нужен healthcheck'у, чтобы он был
 # настоящей проверкой HTTP, а не проверкой запуска процесса.
+#
+# postgresql-client берётся из PGDG, а не из Debian: в bookworm лежит
+# клиент 15, а сервер в compose — 18. pg_dump старше сервера
+# отказывается снимать копию («server version ... pg_dump version ...»),
+# и резервное копирование молча перестало бы работать на ровном месте.
+# Версия клиента должна быть не ниже сервера; 18 подходит и к 15+.
 RUN apt-get update \
     && apt-get install --no-install-recommends -y \
+        ca-certificates \
         curl \
         libpq5 \
+    && install -d /usr/share/postgresql-common/pgdg \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+        -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+    && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo $VERSION_CODENAME)-pgdg main" \
+        > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install --no-install-recommends -y postgresql-client-18 \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
