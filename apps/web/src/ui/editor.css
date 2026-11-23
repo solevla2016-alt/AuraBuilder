@@ -1694,6 +1694,277 @@ select.prop__input option {
   font-size: var(--text-sm);
 }
 
+/*
+ * Полоса квот в кабинете. Показывается одной строкой: это справка,
+ * а не отдельный экран. Красный только на исчерпанном пределе —
+ * «почти лимит» оранжевым приучал бы не замечать цвет.
+ */
+.dash__quotas {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  max-width: 1200px;
+  margin: 0 auto var(--space-lg);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+.dash__plan-name {
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-pill);
+  background: var(--accentSurfaceSubtle);
+  color: var(--accentTextStrong);
+  font-size: var(--text-xs);
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dash__quota {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  font-size: var(--text-sm);
+  color: var(--textSecondary);
+}
+
+.dash__quota b {
+  color: var(--textPrimary);
+  font-variant-numeric: tabular-nums;
+}
+
+.dash__quota.is-full b {
+  color: var(--danger);
+}
+
+.dash__quotas .btn {
+  margin-left: auto;
+}
+
+/* Подсказка следующего шага: не баннер на всю ширину, чтобы не
+   отодвигать проекты, а узкая полоса с одним действием. */
+.dash__next {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  flex-wrap: wrap;
+  max-width: 1200px;
+  margin: 0 auto var(--space-xl);
+  padding: var(--space-md) var(--space-lg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accentSurface);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+.dash__next b {
+  display: block;
+  margin-bottom: var(--space-xs);
+}
+
+.dash__next p {
+  margin: 0;
+  color: var(--textSecondary);
+  font-size: var(--text-sm);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Тариф и квоты                                                      */
+/* ------------------------------------------------------------------ */
+
+.billing {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.billing__panel {
+  padding: var(--space-lg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+.billing__panel h2 {
+  margin: 0 0 var(--space-xs);
+  font-size: var(--text-xl);
+}
+
+.billing__panel p {
+  margin: 0;
+  color: var(--textSecondary);
+}
+
+.billing__current {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-2xl);
+}
+
+.billing__eyebrow {
+  display: block;
+  margin-bottom: var(--space-xs);
+  color: var(--textSecondary);
+  font-size: var(--text-xs);
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.billing__scenarios {
+  display: flex;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+  max-width: 640px;
+}
+
+.billing__scenario {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+}
+
+.billing__scenario.is-on {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.billing__scenario.is-off {
+  color: var(--textSecondary);
+  opacity: 0.8;
+}
+
+.billing__heading {
+  margin: 0 0 var(--space-md);
+  font-size: var(--text-lg);
+}
+
+.billing__quotas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-md);
+  margin-bottom: var(--space-2xl);
+}
+
+.billing__quota {
+  padding: var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+.billing__quota header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+  font-size: var(--text-sm);
+  color: var(--textSecondary);
+}
+
+.billing__quota b {
+  color: var(--textPrimary);
+  font-variant-numeric: tabular-nums;
+}
+
+.billing__bar {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--panelSunken);
+  overflow: hidden;
+}
+
+.billing__bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accentSurface);
+}
+
+.billing__quota.is-near .billing__bar span {
+  background: var(--warning);
+}
+
+.billing__quota.is-full .billing__bar span {
+  background: var(--danger);
+}
+
+.billing__quota.is-full b {
+  color: var(--danger);
+}
+
+.billing__plans {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-md);
+}
+
+.billing__plan {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+.billing__plan.is-current {
+  border-color: var(--accentSurface);
+  box-shadow: var(--shadow-sm);
+}
+
+.billing__plan header h3 {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.billing__price {
+  margin: var(--space-xs) 0 0;
+  color: var(--textPrimary);
+  font-size: var(--text-xl);
+  font-weight: 650;
+}
+
+.billing__price span {
+  color: var(--textSecondary);
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+
+.billing__features {
+  flex: 1;
+  margin: 0;
+  padding-left: var(--space-lg);
+  color: var(--textSecondary);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.billing__plan .btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.billing__note {
+  max-width: 720px;
+  margin: var(--space-xl) 0 0;
+  color: var(--textSecondary);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Приветственная стартовая страница                                  */
 /* ------------------------------------------------------------------ */

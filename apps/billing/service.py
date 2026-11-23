@@ -18,7 +18,8 @@ from dataclasses import dataclass
 
 from django.conf import settings
 
-from projects.models import Project
+from data_sources.models import DataRecord
+from projects.models import Page, Project
 
 from .plans import Plan, get_plan
 
@@ -82,6 +83,44 @@ def check_scenario(user, scenario: int) -> Denial | None:
             f'Текущий тариф — {plan.title}.'
         ),
     )
+
+
+def usage_for(user) -> dict[str, int]:
+    """Сколько места занято на тарифе прямо сейчас.
+
+    Считается по владельцу проекта, как и проверки лимитов: участие в
+    чужом проекте не тратит место плательщика, иначе приглашённый
+    редактор на Free занимал бы чужую квоту.
+
+    Главная страница живёт в Project.tree, а не в Page, поэтому к числу
+    дополнительных страниц прибавляется число проектов. Без этого
+    проект с одной главной показывал бы «0 страниц» и лимит страниц
+    никогда не срабатывал бы на первом шаге.
+    """
+    projects = Project.objects.filter(owner=user).count()
+    pages = Page.objects.filter(project__owner=user).count() + projects
+    records = DataRecord.objects.filter(source__project__owner=user).count()
+    return {'projects': projects, 'pages': pages, 'records': records}
+
+
+def published_projects(user) -> int:
+    """Сколько проектов пользователя опубликовано.
+
+    Нужен не для лимитов, а для первого экрана: пока сайтов нет,
+    человеку полезнее подсказка «опубликуйте», чем статистика.
+    Отозванный сайт не считается: его по-прежнему нельзя показать.
+    """
+    return Project.objects.filter(owner=user, site__state='active').count()
+
+
+def quota_row(used: int, limit: int | None) -> dict[str, int | None]:
+    """Пара «занято/предел» для интерфейса.
+
+    None в limit означает «без ограничения», а не «ноль»: интерфейс
+    обязан различать эти случаи, иначе Business показывал бы полосу,
+    заполненную на 100% при любом числе проектов.
+    """
+    return {'used': used, 'limit': limit}
 
 
 def check_project_slot(user) -> Denial | None:
@@ -155,4 +194,7 @@ __all__ = [
     'check_record_count',
     'check_scenario',
     'plan_for',
+    'published_projects',
+    'quota_row',
+    'usage_for',
 ]

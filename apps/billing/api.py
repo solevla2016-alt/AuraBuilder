@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
+from django.conf import settings
 from rest_framework import serializers
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .plans import PLANS
-from .service import check_scenario, plan_for
+from .service import (
+    SCENARIO_TITLES,
+    check_scenario,
+    plan_for,
+    published_projects,
+    quota_row,
+    usage_for,
+)
 
 
 class PlanSerializer(serializers.Serializer):
@@ -45,6 +53,7 @@ class SubscriptionView(APIView):
     def get(self, request):
         subscription = getattr(request.user, 'subscription', None)
         plan = plan_for(request.user)
+        usage = usage_for(request.user)
         available = {
             scenario: check_scenario(request.user, scenario) is None
             for scenario in range(1, 6)
@@ -55,7 +64,32 @@ class SubscriptionView(APIView):
                 subscription.pending_plan if subscription else ''
             ),
             'available': available,
+            # Названия сценариев отдаются вместе с доступностью: иначе
+            # интерфейс держал бы вторую копию списка, и новая функция
+            # появлялась бы в API, но не на экране тарифов.
+            'scenarios': [
+                {
+                    'code': scenario,
+                    'title': SCENARIO_TITLES[scenario],
+                    'available': available[scenario],
+                }
+                for scenario in range(1, 6)
+            ],
             'plans': [_plan_payload(item) for item in PLANS.values()],
+            # Использование нужно тем же ответом, что и тариф: два
+            # запроса на один экран разошлись бы, если между ними
+            # успели создать проект, и полоса квоты показала бы чужое
+            # число.
+            'usage': {
+                'projects': quota_row(usage['projects'], plan.max_projects),
+                'pages': quota_row(usage['pages'], plan.max_pages),
+                'records': quota_row(usage['records'], plan.max_records),
+            },
+            'publications': {'published': published_projects(request.user)},
+            # Фронт скрывает тарифы в self-hosted. Флаг отдаётся, а не
+            # угадывается по коду тарифа: Business там выдаётся всем, и
+            # «раз тариф Business — значит облако» было бы неверно.
+            'billing_enabled': settings.BILLING_ENABLED,
         })
 
 
@@ -71,6 +105,19 @@ class ChangePlanView(APIView):
         payload = self.Input(data=request.data)
         payload.is_valid(raise_exception=True)
         code = payload.validated_data['plan']
+
+        # В self-hosted шкалы нет: смена тарифа вернула бы владельцу
+        # установки Free и лимиты, которых на его сервере быть не
+        # должно. Отказ явный, а не молчаливое игнорирование.
+        if not settings.BILLING_ENABLED:
+            return Response(
+                {
+                    'detail': 'На этом сервере тарифы отключены: '
+                              'все возможности доступны без подписки.',
+                    'reason': 'billing_disabled',
+                },
+                status=400,
+            )
 
         from .models import Subscription  # локальный импорт против цикла
         from django.utils import timezone

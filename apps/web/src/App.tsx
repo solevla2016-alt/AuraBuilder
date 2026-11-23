@@ -13,6 +13,7 @@ import { TemplatesScreen } from './ui/TemplatesScreen';
 import { ReviewScreen } from './ui/ReviewScreen';
 import { WebhooksScreen } from './ui/WebhooksScreen';
 import { AcademyScreen } from './ui/AcademyScreen';
+import { SubscriptionScreen } from './ui/SubscriptionScreen';
 import { Icon } from './ui/icons';
 import { api, clearTokens, onSessionExpired, type PlatformConfig, type UserProfile } from './ui/api';
 import type { Project } from './ui/project';
@@ -38,7 +39,8 @@ type Screen =
   | { name: 'templates'; project: Project }
   | { name: 'review'; project: Project }
   | { name: 'webhooks'; project: Project }
-  | { name: 'academy' };
+  | { name: 'academy' }
+  | { name: 'subscription' };
 
 export function App() {
   const { theme, toggle } = useTheme();
@@ -112,10 +114,13 @@ export function App() {
           user={user}
           onOpen={(project) => setScreen({ name: 'editor', project })}
           onOpenAcademy={() => setScreen({ name: 'academy' })}
+          onOpenSubscription={() => setScreen({ name: 'subscription' })}
           onSignOut={signOut}
         />
       ) : screen.name === 'academy' ? (
         <AcademyScreen onBack={() => setScreen({ name: 'dashboard' })} />
+      ) : screen.name === 'subscription' ? (
+        <SubscriptionScreen onBack={() => setScreen({ name: 'dashboard' })} />
       ) : screen.name === 'data' ? (
         <DataScreen
           projectId={screen.project.id}

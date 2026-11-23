@@ -21,7 +21,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, api } from './api';
-import type { UserProfile } from './api';
+import type { PlanQuota, SubscriptionInfo, UserProfile } from './api';
 import type { Project } from './project';
 import { Icon } from './icons';
 import { StartPage } from './StartPage';
@@ -38,15 +38,19 @@ export function ProjectListScreen({
   user,
   onOpen,
   onOpenAcademy,
+  onOpenSubscription,
   onSignOut,
 }: {
   user: UserProfile;
   onOpen: (project: Project) => void;
   /** Академия общая для всех проектов, поэтому открывается из кабинета. */
   onOpenAcademy: () => void;
+  /** Тариф и квоты: в self-hosted тарифов нет, ссылка скрыта. */
+  onOpenSubscription: () => void;
   onSignOut: () => void;
 }) {
   const [projects, setProjects] = useState<Project[] | null>(null);
+  const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -70,6 +74,23 @@ export function ProjectListScreen({
   useEffect(() => {
     void load();
   }, [load]);
+
+  /**
+   * Квоты грузятся отдельно и не блокируют список: без них проекты
+   * всё равно открываются, а сетевой отказ не должен выглядеть как
+   * «проектов нет».
+   */
+  const loadSubscription = useCallback(async () => {
+    try {
+      setSubscription(await api.subscription());
+    } catch {
+      setSubscription(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSubscription();
+  }, [loadSubscription]);
 
   /**
    * Роль подгружается отдельно и не мешает показу списка: без неё
@@ -132,7 +153,9 @@ export function ProjectListScreen({
     try {
       await api.deleteProject(project.id);
       setPendingDelete(null);
-      await load();
+      // Освободившееся место нужно показать сразу: иначе кнопка
+      // «Новый проект» осталась бы заблокированной до перезагрузки.
+      await Promise.all([load(), loadSubscription()]);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Не удалось удалить проект.');
     } finally {
@@ -156,6 +179,20 @@ export function ProjectListScreen({
     });
   }
 
+  /*
+   * Лимит проектов проверяется и в интерфейсе, хотя сервер всё равно
+   * ответит 402: кнопка, которая гарантированно ведёт в отказ, — это
+   * тупик. Вместо неё показывается переход к тарифу.
+   */
+  const projectQuota = subscription?.usage.projects;
+  const projectLimitReached =
+    subscription?.billing_enabled === true &&
+    projectQuota !== undefined &&
+    projectQuota.limit !== null &&
+    projectQuota.used >= projectQuota.limit;
+  const firstProject =
+    projects && projects.length > 0 ? projects[0] : null;
+
   return (
     <main className="dash">
       <header className="dash__top">
@@ -173,6 +210,15 @@ export function ProjectListScreen({
           <a className="btn btn--ghost" href="#projects">
             Мои проекты
           </a>
+          {subscription?.billing_enabled ? (
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={onOpenSubscription}
+            >
+              Тариф и квоты
+            </button>
+          ) : null}
           <button type="button" className="btn btn--ghost" onClick={onOpenAcademy}>
             Академия
           </button>
@@ -183,6 +229,50 @@ export function ProjectListScreen({
       </header>
 
       <StartPage projectCount={projects?.length ?? null} onCreate={startProject} />
+
+      {subscription?.billing_enabled ? (
+        <section className="dash__quotas" aria-label="Использование тарифа">
+          <span className="dash__plan-name">{subscription.plan.title}</span>
+          <QuotaPill label="Проекты" quota={subscription.usage.projects} />
+          <QuotaPill label="Страницы" quota={subscription.usage.pages} />
+          <QuotaPill label="Записи" quota={subscription.usage.records} />
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={onOpenSubscription}
+          >
+            Подробнее
+            <Icon name="chevronRight" size={14} />
+          </button>
+        </section>
+      ) : null}
+
+      {/*
+       * Подсказка следующего шага, а не повод для гордости: пока сайт
+       * не опубликован, человек уже умеет собирать, но ещё не видел
+       * результата. Именно этот переход и превращает редактор в
+       * рабочий инструмент.
+       */}
+      {firstProject &&
+      subscription?.billing_enabled &&
+      subscription.publications.published === 0 ? (
+        <section className="dash__next">
+          <div>
+            <b>Следующий шаг: опубликуйте сайт</b>
+            <p>
+              Соберите страницу и нажмите «Опубликовать»: адрес появится
+              сразу, а аналитика начнёт считать просмотры.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={() => onOpen(firstProject)}
+          >
+            Открыть проект
+          </button>
+        </section>
+      ) : null}
 
       <section
         className="dash__projects"
@@ -237,6 +327,15 @@ export function ProjectListScreen({
                   Отмена
                 </button>
               </div>
+            ) : projectLimitReached ? (
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={onOpenSubscription}
+              >
+                <Icon name="plus" />
+                <span>Лимит проектов — сменить тариф</span>
+              </button>
             ) : (
               <button
                 type="button"
@@ -392,6 +491,20 @@ export function ProjectListScreen({
       ) : null}
 
     </main>
+  );
+}
+
+/** Короткая квота в полосе кабинета: «Проекты 1/1». */
+function QuotaPill({ label, quota }: { label: string; quota: PlanQuota }) {
+  const full = quota.limit !== null && quota.used >= quota.limit;
+  return (
+    <span className={full ? 'dash__quota is-full' : 'dash__quota'}>
+      <span>{label}</span>
+      <b>
+        {quota.used}
+        {quota.limit === null ? '' : `/${quota.limit}`}
+      </b>
+    </span>
   );
 }
 

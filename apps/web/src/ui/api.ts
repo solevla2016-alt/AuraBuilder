@@ -63,6 +63,47 @@ export interface PlatformConfig {
   billingEnabled: boolean;
 }
 
+/** Тариф из шкалы (ТЗ п.17.1). null в лимите — без ограничения. */
+export interface PlanOption {
+  code: string;
+  title: string;
+  price: number;
+  max_projects: number | null;
+  max_pages: number | null;
+  max_records: number | null;
+  own_domain: boolean;
+  cdn_priority: boolean;
+  onedc_integration: boolean;
+}
+
+/** Занято и предел. null в limit — тариф не ограничивает. */
+export interface PlanQuota {
+  used: number;
+  limit: number | null;
+}
+
+/**
+ * Тариф, квоты и первые шаги.
+ *
+ * Использование приходит вместе с тарифом: два запроса на один экран
+ * разошлись бы, если между ними успели создать проект.
+ */
+export interface SubscriptionInfo {
+  plan: PlanOption;
+  pending_plan: string;
+  available: Record<string, boolean>;
+  /** Сценарии с названиями: подписи не дублируются в интерфейсе. */
+  scenarios: { code: number; title: string; available: boolean }[];
+  plans: PlanOption[];
+  usage: {
+    projects: PlanQuota;
+    pages: PlanQuota;
+    records: PlanQuota;
+  };
+  publications: { published: number };
+  billing_enabled: boolean;
+}
+
 /**
  * Проекты пользователя.
  *
@@ -248,6 +289,16 @@ export const api = {
 
   /** Режим сервера. Публичный: экран входа ещё не имеет токена. */
   config: () => request<PlatformConfig>('/config/'),
+
+  /** Тариф, квоты и доступные сценарии текущего пользователя. */
+  subscription: () => request<SubscriptionInfo>('/billing/subscription/'),
+
+  /** Смена тарифа. В self-hosted сервер откажет: тарифов там нет. */
+  changePlan: (plan: string) =>
+    request<{ plan: PlanOption; effective: string; note: string }>(
+      '/billing/subscription/change/',
+      { method: 'POST', body: JSON.stringify({ plan }) },
+    ),
 
   health: () => request<{ status: string }>('/health/'),
 };

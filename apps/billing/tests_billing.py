@@ -15,7 +15,9 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from projects.models import Project
+from data_sources.models import DataRecord, DataSource
+from projects.models import Page, Project
+from publications.models import Site
 
 from .models import Subscription
 from .plans import PLANS, covers, get_plan, rank
@@ -26,6 +28,8 @@ from .service import (
     check_record_count,
     check_scenario,
     plan_for,
+    published_projects,
+    usage_for,
 )
 
 User = get_user_model()
@@ -223,6 +227,63 @@ class LimitTests(TestCase):
         self.assertIsNotNone(check_record_count(self.user, 10_001))
 
 
+class UsageTests(TestCase):
+    """Квоты для экрана: занято и предел.
+
+    Проверяется не только счётчик, но и то, что квота считается по
+    владельцу: иначе приглашённый в чужой проект тратил бы место
+    плательщика.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='usage', email='usage@example.com', password='x',
+        )
+        self.project = Project.objects.create(
+            owner=self.user, name='Мой',
+        )
+
+    def test_empty_project_counts_the_main_page(self):
+        self.assertEqual(
+            usage_for(self.user),
+            {'projects': 1, 'pages': 1, 'records': 0},
+        )
+
+    def test_extra_pages_and_records_are_counted(self):
+        Page.objects.create(
+            project=self.project, title='О нас', slug='about',
+        )
+        source = DataSource.objects.create(
+            project=self.project, name='Товары', key='items', fields=[],
+        )
+        DataRecord.objects.create(source=source, data={})
+
+        usage = usage_for(self.user)
+        self.assertEqual(usage['pages'], 2)
+        self.assertEqual(usage['records'], 1)
+
+    def test_participation_in_someone_elses_project_is_not_counted(self):
+        other = User.objects.create_user(
+            username='other', email='other@example.com', password='x',
+        )
+        foreign = Project.objects.create(owner=other, name='Чужой')
+        Page.objects.create(project=foreign, title='Страница', slug='page')
+
+        self.assertEqual(
+            usage_for(self.user),
+            {'projects': 1, 'pages': 1, 'records': 0},
+        )
+
+    def test_only_active_sites_are_published(self):
+        Site.objects.create(project=self.project, slug='demo')
+        self.assertEqual(published_projects(self.user), 1)
+
+        site = Site.objects.get(project=self.project)
+        site.state = 'withdrawn'
+        site.save(update_fields=['state'])
+        self.assertEqual(published_projects(self.user), 0)
+
+
 @override_settings(SECURE_SSL_REDIRECT=False)
 class SubscriptionApiTests(TestCase):
     def setUp(self):
@@ -246,6 +307,39 @@ class SubscriptionApiTests(TestCase):
             '1': True, '2': False, '3': False, '4': False, '5': True,
         })
         self.assertEqual(len(body['plans']), 4)
+        self.assertTrue(body['billing_enabled'])
+        self.assertEqual(
+            body['usage']['projects'], {'used': 0, 'limit': 1},
+        )
+        self.assertEqual(body['usage']['pages'], {'used': 0, 'limit': 5})
+        self.assertEqual(body['usage']['records'], {'used': 0, 'limit': 20})
+        self.assertEqual(body['publications'], {'published': 0})
+
+    def test_usage_and_publications_reflect_data(self):
+        project = Project.objects.create(owner=self.user, name='Сайт')
+        Page.objects.create(project=project, title='О нас', slug='about')
+        Site.objects.create(project=project, slug='site')
+
+        body = self.client.get('/api/billing/subscription/').json()
+        self.assertEqual(body['usage']['projects']['used'], 1)
+        self.assertEqual(body['usage']['pages']['used'], 2)
+        self.assertEqual(body['publications'], {'published': 1})
+
+    @override_settings(BILLING_ENABLED=False, DEPLOYMENT_MODE='self-hosted')
+    def test_self_hosted_reports_billing_disabled_and_no_limits(self):
+        body = self.client.get('/api/billing/subscription/').json()
+        self.assertFalse(body['billing_enabled'])
+        self.assertEqual(body['plan']['code'], 'business')
+        self.assertIsNone(body['usage']['projects']['limit'])
+
+    @override_settings(BILLING_ENABLED=False, DEPLOYMENT_MODE='self-hosted')
+    def test_self_hosted_refuses_plan_change(self):
+        response = self.client.post(
+            '/api/billing/subscription/change/', {'plan': 'free'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['reason'], 'billing_disabled')
 
     def test_change_plan_applies_immediately(self):
         response = self.client.post(
