@@ -14,6 +14,7 @@ import { ReviewScreen } from './ui/ReviewScreen';
 import { WebhooksScreen } from './ui/WebhooksScreen';
 import { AcademyScreen } from './ui/AcademyScreen';
 import { SubscriptionScreen } from './ui/SubscriptionScreen';
+import { AssistantScreen } from './ui/AssistantScreen';
 import { Icon } from './ui/icons';
 import { api, clearTokens, onSessionExpired, type PlatformConfig, type UserProfile } from './ui/api';
 import type { Project } from './ui/project';
@@ -39,6 +40,7 @@ type Screen =
   | { name: 'templates'; project: Project }
   | { name: 'review'; project: Project }
   | { name: 'webhooks'; project: Project }
+  | { name: 'assistant'; project: Project }
   | { name: 'academy' }
   | { name: 'subscription' };
 
@@ -167,6 +169,13 @@ export function App() {
           projectName={screen.project.name}
           onBack={() => setScreen({ name: 'editor', project: screen.project })}
         />
+      ) : screen.name === 'assistant' ? (
+        <AssistantScreen
+          projectId={screen.project.id}
+          projectName={screen.project.name}
+          onBack={() => setScreen({ name: 'editor', project: screen.project })}
+          onOpenSubscription={() => setScreen({ name: 'subscription' })}
+        />
       ) : screen.name === 'components' ? (
         <ComponentsScreen
           projectId={screen.project.id}
@@ -185,6 +194,7 @@ export function App() {
           onOpenTemplates={() => setScreen({ name: 'templates', project: screen.project })}
           onOpenReview={() => setScreen({ name: 'review', project: screen.project })}
           onOpenWebhooks={() => setScreen({ name: 'webhooks', project: screen.project })}
+          onOpenAssistant={() => setScreen({ name: 'assistant', project: screen.project })}
           onSignOut={signOut}
         />
       )}

@@ -173,6 +173,7 @@ export function EditorCanvas({
   onOpenTemplates,
   onOpenReview,
   onOpenWebhooks,
+  onOpenAssistant,
   onSignOut,
 }: {
   /** Проект открыт из списка: идентификатор и название известны заранее. */
@@ -193,6 +194,8 @@ export function EditorCanvas({
   onOpenReview: () => void;
   /** Вебхуки: подписки проекта на события публикации и деплоя. */
   onOpenWebhooks: () => void;
+  /** ИИ-помощник: план страницы, схема данных и разбор проекта. */
+  onOpenAssistant: () => void;
   onSignOut: () => void;
 }) {
   const [tool, setTool] = useState('select');
@@ -1132,6 +1135,19 @@ export function EditorCanvas({
           >
             <Icon name="external" />
             <span>Вебхуки</span>
+          </button>
+          {/* ИИ-помощник: структура, а не готовый текст. Отдельный экран,
+              потому что ответ нужно читать и обсуждать, а не вставлять
+              одним нажатием. */}
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={onOpenAssistant}
+            title="ИИ-помощник по структуре"
+            aria-label="ИИ-помощник по структуре"
+          >
+            <Icon name="sparkles" />
+            <span>Помощник</span>
           </button>
           {/* Кнопка возврата в список проектов: без неё из редактора
               не выйти, кроме выхода из аккаунта, а это разные вещи. */}

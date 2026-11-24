@@ -69,6 +69,9 @@ urlpatterns = [
     # Вебхуки проекта. Объявлены до api/projects/, чтобы адрес
     # projects/<id>/webhooks/ не разбирался как подресурс проекта.
     path('api/', include('webhooks.urls')),
+    # ИИ-помощник проекта: чтение состояния и запуск действий.
+    # До api/projects/, иначе «assistant» попал бы под <str:project_id>.
+    path('api/', include('assistant.urls')),
     path('api/projects/', include('projects.urls')),
     # Деплой на хостинг заказчика (ТЗ п.16.5): профили доступа и
     # сама выкладка. Объявлено после проектов, потому что все пути

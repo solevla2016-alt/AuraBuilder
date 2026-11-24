@@ -71,6 +71,8 @@ export interface PlanOption {
   max_projects: number | null;
   max_pages: number | null;
   max_records: number | null;
+  /** Кредиты помощника в месяц. null — без ограничения. */
+  ai_credits: number | null;
   own_domain: boolean;
   cdn_priority: boolean;
   onedc_integration: boolean;
@@ -99,6 +101,8 @@ export interface SubscriptionInfo {
     projects: PlanQuota;
     pages: PlanQuota;
     records: PlanQuota;
+    /** Кредиты ИИ за текущий месяц: счёт по владельцу проекта. */
+    ai: PlanQuota;
   };
   publications: { published: number };
   billing_enabled: boolean;

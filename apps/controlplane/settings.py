@@ -82,6 +82,22 @@ REGISTRATION_OPEN = env_flag('ALLOW_REGISTRATION', not SELF_HOSTED)
 #: они защищают платформу, а не продают место.
 BILLING_ENABLED = env_flag('BILLING_ENABLED', not SELF_HOSTED)
 
+# --- ИИ-помощник --------------------------------------------------------
+# Провайдер — часть настройки, а не кода: локальные правила работают
+# офлайн и без ключа, YandexGPT подключается окружением. Значение auto
+# выбирает YandexGPT только когда ключ и каталог заданы, поэтому стенд
+# и self-hosted не требуют внешней сети.
+AI_PROVIDER = os.environ.get('AI_PROVIDER', 'auto').strip().lower()
+if AI_PROVIDER not in {'auto', 'local', 'yandex'}:
+    raise RuntimeError(
+        'AI_PROVIDER принимает только auto, local или yandex, '
+        f'получено: {AI_PROVIDER!r}',
+    )
+
+YANDEX_GPT_API_KEY = os.environ.get('YANDEX_GPT_API_KEY', '')
+YANDEX_GPT_FOLDER_ID = os.environ.get('YANDEX_GPT_FOLDER_ID', '')
+YANDEX_GPT_MODEL = os.environ.get('YANDEX_GPT_MODEL', 'yandexgpt-lite')
+
 # --- Безопасность -------------------------------------------------------
 
 # В разработке ключ лежит в .env; в продакшене переменная обязательна.
@@ -155,6 +171,7 @@ INSTALLED_APPS = [
     'component_library',
     'assets',
     'billing',
+    'assistant',
     'secretstore',
     'telegram',
     'deploying',

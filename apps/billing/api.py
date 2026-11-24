@@ -8,6 +8,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from assistant import credits as ai_credits
+
 from .plans import PLANS
 from .service import (
     SCENARIO_TITLES,
@@ -26,6 +28,7 @@ class PlanSerializer(serializers.Serializer):
     max_projects = serializers.IntegerField(allow_null=True)
     max_pages = serializers.IntegerField(allow_null=True)
     max_records = serializers.IntegerField(allow_null=True)
+    ai_credits = serializers.IntegerField(allow_null=True)
     own_domain = serializers.BooleanField()
     cdn_priority = serializers.BooleanField()
     onedc_integration = serializers.BooleanField()
@@ -39,6 +42,7 @@ def _plan_payload(plan) -> dict:
         'max_projects': plan.max_projects,
         'max_pages': plan.max_pages,
         'max_records': plan.max_records,
+        'ai_credits': plan.ai_credits,
         'own_domain': plan.own_domain,
         'cdn_priority': plan.cdn_priority,
         'onedc_integration': plan.onedc_integration,
@@ -84,6 +88,13 @@ class SubscriptionView(APIView):
                 'projects': quota_row(usage['projects'], plan.max_projects),
                 'pages': quota_row(usage['pages'], plan.max_pages),
                 'records': quota_row(usage['records'], plan.max_records),
+                # Кредиты помощника входят в ту же шкалу, поэтому
+                # остаток приходит одним ответом с тарифом: иначе
+                # кабинет показывал бы квоты без расхода на ИИ.
+                'ai': quota_row(
+                    ai_credits.used_credits(request.user),
+                    plan.ai_credits,
+                ),
             },
             'publications': {'published': published_projects(request.user)},
             # Фронт скрывает тарифы в self-hosted. Флаг отдаётся, а не

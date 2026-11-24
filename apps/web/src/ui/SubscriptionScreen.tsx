@@ -132,6 +132,7 @@ export function SubscriptionScreen({ onBack }: { onBack: () => void }) {
                 <QuotaMeter label="Проекты" quota={data.usage.projects} />
                 <QuotaMeter label="Страницы" quota={data.usage.pages} />
                 <QuotaMeter label="Записи в источниках" quota={data.usage.records} />
+                <QuotaMeter label="Кредиты ИИ за месяц" quota={data.usage.ai} />
               </div>
             </section>
 
@@ -243,6 +244,9 @@ function planFeatures(plan: PlanOption): string[] {
     plan.max_records === null
       ? 'Записи без ограничения'
       : `Записей: ${plan.max_records}`,
+    plan.ai_credits === null
+      ? 'Кредиты ИИ без ограничения'
+      : `Кредитов ИИ в месяц: ${plan.ai_credits}`,
     plan.own_domain ? 'Свой домен' : 'Только адрес платформы',
   ];
   if (plan.cdn_priority) lines.push('Приоритет CDN');

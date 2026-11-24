@@ -1966,6 +1966,306 @@ select.prop__input option {
 }
 
 /* ------------------------------------------------------------------ */
+/*  ИИ-помощник                                                        */
+/* ------------------------------------------------------------------ */
+
+.assistant {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.assistant__balance {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+}
+
+.assistant__balance b {
+  font-size: var(--text-lg);
+  font-variant-numeric: tabular-nums;
+}
+
+.assistant__balance span {
+  color: var(--textSecondary);
+  font-size: var(--text-xs);
+}
+
+.assistant__provider {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-lg);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panelSunken);
+}
+
+.assistant__provider > span {
+  padding: 2px var(--space-sm);
+  border: 1px solid var(--success);
+  border-radius: var(--radius-pill);
+  color: var(--success);
+  font-size: var(--text-xs);
+  font-weight: 650;
+}
+
+.assistant__provider > span.is-external {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.assistant__provider p {
+  margin: 0;
+  color: var(--textSecondary);
+  font-size: var(--text-sm);
+}
+
+.assistant__layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 420px) 1fr;
+  gap: var(--space-lg);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .assistant__layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.assistant__ask,
+.assistant__answer {
+  padding: var(--space-lg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+.assistant__ask h2,
+.assistant__answer h2,
+.assistant__history h2 {
+  margin: 0 0 var(--space-md);
+  font-size: var(--text-lg);
+}
+
+.assistant__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
+}
+
+.assistant__action {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panelSunken);
+  color: var(--textPrimary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.assistant__action:hover {
+  border-color: var(--borderStrong);
+}
+
+.assistant__action.is-current {
+  border-color: var(--accent);
+  background: var(--accentSurfaceSubtle);
+}
+
+.assistant__action b {
+  font-size: var(--text-sm);
+}
+
+.assistant__action span {
+  color: var(--textSecondary);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.assistant__action em {
+  align-self: flex-end;
+  color: var(--accentTextStrong);
+  font-size: var(--text-xs);
+  font-style: normal;
+  font-weight: 650;
+}
+
+.assistant__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-md);
+}
+
+.assistant__field > span {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.assistant__field textarea {
+  padding: var(--space-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panelSunken);
+  color: var(--textPrimary);
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.assistant__field textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.assistant__field small {
+  color: var(--textSecondary);
+  font-size: var(--text-xs);
+}
+
+.assistant__run {
+  width: 100%;
+  justify-content: center;
+}
+
+.assistant__answer header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.assistant__summary {
+  margin: 0 0 var(--space-lg);
+  font-size: var(--text-md);
+  line-height: 1.6;
+}
+
+.assistant__items {
+  margin: 0 0 var(--space-lg);
+  padding-left: var(--space-xl);
+}
+
+.assistant__items li {
+  margin-bottom: var(--space-md);
+}
+
+.assistant__items li:last-child {
+  margin-bottom: 0;
+}
+
+.assistant__items p {
+  margin: var(--space-xs) 0 0;
+  color: var(--textSecondary);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+
+.assistant__item-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+.assistant__item-head code {
+  padding: 1px var(--space-xs);
+  border-radius: var(--radius-sm);
+  background: var(--panelSunken);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--textSecondary);
+}
+
+.assistant__item-head > span {
+  color: var(--textSecondary);
+  font-size: var(--text-xs);
+}
+
+.assistant__item-head .assistant__required {
+  color: var(--warning);
+}
+
+.assistant__empty {
+  margin: 0;
+  color: var(--textSecondary);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.assistant__limit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  flex-wrap: wrap;
+  margin-top: var(--space-lg);
+  padding: var(--space-lg);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+.assistant__limit p {
+  margin: var(--space-xs) 0 0;
+  color: var(--textSecondary);
+  font-size: var(--text-sm);
+}
+
+.assistant__history {
+  margin-top: var(--space-xl);
+  padding: var(--space-lg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+.assistant__history ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.assistant__history li {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: var(--space-md);
+  align-items: baseline;
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-sm);
+}
+
+.assistant__history li:last-child {
+  border-bottom: none;
+}
+
+.assistant__history-meta {
+  color: var(--textSecondary);
+  font-size: var(--text-xs);
+}
+
+.assistant__history b {
+  color: var(--textSecondary);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Приветственная стартовая страница                                  */
 /* ------------------------------------------------------------------ */
 

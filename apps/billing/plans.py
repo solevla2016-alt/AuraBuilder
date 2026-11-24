@@ -28,6 +28,10 @@ class Plan:
     max_projects: int | None  # None — без ограничений
     max_pages: int | None
     max_records: int | None
+    #: Кредиты помощника в месяц. None — без ограничения (Business и
+    #: self-hosted). Ноль здесь был бы запретом, а не отсутствием
+    #: ограничения, поэтому для «без лимита» выбран None.
+    ai_credits: int | None
     scenarios: frozenset[int]
     own_domain: bool
     cdn_priority: bool = False
@@ -41,6 +45,7 @@ PLANS: dict[str, Plan] = {
     'free': Plan(
         code='free', title='Free', price=0,
         max_projects=1, max_pages=5, max_records=20,
+        ai_credits=20,
         # Только технический бэкап и публикация на поддомене платформы.
         scenarios=frozenset(FREE_SCENARIOS),
         own_domain=False,
@@ -48,12 +53,14 @@ PLANS: dict[str, Plan] = {
     'start': Plan(
         code='start', title='Start', price=990,
         max_projects=5, max_pages=50, max_records=500,
+        ai_credits=300,
         scenarios=frozenset({1, 2, 3, 5}),
         own_domain=True,
     ),
     'pro': Plan(
         code='pro', title='Pro', price=2490,
         max_projects=25, max_pages=500, max_records=10_000,
+        ai_credits=2000,
         scenarios=frozenset({1, 2, 3, 4, 5}),
         own_domain=True,
         cdn_priority=True,
@@ -62,6 +69,7 @@ PLANS: dict[str, Plan] = {
     'business': Plan(
         code='business', title='Business', price=7990,
         max_projects=None, max_pages=None, max_records=None,
+        ai_credits=None,
         scenarios=frozenset({1, 2, 3, 4, 5}),
         own_domain=True,
         cdn_priority=True,

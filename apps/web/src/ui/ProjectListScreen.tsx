@@ -236,6 +236,7 @@ export function ProjectListScreen({
           <QuotaPill label="Проекты" quota={subscription.usage.projects} />
           <QuotaPill label="Страницы" quota={subscription.usage.pages} />
           <QuotaPill label="Записи" quota={subscription.usage.records} />
+          <QuotaPill label="Кредиты ИИ" quota={subscription.usage.ai} />
           <button
             type="button"
             className="btn btn--ghost"
@@ -502,7 +503,7 @@ function QuotaPill({ label, quota }: { label: string; quota: PlanQuota }) {
       <span>{label}</span>
       <b>
         {quota.used}
-        {quota.limit === null ? '' : `/${quota.limit}`}
+        {quota.limit === null ? ' · ∞' : `/${quota.limit}`}
       </b>
     </span>
   );

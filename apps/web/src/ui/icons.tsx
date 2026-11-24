@@ -53,7 +53,9 @@ export type IconName =
   /** Устройства предпросмотра: компьютер, планшет, телефон. */
   | 'monitor'
   | 'tablet'
-  | 'phone';
+  | 'phone'
+  /** ИИ-помощник: искры как знак подсказки. */
+  | 'sparkles';
 
 const PATHS: Record<IconName, string> = {
   cursor: 'M5 3l14 8-6 1.5L10 19 5 3z',
@@ -94,6 +96,7 @@ const PATHS: Record<IconName, string> = {
   alignCenter: 'M4 6h16M7 12h10M6 18h12',
   alignRight: 'M4 6h16M11 12h9M7 18h13',
   chart: 'M4 20h16M6 20V11m5 9V5m5 15V8',
+  sparkles: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3zM18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9L18 15z',
 };
 
 export interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'name'> {
