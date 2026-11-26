@@ -26,6 +26,7 @@ import {
 } from 'react';
 import { Icon, type IconName } from './icons';
 import { api, ApiError } from './api';
+import { downloadFile } from './apiClient';
 import {
   defaultTree,
   newBlockId,
@@ -796,6 +797,39 @@ export function EditorCanvas({
   });
 
   /**
+   * Уход из редактора. Автосохранение ждёт 1,2 с тишины, поэтому клик
+   * «Проекты» сразу после правки терял последнее изменение: экран
+   * переключался, debounce не успевал. Сохраняем до перехода, а при
+   * ошибке спрашиваем — молча терять данные нельзя, но и запирать в
+   * редакторе из-за конфликта версий тоже.
+   */
+  const leaveEditor = useCallback(async () => {
+    if (!history.dirty) {
+      onBack();
+      return;
+    }
+    const saved = await autosave.saveNow();
+    if (saved || window.confirm(
+      'Последние изменения не сохранились. Выйти без них?',
+    )) {
+      onBack();
+    }
+  }, [autosave.saveNow, history.dirty, onBack]);
+
+  /** Выход из аккаунта тоже не должен молча выбрасывать правки. */
+  const signOut = useCallback(async () => {
+    if (history.dirty) {
+      const saved = await autosave.saveNow();
+      if (!saved && !window.confirm(
+        'Последние изменения не сохранились. Выйти без них?',
+      )) {
+        return;
+      }
+    }
+    void api.logout().finally(() => onSignOut());
+  }, [autosave.saveNow, history.dirty, onSignOut]);
+
+  /**
    * Горячие клавиши — основа интерфейса, а не бонус (см.
    * docs/UI-DECISIONS.md, раздел 6).
    *
@@ -1154,7 +1188,7 @@ export function EditorCanvas({
           <button
             type="button"
             className="btn btn--ghost"
-            onClick={onBack}
+            onClick={() => void leaveEditor()}
             title="К списку проектов"
             aria-label="К списку проектов"
           >
@@ -1164,9 +1198,7 @@ export function EditorCanvas({
           <button
             type="button"
             className="btn btn--ghost"
-            onClick={() => {
-              void api.logout().finally(() => onSignOut());
-            }}
+            onClick={() => void signOut()}
             title="Выйти"
             aria-label="Выйти"
           >
@@ -1197,19 +1229,26 @@ export function EditorCanvas({
             Сохранить
           </button>
           {/*
-            Выгрузка пакета (ТЗ п.16.4) — рабочее действие. Рядом стоит
-            «Опубликовать» без действия: это заглушка под этап 4, и
-            разница видна сразу, чтобы не выдавать одно за другое.
+            Выгрузка пакета (ТЗ п.16.4) — рабочее действие. Скачивание
+            идёт через короткоживущий тикет: у перехода по ссылке нет
+            заголовка Authorization, и прямая ссылка отвечала 401.
           */}
-          <a
+          <button
+            type="button"
             className="btn btn--ghost"
-            href={api.exportUrl(project.id)}
+            onClick={() => {
+              void downloadFile(api.exportPath(project.id)).catch((e: unknown) => {
+                setSaveError(
+                  e instanceof Error ? e.message : 'Не удалось скачать архив.',
+                );
+              });
+            }}
             title="Скачать статический пакет (.zip)"
             aria-label="Выгрузить статический пакет"
           >
             <Icon name="download" size={16} />
             Выгрузить
-          </a>
+          </button>
           <button
             type="button"
             className="btn btn--primary"

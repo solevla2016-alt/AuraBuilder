@@ -16,6 +16,11 @@ urlpatterns = [
     path('refresh/', views.RefreshView.as_view(), name='token-refresh'),
     path('logout/', views.LogoutView.as_view(), name='logout'),
 
+    # Тикет для скачивания архивов: переход по ссылке не приносит
+    # заголовок Authorization, поэтому авторизация едет в query.
+    path('download-ticket/', views.DownloadTicketView.as_view(),
+         name='download-ticket'),
+
     # Профиль и согласие на обработку ПДн
     path('me/', views.MeView.as_view(), name='me'),
     path('consent/', views.ConsentView.as_view(), name='consent'),

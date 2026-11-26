@@ -259,6 +259,10 @@ REST_FRAMEWORK = {
     'UNAUTHENTICATED_USER': None,
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
+        # Скачивание идёт переходом браузера по ссылке, где нет заголовка
+        # Authorization. Тикет в query действует только на чтение и только
+        # на адреса архивов (accounts/downloads.py).
+        'accounts.downloads.DownloadTicketAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',

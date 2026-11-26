@@ -53,8 +53,8 @@ export interface Autosave {
   savedAt: number | null;
   /** Человеческая подпись «сохранено N назад». */
   label: string;
-  /** Принудительное сохранение. */
-  saveNow: () => Promise<void>;
+  /** Принудительное сохранение. false — сохранить не удалось. */
+  saveNow: () => Promise<boolean>;
 }
 
 /** «сейчас», «12 секунд назад», «4 минуты назад». */
@@ -86,7 +86,10 @@ export function useAutosave({ save, dirty, enabled = true }: AutosaveOptions): A
   const [now, setNow] = useState(() => Date.now());
 
   const timerRef = useRef<number | null>(null);
-  const inFlightRef = useRef(false);
+  // Обещание текущего сохранения, а не просто флаг. Уход из редактора
+  // ждёт именно его: иначе навигация начиналась бы, пока PUT ещё летит,
+  // и последние правки терялись бы «на успешном сохранении».
+  const inFlightRef = useRef<Promise<boolean> | null>(null);
   // Функция сохранения меняется каждый рендер; храним её в ref,
   // иначе useEffect ниже перезапускался бы на каждый рендер.
   const saveRef = useRef(save);
@@ -97,31 +100,38 @@ export function useAutosave({ save, dirty, enabled = true }: AutosaveOptions): A
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
 
-  const run = useCallback(async () => {
+  const run = useCallback((): Promise<boolean> => {
     // Параллельных сохранений быть не должно: два одновременных PUT
     // могли бы записать разные версии дерева в неопределённом порядке.
-    if (inFlightRef.current) return;
-    inFlightRef.current = true;
-    setState('saving');
-    setError(null);
-    try {
-      await saveRef.current();
-      setSavedAt(Date.now());
-      setState('saved');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Неизвестная ошибка');
-      setState('error');
-    } finally {
-      inFlightRef.current = false;
-    }
+    // Если сохранение уже идёт, возвращаем его результат, а не второй
+    // запрос и не мгновенное «успешно».
+    if (inFlightRef.current) return inFlightRef.current;
+    const task = (async () => {
+      setState('saving');
+      setError(null);
+      try {
+        await saveRef.current();
+        setSavedAt(Date.now());
+        setState('saved');
+        return true;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Неизвестная ошибка');
+        setState('error');
+        return false;
+      } finally {
+        inFlightRef.current = null;
+      }
+    })();
+    inFlightRef.current = task;
+    return task;
   }, []);
 
-  const saveNow = useCallback(async () => {
+  const saveNow = useCallback(async (): Promise<boolean> => {
     if (timerRef.current !== null) {
       window.clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-    await run();
+    return run();
   }, [run]);
 
   // Debounce на каждое новое изменение. Cleanup здесь намеренно
@@ -152,11 +162,32 @@ export function useAutosave({ save, dirty, enabled = true }: AutosaveOptions): A
     };
     window.addEventListener('pagehide', flush);
     document.addEventListener('visibilitychange', onVisibility);
+    // pagehide не даёт отменить уход и не гарантирует, что браузер
+    // дочитает ответ. beforeunload показывает вопрос, пока правки не
+    // записаны: человек успевает вернуться и сохранить, а не узнать о
+    // потере уже после закрытия вкладки.
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!dirtyRef.current) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
     return () => {
       window.removeEventListener('pagehide', flush);
       document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('beforeunload', onBeforeUnload);
     };
   }, [saveNow]);
+
+  // Уход на другой экран редактора (данные, публикация, версии) тоже
+  // размонтирует компонент. Отдельного подтверждения там нет, поэтому
+  // последний шанс сохранить — cleanup. Если PUT уже летит, не дублируем
+  // его: ответ всё равно придёт, а второй запрос с той же версией
+  // получил бы 409.
+  useEffect(() => () => {
+    if (!dirtyRef.current || inFlightRef.current) return;
+    void saveRef.current().catch(() => undefined);
+  }, []);
 
   // Таймер для подписи «N назад»: раз в 10 секунд достаточно,
   // чаще — просто мигание цифр.

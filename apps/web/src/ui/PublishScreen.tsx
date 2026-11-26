@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Icon } from './icons';
-import { ApiError } from './apiClient';
+import { ApiError, downloadFile } from './apiClient';
 import {
   publishingApi,
   type DeployResult,
@@ -134,6 +134,21 @@ export function PublishScreen({ projectId, projectName, onBack }: Props) {
     },
     [load],
   );
+
+  // Скачивание: тикет берётся с токеном, файл отдаёт браузер. Ошибку
+  // показываем тем же notice, что и остальные действия экрана.
+  const download = useCallback(async (path: string) => {
+    setNotice(null);
+    try {
+      await downloadFile(path);
+      setNotice({
+        kind: 'ok',
+        text: 'Файл сохраняется. Если браузер спросил папку — выберите её.',
+      });
+    } catch (e) {
+      setNotice({ kind: 'bad', text: explain(e) });
+    }
+  }, []);
 
   const active = status?.active === true;
   const published = status?.published === true;
@@ -473,9 +488,13 @@ export function PublishScreen({ projectId, projectName, onBack }: Props) {
           знает о платформе.
         </p>
         <div className="vers__mark-row">
-          <a className="btn" href={publishingApi.exportUrl(projectId)}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void download(publishingApi.exportPath(projectId))}
+          >
             Скачать архив
-          </a>
+          </button>
         </div>
       </section>
 
@@ -619,9 +638,13 @@ export function PublishScreen({ projectId, projectName, onBack }: Props) {
           экран телефона.
         </p>
         <div className="vers__mark-row">
-          <a className="btn" href={publishingApi.exportUrl(projectId, { pwa: true })}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void download(publishingApi.exportPath(projectId, { pwa: true }))}
+          >
             Скачать как приложение
-          </a>
+          </button>
         </div>
       </section>
 
@@ -632,9 +655,13 @@ export function PublishScreen({ projectId, projectName, onBack }: Props) {
           техническая гарантия сохранности данных.
         </p>
         <div className="vers__mark-row">
-          <a className="btn" href={publishingApi.configUrl(projectId)}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void download(publishingApi.configPath(projectId))}
+          >
             Скачать бэкап
-          </a>
+          </button>
         </div>
       </section>
 

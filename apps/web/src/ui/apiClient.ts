@@ -201,3 +201,42 @@ function notifySessionExpired(): void {
 export function hasSession(): boolean {
   return getAccessToken() !== null;
 }
+
+/**
+ * Скачивание архива переходом браузера.
+ *
+ * Заголовок Authorization переходу по ссылке не прикладывается, поэтому
+ * сначала берём короткоживущий тикет (accounts/downloads.py), а файл
+ * отдаёт уже сам браузер. Держать архив в памяти вкладки нельзя: пакет
+ * проекта весит десятки мегабайт.
+ *
+ * `path` — путь API без BASE, вместе с query: например
+ * `/projects/<id>/export/?pwa=1`. Тикет подписывается на путь без query,
+ * иначе `?pwa=1` делал бы ссылку недействительной.
+ */
+export async function downloadFile(path: string): Promise<void> {
+  const [pathname] = path.split('?');
+  // BASE может быть и относительным (/api), и полным адресом. Тикет
+  // привязан к пути, который видит Django, поэтому из BASE берём
+  // именно pathname.
+  const apiPath = (() => {
+    try {
+      return new URL(BASE, window.location.origin).pathname.replace(/\/+$/, '');
+    } catch {
+      return BASE.replace(/\/+$/, '');
+    }
+  })();
+  const { ticket } = await request<{ ticket: string }>('/auth/download-ticket/', {
+    method: 'POST',
+    body: JSON.stringify({ path: `${apiPath}${pathname}` }),
+  });
+  const separator = path.includes('?') ? '&' : '?';
+  const link = document.createElement('a');
+  link.href = `${BASE}${path}${separator}ticket=${encodeURIComponent(ticket)}`;
+  link.rel = 'noopener';
+  // Ссылка должна быть в документе: в некоторых браузерах click() по
+  // отсоединённому узлу не начинает загрузку.
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}

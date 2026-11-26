@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { ErrorBoundary } from './ui/ErrorBoundary';
 
 // Токены приходят виртуальным модулем: содержимое генерируется из
 // docs/palette.json плагином в vite.config.ts. Правка палитры
@@ -16,6 +17,8 @@ if (!root) {
 
 createRoot(root).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 );

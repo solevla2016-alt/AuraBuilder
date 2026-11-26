@@ -12,7 +12,7 @@
  * сам по заголовку Content-Disposition. Поэтому здесь адреса.
  */
 
-import { BASE, request } from './apiClient';
+import { request } from './apiClient';
 
 /** Состояние публикации (ТЗ п.16.3). */
 export interface SiteStatus {
@@ -284,18 +284,17 @@ profiles: (projectId: string) =>
     }),
 
   /**
-   * Адреса архивов. Скачивание идёт браузером напрямую, поэтому здесь
-   * нет запроса: файл может быть большим, и держать его в памяти
-   * вкладки незачем.
+   * Путь архива. Скачивание идёт переходом браузера (downloadFile):
+   * файл может быть большим, и держать его в памяти вкладки незачем.
    */
-  exportUrl: (projectId: string, options: { version?: number; pwa?: boolean } = {}) => {
+  exportPath: (projectId: string, options: { version?: number; pwa?: boolean } = {}) => {
     const query: string[] = [];
     if (options.version !== undefined) query.push('version=' + options.version);
     if (options.pwa) query.push('pwa=1');
-    return `${BASE}/projects/${projectId}/export/` +
+    return `/projects/${projectId}/export/` +
       (query.length ? '?' + query.join('&') : '');
   },
 
-  /** JSON-бэкап проекта (ТЗ п.16.7). */
-  configUrl: (projectId: string) => `${BASE}/projects/${projectId}/config/`,
+  /** Путь JSON-бэкапа проекта (ТЗ п.16.7). */
+  configPath: (projectId: string) => `/projects/${projectId}/config/`,
 };

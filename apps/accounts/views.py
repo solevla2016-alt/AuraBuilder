@@ -24,6 +24,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
+from . import downloads
 from .models import UserConsent
 from .serializers import (
     ConsentSerializer,
@@ -195,3 +196,26 @@ class RegisterKeyView(APIView):
             },
             status=status.HTTP_501_NOT_IMPLEMENTED,
         )
+
+
+class DownloadTicketView(APIView):
+    """Выдаёт короткоживущий тикет на адрес скачивания.
+
+    Требует обычной авторизации: тикет — это замена заголовку только
+    для перехода браузера, а не способ скачать чужой проект. Права на
+    сам файл всё равно проверяет endpoint экспорта.
+    """
+
+    permission_classes = [IsAuthenticatedUser]
+
+    def post(self, request):
+        path = downloads.normalize_path(request.data.get('path'))
+        if path is None:
+            return Response(
+                {'detail': 'Ссылка на этот адрес не выдаётся.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response({
+            'ticket': downloads.issue_ticket(request.user, path),
+            'expiresIn': downloads.TICKET_TTL_SECONDS,
+        })
