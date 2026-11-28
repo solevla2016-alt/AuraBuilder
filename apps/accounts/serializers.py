@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.utils.text import slugify
@@ -160,14 +161,24 @@ class AddMemberSerializer(serializers.Serializer):
 
 
 def get_client_ip(request) -> str | None:
-    """IP клиента.
+    """IP клиента, которому можно верить.
 
-    За nginx берётся X-Forwarded-For: там единственное место, где виден
-    настоящий адрес. Без прокси Django знает его сам.
+    X-Forwarded-For подделывается одной строкой в curl. nginx с
+    $proxy_add_x_forwarded_for не заменяет заголовок, а дописывает
+    настоящий адрес в конец, поэтому начало списка — клиентское.
+    Берём адрес с конца: столько раз, сколько прокси стоит перед
+    приложением (TRUSTED_PROXY_COUNT). Так же выбирает адрес DRF
+    (NUM_PROXIES), иначе журнал показывал бы не тот IP, по которому
+    считался лимит.
     """
-    forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
-    if forwarded:
-        return forwarded.split(',')[0].strip()
+    trusted = int(getattr(settings, 'TRUSTED_PROXY_COUNT', 1))
+    forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
+    if trusted > 0:
+        addresses = [
+            part.strip() for part in forwarded.split(',') if part.strip()
+        ]
+        if addresses:
+            return addresses[-min(trusted, len(addresses))]
     return request.META.get('REMOTE_ADDR')
 
 

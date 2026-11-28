@@ -21,6 +21,8 @@ from datetime import timedelta
 from pathlib import Path
 import tempfile
 
+from controlplane import caching
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -243,6 +245,27 @@ else:
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# --- Кэш ----------------------------------------------------------------
+# Общий на все воркеры, иначе счётчик попыток входа делится между ними
+# и лимит становится втрое мягче (подробности — controlplane/caching.py).
+CACHES = caching.cache_settings(os.environ.get('VALKEY_URL', ''))
+
+# --- Доверие к прокси ---------------------------------------------------
+# X-Forwarded-For клиент присылает сам, и подделать его — одна строка в
+# curl. nginx с $proxy_add_x_forwarded_for не заменяет заголовок, а
+# дописывает настоящий адрес в конец. Поэтому адрес клиента берётся с
+# конца — столько раз, сколько прокси стоит перед приложением.
+#
+# 0 — перед приложением нет прокси, адрес берётся из REMOTE_ADDR.
+# Значение больше 1 нужно за балансировщиком перед nginx: тогда последние
+# N адресов дописаны инфраструктурой, а всё левее — от клиента.
+TRUSTED_PROXY_COUNT = int(os.environ.get('TRUSTED_PROXY_COUNT', '1'))
+if TRUSTED_PROXY_COUNT < 0:
+    raise RuntimeError(
+        'TRUSTED_PROXY_COUNT не может быть отрицательным: '
+        f'получено {TRUSTED_PROXY_COUNT}',
+    )
+
 # --- DRF ----------------------------------------------------------------
 
 # Права по умолчанию — только для чтения и только аутентифицированным.
@@ -282,6 +305,11 @@ REST_FRAMEWORK = {
         # analytics.throttling).
         'forms': os.environ.get('FORM_THROTTLE_RATE', '30/min'),
     },
+    # Сколько прокси стоит перед приложением: DRF по этому числу
+    # выбирает адрес из X-Forwarded-For (подробности — выше, у
+    # TRUSTED_PROXY_COUNT). Без него счётчик считался бы по подделанному
+    # клиентом адресу, и лимит обходился бы сменой заголовка.
+    'NUM_PROXIES': TRUSTED_PROXY_COUNT,
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.AnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle',

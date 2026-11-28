@@ -43,10 +43,12 @@ class LoginRateThrottle(ScopedRateThrottle):
         return super(ScopedRateThrottle, self).allow_request(request, view)
 
     def get_cache_key(self, request, view):
-        # Вход и регистрация делят окно, но не смешиваются с лимитом
-        # анонимных запросов: scope входит в ключ.
-        if request.user and request.user.is_authenticated:
-            ident = str(request.user.pk)
-        else:
-            ident = self.get_ident(request)
-        return self.cache_format % {'scope': self.scope, 'ident': ident}
+        # Ключ — только адрес, даже для запроса с токеном. Прежняя
+        # ветка «вошёл — считаем по пользователю» давала обход: со своим
+        # аккаунтом можно было подбирать чужие пароли, а с N аккаунтами
+        # получить 5N попыток с одного адреса. Вход с адреса — это и есть
+        # перебор с адреса, и лимит ТЗ п.7.7 считается по нему.
+        return self.cache_format % {
+            'scope': self.scope,
+            'ident': self.get_ident(request),
+        }

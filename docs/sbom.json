@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:5ba30fbc-42cc-4cb8-80c9-f3d3fdb5aba0",
+  "serialNumber": "urn:uuid:57995f6e-ed5d-4a4a-ac82-a54602a94d69",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-10-15T07:05:03.639Z",
+    "timestamp": "2026-11-26T15:36:58.017Z",
     "tools": [
       {
         "vendor": "AuraBuilder",
@@ -370,29 +370,6 @@
     },
     {
       "type": "library",
-      "name": "argon2-cffi",
-      "version": "25.1.0",
-      "purl": "pkg:pypi/argon2-cffi@25.1.0",
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "properties": [
-        {
-          "name": "aurabuilder:ecosystem",
-          "value": "pypi"
-        },
-        {
-          "name": "aurabuilder:pinned",
-          "value": "25.1.0"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "name": "cryptography",
       "version": "50.0.2",
       "purl": "pkg:pypi/cryptography@50.0.2",
@@ -531,6 +508,29 @@
     },
     {
       "type": "library",
+      "name": "pillow",
+      "version": "13.0.0",
+      "purl": "pkg:pypi/pillow@13.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT-CMU"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "aurabuilder:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "aurabuilder:pinned",
+          "value": "13.0.0"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "name": "psycopg",
       "version": "3.3.6",
       "purl": "pkg:pypi/psycopg@3.3.6",
@@ -554,6 +554,29 @@
     },
     {
       "type": "library",
+      "name": "redis",
+      "version": "6.4.0",
+      "purl": "pkg:pypi/redis@6.4.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "aurabuilder:ecosystem",
+          "value": "pypi"
+        },
+        {
+          "name": "aurabuilder:pinned",
+          "value": "6.4.0"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "name": "whitenoise",
       "version": "6.11.0",
       "purl": "pkg:pypi/whitenoise@6.11.0",
@@ -572,6 +595,29 @@
         {
           "name": "aurabuilder:pinned",
           "value": "6.11.0"
+        }
+      ]
+    },
+    {
+      "type": "application",
+      "name": "@aurabuilder/sdk",
+      "version": "0.0.0",
+      "purl": "pkg:npm/%40aurabuilder/sdk@0.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "UNLICENSED"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "aurabuilder:ecosystem",
+          "value": "npm"
+        },
+        {
+          "name": "aurabuilder:workspace",
+          "value": "packages/sdk"
         }
       ]
     },
