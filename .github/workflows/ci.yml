@@ -166,7 +166,7 @@ jobs:
 
   # --- Бэкенд --------------------------------------------------------------
   backend:
-    name: Тесты Control Plane на PostgreSQL
+    name: Тесты Control Plane на PostgreSQL и Valkey
     runs-on: ubuntu-24.04
 
     # PostgreSQL из того же образа, что и в docker-compose: тесты на
@@ -184,6 +184,20 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd "pg_isready -U aurabuilder -d aurabuilder"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      # Valkey для проверки общего кэша. Тот же образ, что в compose:
+      # тест обязан видеть сервер, который поедет в стенд, а не другой
+      # мажор. Healthcheck обязателен: без него шаг стартовал бы раньше
+      # сервера и падал бы на подключении, а не на логике.
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -267,6 +281,19 @@ jobs:
           python manage.py test projects accounts data_sources
           component_library deploying publications billing secretstore
           telegram logic maintenance --verbosity 2
+
+      # Живой Valkey проверяет то, чего не видно на LocMemCache:
+      # настройки действительно доходят до сервера, а счётчик попыток
+      # входа лежит там, где его увидит любой воркер. Отдельный запуск,
+      # чтобы основной прогон не зависел от сети и оставался быстрым;
+      # без VALKEY_URL этот файл пропускается.
+      - name: Общий кэш на Valkey
+        working-directory: apps
+        env:
+          # Схема valkey://, а не redis://: заодно проверяется её
+          # приведение, без которого redis-py отказывается подключаться.
+          VALKEY_URL: valkey://127.0.0.1:6379/0
+        run: python manage.py test accounts.tests_valkey --verbosity 2
 
   # --- Рантайм ---------------------------------------------------------------
   # Рантайм поставляется заказчику отдельно и не делит код с платформой
